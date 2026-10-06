@@ -18,6 +18,7 @@ const LABELS = {
   thickness: 'Disc thickness',
   clumps: 'Star clusters',
   haloFraction: 'Halo share',
+  dustAmount: 'Dust lanes',
   radius: 'Size',
   starSize: 'Star size',
   brightness: 'Brightness',
@@ -208,6 +209,15 @@ export function createControlPanel({ store, actions, getTarget, onFocus }) {
     .name('Time scale')
     .onChange((v) => setting({ timeScale: v }));
   settingsFolder.add(settingsProxy, 'autoRotate').name('Auto-rotate camera').onChange((v) => setting({ autoRotate: v }));
+  settingsFolder
+    .add(settingsProxy, 'bloomStrength', SETTINGS_LIMITS.bloomStrength.min, SETTINGS_LIMITS.bloomStrength.max, SETTINGS_LIMITS.bloomStrength.step)
+    .name('Glow (bloom)')
+    .onChange((v) => setting({ bloomStrength: v }));
+  settingsFolder.add(settingsProxy, 'dust').name('Dust lanes').onChange((v) => setting({ dust: v }));
+  settingsFolder
+    .add(settingsProxy, 'dustOpacity', SETTINGS_LIMITS.dustOpacity.min, SETTINGS_LIMITS.dustOpacity.max, SETTINGS_LIMITS.dustOpacity.step)
+    .name('Dust opacity')
+    .onChange((v) => setting({ dustOpacity: v }));
 
   // ── Store wiring ─────────────────────────────────────────────────────
   function galaxyListKey(state) {

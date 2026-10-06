@@ -85,3 +85,29 @@ describe('generateGalaxy', () => {
     expect(g.stats.bulge / g.count).toBeGreaterThan(0.85);
   });
 });
+
+describe('generateGalaxy dust', () => {
+  it('makes dustAmount × count dust particles, none when 0', () => {
+    expect(generateGalaxy(small({ dustAmount: 0.2 }), 1).dust.count).toBe(1000);
+    expect(generateGalaxy(small({ dustAmount: 0 }), 1).dust.count).toBe(0);
+  });
+
+  it('keeps dust out of the bulge and inside the disc', () => {
+    const shape = small({ dustAmount: 0.3 });
+    const { dust } = generateGalaxy(shape, 2);
+    expect(dust.positions.length).toBe(dust.count * 3);
+    let inner = 0;
+    for (let i = 0; i < dust.count; i++) {
+      const r = Math.hypot(dust.positions[i * 3], dust.positions[i * 3 + 2]);
+      expect(r).toBeLessThanOrEqual(0.9 + shape.armSpread);
+      if (r < 0.05) inner++;
+    }
+    expect(inner / dust.count).toBeLessThan(0.01);
+  });
+
+  it('does not change the stars when only dust changes', () => {
+    const a = generateGalaxy(small({ dustAmount: 0 }), 3);
+    const b = generateGalaxy(small({ dustAmount: 0.3 }), 3);
+    expect(a.positions).toEqual(b.positions);
+  });
+});

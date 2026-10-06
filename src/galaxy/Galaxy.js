@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { generateGalaxy } from './generateGalaxy.js';
 import { createGalaxyMaterial } from './galaxyMaterial.js';
+import { createDustMaterial } from './dustMaterial.js';
 import { clampLook, clampMotion } from './params.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -15,14 +16,21 @@ const RING_SEGMENTS = 128;
  */
 export class Galaxy {
   /**
-   * @param {{ shape: object, seed: number, look?: object, motion?: object, pixelRatio?: number }} params
+   * @param {{ shape: object, seed: number, look?: object, motion?: object, pixelRatio?: number, dust?: { enabled: boolean, opacity: number } }} params
    */
-  constructor({ shape, seed, look, motion, pixelRatio = 1 }) {
+  constructor({ shape, seed, look, motion, pixelRatio = 1, dust = { enabled: true, opacity: 0.6 } }) {
     this.group = new THREE.Group();
     this.material = createGalaxyMaterial();
     this.material.uniforms.uPixelRatio.value = pixelRatio;
     this.points = new THREE.Points(new THREE.BufferGeometry(), this.material);
     this.group.add(this.points);
+
+    this.dustMaterial = createDustMaterial(this.material);
+    this.dust = new THREE.Points(new THREE.BufferGeometry(), this.dustMaterial);
+    // Drawn after the stars so it darkens them.
+    this.dust.renderOrder = 1;
+    this.group.add(this.dust);
+    this.setDust(dust);
 
     this.phase = 0;
     this.speed = 0;
@@ -47,10 +55,25 @@ export class Galaxy {
     // a sphere at the origin, not around the unrotated points.
     geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), maxLength(data.positions));
 
-    const old = this.points.geometry;
-    old.dispose();
+    const dustGeometry = new THREE.BufferGeometry();
+    dustGeometry.setAttribute('position', new THREE.BufferAttribute(data.dust.positions, 3));
+    dustGeometry.setAttribute('aRadiusNorm', new THREE.BufferAttribute(data.dust.radiusNorm, 1));
+    dustGeometry.setAttribute('aColorJitter', new THREE.BufferAttribute(new Float32Array(data.dust.count), 1));
+    dustGeometry.setAttribute('aSize', new THREE.BufferAttribute(data.dust.sizes, 1));
+    dustGeometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), maxLength(data.dust.positions));
+
+    this.points.geometry.dispose();
+    this.dust.geometry.dispose();
     this.points.geometry = geometry;
+    this.dust.geometry = dustGeometry;
     this.count = data.count;
+    this.dustCount = data.dust.count;
+  }
+
+  /** Global dust settings (visibility and opacity). */
+  setDust({ enabled, opacity }) {
+    this.dust.visible = Boolean(enabled);
+    this.dustMaterial.uniforms.uOpacity.value = opacity;
   }
 
   /** Uniforms and transforms only; never touches geometry. */
@@ -111,6 +134,8 @@ export class Galaxy {
     this.group.removeFromParent();
     this.points.geometry.dispose();
     this.material.dispose();
+    this.dust.geometry.dispose();
+    this.dustMaterial.dispose();
     if (this.ring) {
       this.ring.geometry.dispose();
       this.ring.material.dispose();
@@ -128,7 +153,7 @@ function createRing() {
   const material = new THREE.LineBasicMaterial({
     color: 0x8fb4ff,
     transparent: true,
-    opacity: 0.35,
+    opacity: 0.18,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });

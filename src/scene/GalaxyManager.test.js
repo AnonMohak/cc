@@ -97,3 +97,15 @@ describe('GalaxyManager selection', () => {
     expect(manager.pickTargets().map((t) => t.id)).toEqual(['id1', 'id2']);
   });
 });
+
+describe('GalaxyManager dust settings', () => {
+  it('applies dust settings to existing and new galaxies', () => {
+    const { store, actions, manager, add } = setup();
+    add();
+    store.dispatch(actions.updateSettings({ dust: false, dustOpacity: 0.3 }));
+    expect(manager.get('id1').dust.visible).toBe(false);
+    add();
+    expect(manager.get('id2').dust.visible).toBe(false);
+    expect(manager.get('id2').dustMaterial.uniforms.uOpacity.value).toBe(0.3);
+  });
+});

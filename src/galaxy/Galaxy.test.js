@@ -103,3 +103,23 @@ describe('Galaxy selection helpers', () => {
     expect(t.normal.z).toBeCloseTo(1);
   });
 });
+
+describe('Galaxy dust', () => {
+  it('builds a dust layer that shares rotation uniforms with the stars', () => {
+    const g = makeGalaxy();
+    expect(g.dust.geometry.getAttribute('position').count).toBe(g.dustCount);
+    expect(g.dustCount).toBeGreaterThan(0);
+    g.tick(1);
+    expect(g.dustMaterial.uniforms.uPhase.value).toBe(g.phase);
+  });
+
+  it('setDust toggles visibility and opacity; setShape disposes the old dust', () => {
+    const g = makeGalaxy();
+    g.setDust({ enabled: false, opacity: 0.2 });
+    expect(g.dust.visible).toBe(false);
+    expect(g.dustMaterial.uniforms.uOpacity.value).toBe(0.2);
+    const spy = vi.spyOn(g.dust.geometry, 'dispose');
+    g.setShape({ ...PRESETS.spiral.shape, count: 1000 }, 3);
+    expect(spy).toHaveBeenCalledOnce();
+  });
+});

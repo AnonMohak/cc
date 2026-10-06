@@ -9,6 +9,10 @@ const CLUMP_SHARE = 0.3;
 const CLUMP_SD = 0.07;
 const BAR_WIDTH_SD = 0.035;
 const HALO_RADIUS = 1.4;
+// Dust lanes sit on the concave (inner) edge of each arm: at a given
+// radius the lane is slightly ahead of the arm in angle.
+const DUST_LEAD = 0.16;
+const DUST_ON_ARMS = 0.85;
 
 export const COMPONENT = { BULGE: 0, DISC: 1, HALO: 2, BAR: 3, CLUMP: 4 };
 
@@ -87,10 +91,41 @@ export function generateGalaxy(shapeInput, seed) {
     stats[COMPONENT_NAMES[component]]++;
   }
 
-  return { count: n, positions, radiusNorm, colorJitter, sizes, components, stats };
+  // Dust after stars, so dust settings never change the star layout.
+  const dust = generateDust(rng, shape, armStart);
+
+  return { count: n, positions, radiusNorm, colorJitter, sizes, components, stats, dust };
 }
 
 const COMPONENT_NAMES = ['bulge', 'disc', 'halo', 'bar', 'clump'];
+
+function generateDust(rng, shape, armStart) {
+  const n = Math.round(shape.count * shape.dustAmount);
+  const positions = new Float32Array(n * 3);
+  const radiusNorm = new Float32Array(n);
+  const sizes = new Float32Array(n);
+  const lead = DUST_LEAD * (Math.sign(shape.spin) || 1);
+
+  for (let i = 0; i < n; i++) {
+    // Dust avoids the bulge, which is gas-poor.
+    const r = armStart + (1 - armStart) * rng.range(0.12, 0.9);
+    let angle;
+    if (shape.arms > 0 && rng.next() < DUST_ON_ARMS) {
+      const branch = (Math.floor(rng.next() * shape.arms) / shape.arms) * Math.PI * 2;
+      angle = branch + shape.spin * Math.PI * 2 * (r - armStart) + lead;
+    } else {
+      angle = rng.range(0, Math.PI * 2);
+    }
+    const spread = shape.armSpread * 0.35 * (0.45 + 0.55 * r);
+    const i3 = i * 3;
+    positions[i3] = r * Math.cos(angle) + Math.pow(rng.next(), 1.5) * rng.sign() * spread;
+    positions[i3 + 1] = rng.gaussian(0, shape.thickness * 0.4);
+    positions[i3 + 2] = r * Math.sin(angle) + Math.pow(rng.next(), 1.5) * rng.sign() * spread;
+    radiusNorm[i] = Math.min(1, Math.hypot(positions[i3], positions[i3 + 1], positions[i3 + 2]));
+    sizes[i] = rng.range(3, 7);
+  }
+  return { count: n, positions, radiusNorm, sizes };
+}
 
 function sampleBulge(rng, shape, out) {
   const s = shape.bulgeSize;

@@ -27,6 +27,7 @@ export const LIMITS = {
     thickness: { min: 0, max: 0.2, step: 0.005 },
     clumps: { min: 0, max: 8, step: 1, int: true },
     haloFraction: { min: 0, max: 0.2, step: 0.005 },
+    dustAmount: { min: 0, max: 0.3, step: 0.01 },
   },
   look: {
     radius: { min: 1, max: 30, step: 0.1 },
@@ -58,6 +59,7 @@ export const DEFAULT_SHAPE = {
   thickness: 0.035,
   clumps: 0,
   haloFraction: 0.02,
+  dustAmount: 0.12,
 };
 
 export const DEFAULT_LOOK = {

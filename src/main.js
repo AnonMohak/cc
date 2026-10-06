@@ -12,6 +12,7 @@ import { attachPointerInput } from './ui/pointerInput.js';
 import { createCameraFly, framingPosition } from './core/cameraFly.js';
 import { pickGalaxy } from './scene/picking.js';
 import { CAMERA_LIMITS } from './core/createCamera.js';
+import { createComposer } from './core/createComposer.js';
 
 const container = document.getElementById('app');
 
@@ -32,6 +33,8 @@ const actions = createActions();
 const galaxies = new GalaxyManager({ scene, store, pixelRatio: renderer.getPixelRatio() });
 
 store.dispatch(actions.addGalaxy(store.getState(), 'spiral'));
+
+const post = createComposer(renderer, scene, camera, { bloomStrength: store.getState().settings.bloomStrength });
 
 const loop = createLoop();
 const cameraFly = createCameraFly(camera, controls);
@@ -54,6 +57,7 @@ function applySettings(settings) {
   loop.setPaused(settings.paused);
   loop.setTimeScale(settings.timeScale);
   controls.autoRotate = settings.autoRotate;
+  post.setBloomStrength(settings.bloomStrength);
 }
 applySettings(store.getState().settings);
 store.subscribe((next, prev) => {
@@ -66,12 +70,13 @@ loop.onTick((dt, _elapsed, realDt) => {
   controls.update();
   starfield.update(camera.position);
 });
-loop.setRender(() => renderer.render(scene, camera));
+loop.setRender(() => post.render());
 
 window.addEventListener('resize', () => {
   const { clientWidth: w, clientHeight: h } = container;
   resizeRenderer(w, h);
   resizeCamera(w, h);
+  post.resize(w, h);
   starfield.setPixelRatio(renderer.getPixelRatio());
   galaxies.setPixelRatio(renderer.getPixelRatio());
 });
@@ -98,5 +103,5 @@ window.addEventListener('keydown', (event) => {
 loop.start(renderer);
 
 if (import.meta.env.DEV) {
-  window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy };
+  window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post };
 }

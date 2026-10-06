@@ -11,6 +11,8 @@ export class GalaxyManager {
    */
   constructor({ scene, store, pixelRatio = 1, GalaxyClass = Galaxy }) {
     this.scene = scene;
+    const { dust, dustOpacity } = store.getState().settings;
+    this.dust = { enabled: dust, opacity: dustOpacity };
     this.pixelRatio = pixelRatio;
     this.GalaxyClass = GalaxyClass;
     /** @type {Map<string, Galaxy>} */
@@ -22,6 +24,10 @@ export class GalaxyManager {
     this.unsubscribe = store.subscribe((next, prev) => {
       if (next.galaxies !== prev.galaxies) this.sync(next.galaxies, prev.galaxies);
       if (next.selectedId !== prev.selectedId) this.setSelected(next.selectedId);
+      const s = next.settings;
+      if (s.dust !== prev.settings.dust || s.dustOpacity !== prev.settings.dustOpacity) {
+        this.setDust({ enabled: s.dust, opacity: s.dustOpacity });
+      }
     });
   }
 
@@ -32,7 +38,7 @@ export class GalaxyManager {
       this.galaxies.delete(id);
     }
     for (const entry of diff.added) {
-      const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio });
+      const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio, dust: this.dust });
       galaxy.id = entry.id;
       this.galaxies.set(entry.id, galaxy);
       this.scene.add(galaxy.group);
@@ -51,6 +57,11 @@ export class GalaxyManager {
     this.galaxies.get(this.selectedId)?.setHighlighted(false);
     this.selectedId = id;
     this.galaxies.get(id)?.setHighlighted(true);
+  }
+
+  setDust(dust) {
+    this.dust = dust;
+    for (const galaxy of this.galaxies.values()) galaxy.setDust(dust);
   }
 
   pickTargets() {
