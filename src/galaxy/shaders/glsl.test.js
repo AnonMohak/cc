@@ -6,7 +6,7 @@ describe('glsl chunks', () => {
     for (const fn of ['gm_sersicRe', 'gm_barAngle', 'gm_omega', 'gm_orbitAngle', 'gm_eccentricity', 'gm_armPhase', 'gm_crest', 'gm_dustColumn', 'gm_blackbody', 'gm_sersic']) {
       expect(CHUNKS.model).toContain(`${fn}(`);
     }
-    expect(CHUNKS.noise).toContain('gn_fbm(');
+    expect(CHUNKS.noise).toContain('gn_ign(');
   });
 
   it('keeps the same magic numbers as densityModel.js', () => {

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clampShape, clampStructure, clampLook, clampMotion } from './params.js';
+import { getNoiseTexture } from './noiseTexture.js';
 
 /**
  * One uniform set per galaxy, shared BY REFERENCE between the star, H II and
@@ -39,6 +40,9 @@ export function createGalaxyUniforms() {
     uEmphasis: { value: 1 },
     uPixelRatio: { value: 1 },
     uCameraLocal: { value: new THREE.Vector3(0, 10, 0) },
+    // Baked textures for the volume (see discMap.js, noiseTexture.js)
+    uDiscMap: { value: null },
+    uNoise: { value: getNoiseTexture() },
     // Volume quality (see settings.quality)
     uSteps: { value: 48 },
     uOctaves: { value: 4 },

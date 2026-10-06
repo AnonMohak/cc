@@ -161,3 +161,29 @@ describe('Galaxy updates', () => {
     expect(scene.children).not.toContain(g.group);
   });
 });
+
+describe('Galaxy disc map', () => {
+  it('bakes once at creation, then debounces rebakes during structure edits', () => {
+    vi.useFakeTimers();
+    const g = makeGalaxy();
+    const first = g.discMap;
+    expect(g.uniforms.uDiscMap.value).toBe(first);
+    const dispose = vi.spyOn(first, 'dispose');
+    for (let k = 0.4; k < 0.9; k += 0.1) g.setStructure({ ...PRESETS.spiral.structure, armWinding: k });
+    expect(g.discMap).toBe(first); // still the old map while dragging
+    vi.advanceTimersByTime(200);
+    expect(g.discMap).not.toBe(first);
+    expect(dispose).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it('rebakes at once on a shape rebuild and frees the map on dispose', () => {
+    const g = makeGalaxy();
+    const first = g.discMap;
+    g.setShape({ ...PRESETS.barred.shape, count: 1000 }, 3);
+    expect(g.discMap).not.toBe(first);
+    const spy = vi.spyOn(g.discMap, 'dispose');
+    g.dispose();
+    expect(spy).toHaveBeenCalled();
+  });
+});

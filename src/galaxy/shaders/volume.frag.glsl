@@ -1,10 +1,14 @@
 // Raymarched galaxy body: the smooth light of unresolved stars plus dust
 // absorption, integrated front to back. Needs model.glsl, noise.glsl and
-// stars.glsl (uniforms, dust surface density) first.
+// stars.glsl (uniforms) first.
+//
+// Performance: everything in the disc plane (arms, bar, dust lanes) is baked
+// into uDiscMap in the pattern frame (see discMap.js), and noise comes from a
+// shared tileable texture (noiseTexture.js). A step is two texture fetches
+// plus a little arithmetic.
 
 uniform vec3 uBoxHalf;
 uniform float uSteps;
-uniform float uOctaves;
 uniform float uGlow;
 uniform float uFlocculence;
 uniform float uBulgeSersic;
@@ -15,28 +19,30 @@ uniform float uEmphasis;
 uniform float uPhysical;
 uniform vec3 uColorInner;
 uniform vec3 uColorOuter;
+uniform sampler2D uDiscMap;
+uniform sampler2D uNoise;
 
 varying vec3 vUnitPos;
 
 #define MAX_STEPS 96
 
-// Emission scales, tuned so a face-on disc reads as a soft glow under the
-// stars and an edge-on disc is a bright band (longer path).
-const float DISC_I = 4.2;
+// Must match discMap.js / noiseTexture.js.
+const float DISC_MAP_EXTENT = 1.45;
+const float NOISE_TILE_UNITS = 2.0;
 const float BULGE_I = 0.3;
-const float BAR_I = 6.0;
 // Dust absorption per unit of (surface density × slab density / zd).
 const float DUST_K = 1.1;
 
+// sech²(x) without cosh: 4e^{-2|x|} / (1 + e^{-2|x|})².
 float sech2(float x) {
-  float c = cosh(clamp(x, -10.0, 10.0));
-  return 1.0 / (c * c);
+  float e = exp(-2.0 * abs(x));
+  float d = 1.0 + e;
+  return 4.0 * e / (d * d);
 }
 
-vec3 physicalTint(vec3 bb, float R) {
+vec3 physicalTint(vec3 bb, float lumaBb, float R) {
   vec3 tint = mix(uColorInner, uColorOuter, gm_smoothstep(0.0, 0.85, R));
-  float luma = dot(bb, vec3(0.2126, 0.7152, 0.0722));
-  return mix(tint * luma * 1.3, bb, uPhysical);
+  return mix(tint * lumaBb * 1.3, bb, uPhysical);
 }
 
 void main() {
@@ -56,19 +62,21 @@ void main() {
   float steps = max(uSteps, 4.0);
   float dt = (tFar - tNear) / steps;
   float t = tNear + dt * gn_ign(gl_FragCoord.xy);
-  int octaves = int(uOctaves);
 
-  float hasArms = step(0.5, uArms) * clamp(uEccentricity / 0.08, 0.0, 1.0);
-  float sgn = uWinding < 0.0 ? -1.0 : 1.0;
-  float barAng = gm_barAngle(uBar, uArms, uWinding, uPhase, uPatternSpeed);
-  vec2 barAxis = vec2(cos(barAng), sin(barAng));
-  // Flocculent structure co-rotates rigidly at a mid-disc rate: it does not
-  // shear into a smear over time.
-  float noiseRot = uPhase * gm_omega(0.6, uDifferential);
-  mat2 noiseM = mat2(cos(noiseRot), sin(noiseRot), -sin(noiseRot), cos(noiseRot));
-
-  vec3 bulgeColor = physicalTint(gm_blackbody(4300.0), 0.0);
+  // Loop invariants: rotations into the pattern and noise frames, colours.
+  float pa = -uPhase * uPatternSpeed;
+  mat2 toPattern = mat2(cos(pa), sin(pa), -sin(pa), cos(pa));
+  float na = uPhase * gm_omega(0.6, uDifferential);
+  mat2 toNoise = mat2(cos(na), sin(na), -sin(na), cos(na));
+  vec3 bbBulge = gm_blackbody(4300.0);
+  vec3 bbOld = gm_blackbody(5200.0);
+  vec3 bbYoung = gm_blackbody(11000.0);
+  vec3 lumaW = vec3(0.2126, 0.7152, 0.0722);
+  vec3 bulgeColor = physicalTint(bbBulge, dot(bbBulge, lumaW), 0.0);
+  float lumaOld = dot(bbOld, lumaW);
+  float lumaYoung = dot(bbYoung, lumaW);
   float zd = uDiscThickness * DUST_HEIGHT_RATIO;
+  float dustScale = DUST_K * uDustStrength / zd;
 
   vec3 L = vec3(0.0);
   vec3 T = vec3(1.0);
@@ -77,59 +85,34 @@ void main() {
     if (float(i) >= steps) break;
     vec3 p = ro + rd * t;
     float R = length(p.xz);
-    float theta = atan(p.z, p.x);
+
+    // Baked in-plane fields (pattern frame).
+    vec4 disc = texture2D(uDiscMap, (toPattern * p.xz) / (2.0 * DISC_MAP_EXTENT) + 0.5);
+    vec2 noise = texture2D(uNoise, (toNoise * p.xz) / NOISE_TILE_UNITS).rg;
+
+    // Vertical profile: sech², flaring outward.
+    float z0 = uDiscThickness * (1.0 + 0.6 * R) * 1.4;
+    float plane = disc.r * sech2(p.y / z0) / z0 * 0.05;
+    plane *= mix(1.0, 0.25 + 1.5 * noise.r, uFlocculence);
 
     // Bulge: flattened Sérsic.
     float rb = length(vec3(p.x, p.y / uBulgeFlatten, p.z));
     float bulge = BULGE_I * uBulgeFraction * gm_sersicRe(rb, uBulgeSize, uBulgeSersic);
 
-    // Disc: exponential × sech², flared, smoothly truncated.
-    float z0 = uDiscThickness * (1.0 + 0.6 * R) * 1.4;
-    float disc = exp(-R / uDiscScale) * sech2(p.y / z0) / z0 * 0.05;
-    disc *= 1.0 - gm_smoothstep(0.95, 1.3, R);
-    disc *= (1.0 - uBulgeFraction) * DISC_I;
-
-    // Arms: density-wave crest (same model as the stars).
-    float c = 0.5;
-    if (hasArms > 0.0) {
-      float psi = gm_armPhase(theta, R, uArms, uWinding, uPhase, uPatternSpeed);
-      c = gm_crest(psi, uWinding);
-      float armMask = gm_smoothstep(uBar * 0.7, uBar + 0.12, R);
-      disc *= mix(1.0, 0.35 + 2.2 * pow(c, 2.5), uArmContrast * hasArms * armMask);
-    }
-
-    // Flocculence: feathers and fragments.
-    vec3 pn = vec3(noiseM * p.xz, p.y * 2.0) * 7.0;
-    float n = gn_fbm(pn, octaves);
-    disc *= mix(1.0, 0.25 + 1.5 * n, uFlocculence);
-
-    // Bar: elongated, rigid with the pattern.
-    float bar = 0.0;
-    if (uBar > 0.0) {
-      float along = dot(p.xz, barAxis);
-      float across = dot(p.xz, vec2(-barAxis.y, barAxis.x));
-      bar = BAR_I * exp(-pow(abs(along) / uBar, 4.0)) * exp(-across * across / 0.004) * sech2(p.y / z0) / z0 * 0.05;
-    }
-
     // Colour: old warm light inside; arm crests bluer (young stars).
-    vec3 discColor = physicalTint(mix(gm_blackbody(5200.0), gm_blackbody(11000.0), c * hasArms * 0.8), R);
+    float young = disc.g * 0.8;
+    vec3 discColor = physicalTint(mix(bbOld, bbYoung, young), mix(lumaOld, lumaYoung, young), R);
     // Fade to zero at the box faces so a wide envelope never shows the box edge.
     vec3 q = abs(p) / uBoxHalf;
     float window = 1.0 - gm_smoothstep(0.7, 1.0, max(max(q.x, q.y), q.z));
-    vec3 emission = (bulge * bulgeColor + (disc + bar) * discColor) * window;
+    vec3 emission = (bulge * bulgeColor + plane * discColor) * window;
 
-    // Dust: thin slab, on the inner arm edges, filamentary.
-    float dust = 0.0;
-    if (uDustStrength > 0.0) {
-      float filaments = mix(1.0, gm_smoothstep(0.35, 0.75, gn_fbm(pn * 1.7 + 3.1, octaves)) * 1.8, 0.75);
-      dust = DUST_K * uDustStrength * gs_dustSurface(R, theta) * exp(-abs(p.y) / zd) / zd * filaments;
-    }
+    // Dust: thin slab, filamentary.
+    float dust = dustScale * disc.b * exp(-abs(p.y) / zd) * mix(1.0, gm_smoothstep(0.35, 0.75, noise.g) * 1.8, 0.75);
 
-    // Exact integration of a constant segment: emission absorbed within it.
-    vec3 tau = dust * dt * vec3(0.75, 1.0, 1.3);
-    vec3 trans = exp(-tau);
-    vec3 absorbed = mix(vec3(dt), (1.0 - trans) / max(tau / dt, vec3(1e-4)), step(1e-4, tau));
-    L += T * emission * absorbed;
+    // Euler step with reddening: blue is absorbed more than red.
+    vec3 trans = exp(-dust * dt * vec3(0.75, 1.0, 1.3));
+    L += T * emission * dt;
     T *= trans;
 
     if (max(T.r, max(T.g, T.b)) < 0.01) break;

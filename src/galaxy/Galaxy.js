@@ -14,12 +14,16 @@ import {
 import { approach } from './emphasis.js';
 import { LAYERS } from '../core/layers.js';
 import { screenFootprint, adaptiveSteps } from './lod.js';
+import { createDiscMapTexture } from './discMap.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 // Stars move on orbits up to a·(1 + e) and the halo reaches 1.4; one fixed
 // bound at the origin covers every phase of the animation.
 const BOUND_RADIUS = 1.7;
 const _inverse = new THREE.Matrix4();
+// Structure sliders fire many updates; the disc map (tens of ms to bake) is
+// rebuilt once they settle. Star uniforms still update immediately.
+const REBAKE_DELAY_MS = 120;
 
 /**
  * One galaxy in the scene. Owns its GPU resources; call dispose() on removal.
@@ -62,10 +66,31 @@ export class Galaxy {
     this.emphasis = 1;
     this.emphasisTarget = 1;
 
+    this.discMap = null;
+    this.rebakeTimer = null;
+
     this.setShape(shape, seed);
     this.setStructure(structure);
+    this.bakeDiscMap();
     this.setLook(look);
     this.setMotion(motion);
+  }
+
+  /** Bake the in-plane arm/bar/dust fields for the volume shader now. */
+  bakeDiscMap() {
+    clearTimeout(this.rebakeTimer);
+    this.rebakeTimer = null;
+    const map = createDiscMapTexture(this.shape, this.structure);
+    this.discMap?.dispose();
+    this.discMap = map;
+    this.uniforms.uDiscMap.value = map;
+  }
+
+  /** Bake soon, once rapid changes (slider drags) have settled. */
+  scheduleBake() {
+    if (!this.discMap) return; // the constructor bakes once both inputs exist
+    clearTimeout(this.rebakeTimer);
+    this.rebakeTimer = setTimeout(() => this.bakeDiscMap(), REBAKE_DELAY_MS);
   }
 
   /** Rebuild the star geometry. The old geometry is disposed first. */
@@ -94,6 +119,8 @@ export class Galaxy {
     this.shape = shape;
     applyShapeUniforms(this.uniforms, shape);
     this.updateVolumeBounds();
+    // Shape edits are already debounced by the panel and rebuild geometry anyway.
+    if (this.discMap) this.bakeDiscMap();
   }
 
   /** Fit the volume box to the current shape and bulge profile. */
@@ -109,6 +136,7 @@ export class Galaxy {
     this.structure = structure;
     applyStructureUniforms(this.uniforms, structure, this.dustScale);
     this.updateVolumeBounds();
+    this.scheduleBake();
   }
 
   /** Global dust multiplier from the settings (0 turns dust off). */
@@ -211,5 +239,7 @@ export class Galaxy {
     this.starMaterial.dispose();
     this.hiiMaterial.dispose();
     this.volumeMaterial.dispose();
+    clearTimeout(this.rebakeTimer);
+    this.discMap?.dispose();
   }
 }
