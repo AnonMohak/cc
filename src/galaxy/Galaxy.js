@@ -12,6 +12,7 @@ import {
   applyMotionUniforms,
 } from './galaxyUniforms.js';
 import { approach } from './emphasis.js';
+import { LAYERS } from '../core/layers.js';
 import { screenFootprint, adaptiveSteps } from './lod.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -49,6 +50,8 @@ export class Galaxy {
     this.volumeMaterial = createVolumeMaterial(this.uniforms);
     this.volume = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), this.volumeMaterial);
     this.volume.renderOrder = 0;
+    // Rendered at reduced resolution by GalaxyScenePass.
+    this.volume.layers.set(LAYERS.VOLUME);
 
     this.group.add(this.volume, this.stars, this.hii);
 

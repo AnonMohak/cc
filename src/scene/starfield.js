@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createRandom } from '../galaxy/random.js';
+import { LAYERS } from '../core/layers.js';
 
 const vertexShader = /* glsl */ `
   uniform float uPixelRatio;
@@ -78,6 +79,7 @@ export function createStarfield({ count = 8000, radius = 900, seed = 1337, pixel
   const points = new THREE.Points(geometry, material);
   points.frustumCulled = false;
   points.renderOrder = -1;
+  points.layers.set(LAYERS.BACKGROUND);
 
   return {
     object: points,

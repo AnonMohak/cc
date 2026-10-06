@@ -25,9 +25,9 @@ export const SETTINGS_LIMITS = {
  * paid for every covered pixel); octaves set noise detail per step.
  */
 export const QUALITY = {
-  low: { label: 'Low', steps: 24, octaves: 2 },
-  medium: { label: 'Medium', steps: 44, octaves: 3 },
-  high: { label: 'High', steps: 72, octaves: 4 },
+  low: { label: 'Low', steps: 24, octaves: 2, volumeScale: 0.35 },
+  medium: { label: 'Medium', steps: 44, octaves: 3, volumeScale: 0.5 },
+  high: { label: 'High', steps: 72, octaves: 4, volumeScale: 0.75 },
 };
 
 export const DEFAULT_SETTINGS = {

@@ -8,7 +8,7 @@ import { captureScreenshot } from './core/screenshot.js';
 import { createStarfield } from './scene/starfield.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
-import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
+import { createStore, createInitialState, canAddGalaxy, QUALITY } from './state/store.js';
 import { createActions } from './state/actions.js';
 import * as persistence from './state/persistence.js';
 import { createControlPanel } from './ui/controlPanel.js';
@@ -83,7 +83,10 @@ export function startApp(container) {
   window.addEventListener('hashchange', loadFromHash);
 
   const galaxies = new GalaxyManager({ scene, store, pixelRatio: renderer.getPixelRatio() });
-  const post = createComposer(renderer, scene, camera, { bloomStrength: store.getState().settings.bloomStrength });
+  const post = createComposer(renderer, scene, camera, {
+    bloomStrength: store.getState().settings.bloomStrength,
+    volumeScale: QUALITY[store.getState().settings.quality].volumeScale,
+  });
 
   // ── Loop and camera ────────────────────────────────────────────────────
   const loop = createLoop();
@@ -172,6 +175,7 @@ export function startApp(container) {
     if (cameraMode !== 'tour') controls.autoRotate = settings.autoRotate;
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
+    post.setVolumeScale(QUALITY[settings.quality].volumeScale);
   }
   applySettings(store.getState().settings);
   store.subscribe((next, prev) => {

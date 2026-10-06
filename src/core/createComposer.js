@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GalaxyScenePass } from './GalaxyScenePass.js';
 
 // Tight radius: wide bloom mips paint a faint halo far around bright cores.
 const BLOOM_RADIUS = 0.3;
@@ -11,19 +11,18 @@ const BLOOM_RADIUS = 0.3;
 const BLOOM_THRESHOLD = 0.45;
 
 const PASS_LABELS = new Map([
-  [RenderPass, 'scene'],
   [UnrealBloomPass, 'bloom'],
   [OutputPass, 'output'],
 ]);
 
 /**
- * RenderPass → UnrealBloomPass → OutputPass (tone mapping + sRGB).
+ * GalaxyScenePass (low-res volumes) → UnrealBloomPass → OutputPass (tone mapping + sRGB).
  *
  * @param {THREE.WebGLRenderer} renderer
  * @param {THREE.Scene} scene
  * @param {THREE.Camera} camera
  */
-export function createComposer(renderer, scene, camera, { bloomStrength = 0.8 } = {}) {
+export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, volumeScale = 0.5 } = {}) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1;
 
@@ -33,7 +32,8 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8 } 
   composer.setSize(size.x, size.y);
 
   const bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), bloomStrength, BLOOM_RADIUS, BLOOM_THRESHOLD);
-  composer.addPass(new RenderPass(scene, camera));
+  const scenePass = new GalaxyScenePass(scene, camera, { volumeScale });
+  composer.addPass(scenePass);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
@@ -56,9 +56,18 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8 } 
     },
     /** Time each pass with a GPU timer (see gpuTimer.js). */
     attachTimer(timer) {
-      composer.passes.forEach((pass) => timer.wrapPass(pass, PASS_LABELS.get(pass.constructor) ?? pass.constructor.name));
+      // The scene pass times its own steps (background / volume / stars).
+      scenePass.timer = timer;
+      composer.passes
+        .filter((pass) => pass !== scenePass)
+        .forEach((pass) => timer.wrapPass(pass, PASS_LABELS.get(pass.constructor) ?? pass.constructor.name));
+    },
+    /** Resolution fraction for the raymarched volumes. */
+    setVolumeScale(scale) {
+      scenePass.setVolumeScale(scale);
     },
     dispose() {
+      scenePass.dispose();
       bloom.dispose();
       composer.dispose();
     },

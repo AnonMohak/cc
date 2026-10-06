@@ -6,8 +6,9 @@ import volumeFrag from './shaders/volume.frag.glsl?raw';
 
 /**
  * Raymarched galaxy body. Output is (emitted light, transmittance), blended
- * as  dst = src.rgb + dst · src.a  so dust dims everything drawn behind it
- * (starfield, farther galaxies) while the body adds its own glow.
+ *   rgb: dst = src.rgb + dst · src.a   (dust dims what is behind)
+ *   a:   dst = dst · src.a             (total transmittance over galaxies)
+ * into the low-resolution volume target of GalaxyScenePass.
  *
  * Rendered on the BACK faces of its box so it still works with the camera
  * inside the galaxy.
@@ -27,6 +28,6 @@ export function createVolumeMaterial(uniforms) {
     blendSrc: THREE.OneFactor,
     blendDst: THREE.SrcAlphaFactor,
     blendSrcAlpha: THREE.ZeroFactor,
-    blendDstAlpha: THREE.OneFactor,
+    blendDstAlpha: THREE.SrcAlphaFactor,
   });
 }
