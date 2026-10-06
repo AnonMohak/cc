@@ -1,5 +1,6 @@
 import { Galaxy } from '../galaxy/Galaxy.js';
 import { diffGalaxies } from './diffGalaxies.js';
+import { emphasisTarget } from '../galaxy/emphasis.js';
 
 /**
  * Keeps the Three.js scene in step with the store. The only owner of
@@ -40,6 +41,7 @@ export class GalaxyManager {
     for (const entry of diff.added) {
       const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio, dust: this.dust });
       galaxy.id = entry.id;
+      galaxy.setEmphasis(emphasisTarget(entry.id, this.selectedId), true);
       this.galaxies.set(entry.id, galaxy);
       this.scene.add(galaxy.group);
     }
@@ -53,10 +55,10 @@ export class GalaxyManager {
     }
   }
 
+  /** Selection is shown by brightness: see emphasisTarget(). */
   setSelected(id) {
-    this.galaxies.get(this.selectedId)?.setHighlighted(false);
     this.selectedId = id;
-    this.galaxies.get(id)?.setHighlighted(true);
+    for (const [gid, galaxy] of this.galaxies) galaxy.setEmphasis(emphasisTarget(gid, id));
   }
 
   setDust(dust) {
@@ -72,8 +74,8 @@ export class GalaxyManager {
     return this.galaxies.get(id);
   }
 
-  tick(dt) {
-    for (const galaxy of this.galaxies.values()) galaxy.tick(dt);
+  tick(dt, realDt = dt) {
+    for (const galaxy of this.galaxies.values()) galaxy.tick(dt, realDt);
   }
 
   setPixelRatio(value) {

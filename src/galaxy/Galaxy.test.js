@@ -81,15 +81,20 @@ describe('Galaxy', () => {
 });
 
 describe('Galaxy selection helpers', () => {
-  it('setHighlighted adds and removes a ring that is disposed with the galaxy', () => {
+  it('has no selection ring and eases emphasis with real time', () => {
     const g = makeGalaxy();
-    g.setHighlighted(true);
-    expect(g.group.children).toContain(g.ring);
-    g.setHighlighted(false);
-    expect(g.group.children).not.toContain(g.ring);
-    const spy = vi.spyOn(g.ring.geometry, 'dispose');
-    g.dispose();
-    expect(spy).toHaveBeenCalled();
+    expect(g.ring).toBeUndefined();
+    const before = g.group.children.length;
+    g.setEmphasis(0.75);
+    expect(g.group.children.length).toBe(before);
+    g.tick(0, 1 / 60); // paused simulation still eases
+    const u = g.material.uniforms.uEmphasis;
+    expect(u.value).toBeLessThan(1);
+    expect(u.value).toBeGreaterThan(0.75);
+    for (let i = 0; i < 30; i++) g.tick(0, 1 / 60);
+    expect(u.value).toBe(0.75);
+    g.setEmphasis(1.15, true);
+    expect(u.value).toBe(1.15);
   });
 
   it('pickTarget reports world centre, tilted normal and radius', () => {

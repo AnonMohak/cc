@@ -116,3 +116,7 @@ export function clampLook(look) {
 export function clampMotion(motion) {
   return clampGroup(motion, LIMITS.motion, DEFAULT_MOTION);
 }
+
+/** Brightness multipliers for selection emphasis (replaces a highlight ring). */
+export const EMPHASIS_SELECTED = 1.15;
+export const EMPHASIS_OTHERS = 0.75;

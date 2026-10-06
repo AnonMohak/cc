@@ -3,10 +3,9 @@ import { generateGalaxy } from './generateGalaxy.js';
 import { createGalaxyMaterial } from './galaxyMaterial.js';
 import { createDustMaterial } from './dustMaterial.js';
 import { clampLook, clampMotion } from './params.js';
+import { approach } from './emphasis.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
-const RING_RADIUS = 1.08;
-const RING_SEGMENTS = 128;
 
 /**
  * One galaxy in the scene. Owns its GPU resources; call dispose() on removal.
@@ -35,8 +34,8 @@ export class Galaxy {
     this.phase = 0;
     this.speed = 0;
     this.radius = 1;
-    /** @type {THREE.LineLoop | null} created on first highlight */
-    this.ring = null;
+    this.emphasis = 1;
+    this.emphasisTarget = 1;
 
     this.setShape(shape, seed);
     this.setLook(look);
@@ -98,20 +97,29 @@ export class Galaxy {
   }
 
   /**
-   * Advance rotation. `dt` is simulation time (already scaled and zero while
-   * paused). Accumulating phase means a speed change never makes stars jump.
+   * Advance rotation and the selection-emphasis ease. `dt` is simulation time
+   * (scaled, zero while paused); `realDt` is wall time, so the emphasis still
+   * eases while paused. Accumulating phase means a speed change never jumps.
    */
-  tick(dt) {
+  tick(dt, realDt = dt) {
     this.phase += dt * this.speed;
     this.material.uniforms.uPhase.value = this.phase;
+    if (this.emphasis !== this.emphasisTarget) {
+      this.emphasis = approach(this.emphasis, this.emphasisTarget, realDt);
+      this.material.uniforms.uEmphasis.value = this.emphasis;
+    }
   }
 
-  /** Show or hide the selection ring (lives in unit space, so it follows size and tilt). */
-  setHighlighted(on) {
-    if (on && !this.ring) this.ring = createRing();
-    if (this.ring) {
-      if (on) this.group.add(this.ring);
-      else this.ring.removeFromParent();
+  /**
+   * Brightness multiplier for selection emphasis.
+   * @param {number} target
+   * @param {boolean} [immediate] skip the ease (e.g. a just-created galaxy)
+   */
+  setEmphasis(target, immediate = false) {
+    this.emphasisTarget = target;
+    if (immediate) {
+      this.emphasis = target;
+      this.material.uniforms.uEmphasis.value = target;
     }
   }
 
@@ -136,28 +144,7 @@ export class Galaxy {
     this.material.dispose();
     this.dust.geometry.dispose();
     this.dustMaterial.dispose();
-    if (this.ring) {
-      this.ring.geometry.dispose();
-      this.ring.material.dispose();
-    }
   }
-}
-
-function createRing() {
-  const points = [];
-  for (let i = 0; i < RING_SEGMENTS; i++) {
-    const a = (i / RING_SEGMENTS) * Math.PI * 2;
-    points.push(new THREE.Vector3(Math.cos(a) * RING_RADIUS, 0, Math.sin(a) * RING_RADIUS));
-  }
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
-  const material = new THREE.LineBasicMaterial({
-    color: 0x8fb4ff,
-    transparent: true,
-    opacity: 0.18,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  return new THREE.LineLoop(geometry, material);
 }
 
 function maxLength(positions) {

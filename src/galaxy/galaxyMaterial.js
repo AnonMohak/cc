@@ -13,6 +13,7 @@ export function createGalaxyMaterial() {
       uScale: { value: 1 },
       uPixelRatio: { value: 1 },
       uBrightness: { value: 1 },
+      uEmphasis: { value: 1 },
       uColorInner: { value: new THREE.Color() },
       uColorOuter: { value: new THREE.Color() },
     },

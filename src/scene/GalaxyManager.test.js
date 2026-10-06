@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { GalaxyManager } from './GalaxyManager.js';
 import { createStore } from '../state/store.js';
 import { createActions } from '../state/actions.js';
+import { EMPHASIS_SELECTED, EMPHASIS_OTHERS } from '../galaxy/params.js';
 
 function setup() {
   let n = 0;
@@ -79,21 +80,25 @@ describe('GalaxyManager', () => {
     add();
     const ticks = [...manager.galaxies.values()].map((g) => vi.spyOn(g, 'tick'));
     manager.tick(0.1);
-    ticks.forEach((t) => expect(t).toHaveBeenCalledWith(0.1));
+    ticks.forEach((t) => expect(t).toHaveBeenCalledWith(0.1, 0.1));
     manager.dispose();
     expect(manager.galaxies.size).toBe(0);
   });
 });
 
 describe('GalaxyManager selection', () => {
-  it('highlights only the selected galaxy and returns pick targets', () => {
+  it('brightens the selected galaxy, dims the others, and resets on deselect', () => {
     const { store, actions, manager, add } = setup();
     add();
     add();
-    expect(manager.get('id2').ring?.parent).toBe(manager.get('id2').group);
     store.dispatch(actions.selectGalaxy('id1'));
-    expect(manager.get('id1').ring.parent).toBe(manager.get('id1').group);
-    expect(manager.get('id2').ring.parent).toBeNull();
+    expect(manager.get('id1').emphasisTarget).toBe(EMPHASIS_SELECTED);
+    expect(manager.get('id2').emphasisTarget).toBe(EMPHASIS_OTHERS);
+    manager.tick(0, 1);
+    expect(manager.get('id2').material.uniforms.uEmphasis.value).toBe(EMPHASIS_OTHERS);
+    store.dispatch(actions.selectGalaxy(null));
+    expect(manager.get('id1').emphasisTarget).toBe(1);
+    expect(manager.get('id2').emphasisTarget).toBe(1);
     expect(manager.pickTargets().map((t) => t.id)).toEqual(['id1', 'id2']);
   });
 });

@@ -1,6 +1,7 @@
 uniform vec3 uColorInner;
 uniform vec3 uColorOuter;
 uniform float uBrightness;
+uniform float uEmphasis;
 
 varying float vRadius;
 varying float vJitter;
@@ -21,7 +22,7 @@ void main() {
   // Negative jitter = old, warm stars; positive = young, blue-white stars.
   vec3 tint = vJitter < 0.0 ? mix(vec3(1.0), WARM, -vJitter) : mix(vec3(1.0), COOL, vJitter);
 
-  gl_FragColor = vec4(base * tint * strength * uBrightness * vFade * STAR_INTENSITY, 1.0);
+  gl_FragColor = vec4(base * tint * strength * uBrightness * uEmphasis * vFade * STAR_INTENSITY, 1.0);
 
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
