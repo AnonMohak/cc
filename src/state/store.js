@@ -105,7 +105,7 @@ export function reducer(state, action) {
       const index = state.galaxies.findIndex((g) => g.id === action.id);
       if (index === -1) return state;
       const prev = state.galaxies[index];
-      const { shape, look, motion, name, seed } = action.patch ?? {};
+      const { shape, look, motion, name, seed, preset } = action.patch ?? {};
       const next = { ...prev };
       if (shape) {
         next.shape = clampShape({ ...prev.shape, ...shape });
@@ -118,6 +118,7 @@ export function reducer(state, action) {
       if (motion) next.motion = clampMotion({ ...prev.motion, ...motion });
       if (typeof name === 'string' && name.trim()) next.name = name.trim().slice(0, 40);
       if (Number.isFinite(seed)) next.seed = seed >>> 0;
+      if (PRESETS[preset]) next.preset = preset;
       const galaxies = state.galaxies.slice();
       galaxies[index] = next;
       return { ...state, galaxies };

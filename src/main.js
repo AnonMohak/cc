@@ -7,6 +7,7 @@ import { createStarfield } from './scene/starfield.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { createStore } from './state/store.js';
 import { createActions } from './state/actions.js';
+import { createControlPanel } from './ui/controlPanel.js';
 
 const container = document.getElementById('app');
 
@@ -53,6 +54,12 @@ window.addEventListener('resize', () => {
   resizeCamera(w, h);
   starfield.setPixelRatio(renderer.getPixelRatio());
   galaxies.setPixelRatio(renderer.getPixelRatio());
+});
+
+createControlPanel({
+  store,
+  actions,
+  getTarget: () => controls.target.toArray().map((v) => Math.round(v * 100) / 100),
 });
 
 loop.start(renderer);

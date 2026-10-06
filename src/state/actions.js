@@ -46,6 +46,7 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
         type: 'galaxy/update',
         id: galaxy.id,
         patch: {
+          preset: presetName,
           shape: { ...preset.shape },
           look: { ...preset.look, position: galaxy.look.position },
           motion: { ...preset.motion },
