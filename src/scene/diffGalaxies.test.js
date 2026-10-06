@@ -28,7 +28,7 @@ describe('diffGalaxies', () => {
 
   it('a shape value change is a shapeChange only', () => {
     const a = entry('a');
-    const a2 = { ...a, shape: { ...a.shape, arms: 4 } };
+    const a2 = { ...a, shape: { ...a.shape, barLength: 0.3 } };
     const d = diffGalaxies([a], [a2]);
     expect(d.shapeChanged).toEqual([a2]);
     expect(d.lookChanged).toEqual([]);
@@ -52,5 +52,14 @@ describe('diffGalaxies', () => {
     expect(d1.lookChanged).toHaveLength(1);
     expect(d2.lookChanged).toHaveLength(1);
     expect(d1.shapeChanged).toHaveLength(0);
+  });
+});
+
+describe('diffGalaxies structure', () => {
+  it('a structure change is a lookChange (uniforms only), not a rebuild', () => {
+    const a = { id: 'a', seed: 1, shape: {}, look: {}, motion: {}, structure: { arms: 2 } };
+    const d = diffGalaxies([a], [{ ...a, structure: { arms: 3 } }]);
+    expect(d.lookChanged).toHaveLength(1);
+    expect(d.shapeChanged).toHaveLength(0);
   });
 });

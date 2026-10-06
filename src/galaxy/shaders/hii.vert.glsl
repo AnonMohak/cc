@@ -1,0 +1,30 @@
+uniform float uSize;
+uniform float uScale;
+uniform float uPixelRatio;
+uniform float uBrightness;
+uniform float uEmphasis;
+
+attribute vec4 aOrbit;
+attribute float aSize;
+
+varying float vGlow;
+varying vec3 vExtinction;
+
+const float POINT_SCALE = 26.0;
+const float MAX_POINT_PX = 60.0;
+
+void main() {
+  float crestV;
+  vec3 p = gs_position(aOrbit, crestV);
+  vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
+  gl_Position = projectionMatrix * mvPosition;
+
+  // H II regions exist only where the density wave compresses gas: they
+  // swell on the crest and vanish between arms (beltoforion's trick).
+  float onArm = uArms > 0.5 ? pow(gm_smoothstep(0.5, 1.0, crestV), 2.0) : 0.6;
+
+  float size = aSize * onArm * uSize * uScale * uPixelRatio * POINT_SCALE / max(-mvPosition.z, 0.001);
+  gl_PointSize = clamp(size, 0.0, MAX_POINT_PX * uPixelRatio);
+  vGlow = onArm * uBrightness * uEmphasis * clamp(size, 0.0, 1.0);
+  vExtinction = gs_extinction(gs_dustTau(p));
+}

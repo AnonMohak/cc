@@ -2,10 +2,14 @@
  * Galaxy parameter schema: defaults, limits and clamping. UI slider ranges
  * read from LIMITS so the panel and validation never disagree.
  *
- * A galaxy entry has three groups:
- * - shape:  changes the generated geometry (rebuild)
- * - look:   uniforms and transforms only (cheap)
- * - motion: rotation uniforms (cheap)
+ * A galaxy entry has four groups:
+ * - shape:     star populations; changes the generated geometry (rebuild)
+ * - structure: density-wave arms, dust and volume; shader uniforms (cheap)
+ * - look:      size, colour, tilt, position; uniforms and transforms (cheap)
+ * - motion:    rotation; uniforms (cheap)
+ *
+ * Arms are a density wave computed in the shaders (see densityModel.js), so
+ * arm count, winding and eccentricity are live uniforms, not geometry.
  */
 
 export const MAX_PARTICLES_PER_GALAXY = 200_000;
@@ -15,30 +19,39 @@ export const MAX_TOTAL_PARTICLES = 1_000_000;
 export const LIMITS = {
   shape: {
     count: { min: 1000, max: MAX_PARTICLES_PER_GALAXY, step: 1000, int: true },
-    arms: { min: 0, max: 8, step: 1, int: true },
-    spin: { min: -2, max: 2, step: 0.01 },
-    armSpread: { min: 0, max: 1, step: 0.01 },
-    randomnessPower: { min: 1, max: 6, step: 0.1 },
-    armContrast: { min: 0, max: 1, step: 0.01 },
     bulgeFraction: { min: 0, max: 1, step: 0.01 },
     bulgeSize: { min: 0.02, max: 0.6, step: 0.01 },
     bulgeFlatten: { min: 0.1, max: 1, step: 0.01 },
     barLength: { min: 0, max: 0.6, step: 0.01 },
-    thickness: { min: 0, max: 0.2, step: 0.005 },
+    discScale: { min: 0.12, max: 0.7, step: 0.01 },
+    discThickness: { min: 0.004, max: 0.15, step: 0.001 },
+    youngFraction: { min: 0, max: 0.5, step: 0.01 },
     clumps: { min: 0, max: 8, step: 1, int: true },
     haloFraction: { min: 0, max: 0.2, step: 0.005 },
-    dustAmount: { min: 0, max: 0.3, step: 0.01 },
+    hiiAmount: { min: 0, max: 0.06, step: 0.002 },
+  },
+  structure: {
+    arms: { min: 0, max: 6, step: 1, int: true },
+    armWinding: { min: -1.5, max: 1.5, step: 0.01 },
+    eccentricity: { min: 0, max: 0.35, step: 0.005 },
+    armContrast: { min: 0, max: 1, step: 0.01 },
+    flocculence: { min: 0, max: 1, step: 0.01 },
+    dustStrength: { min: 0, max: 3, step: 0.05 },
+    glow: { min: 0, max: 3, step: 0.05 },
+    bulgeSersic: { min: 1, max: 6, step: 0.1 },
   },
   look: {
     radius: { min: 1, max: 30, step: 0.1 },
     starSize: { min: 0.2, max: 4, step: 0.05 },
     brightness: { min: 0.1, max: 3, step: 0.05 },
+    physicalColor: { min: 0, max: 1, step: 0.01 },
     tiltX: { min: -90, max: 90, step: 1 },
     tiltZ: { min: -90, max: 90, step: 1 },
   },
   motion: {
     speed: { min: -3, max: 3, step: 0.01 },
     differential: { min: 0, max: 1, step: 0.01 },
+    patternSpeed: { min: 0, max: 1, step: 0.01 },
   },
 };
 
@@ -47,27 +60,36 @@ export const SHAPE_KEYS = Object.keys(LIMITS.shape);
 
 export const DEFAULT_SHAPE = {
   count: 80_000,
-  arms: 2,
-  spin: 1.15,
-  armSpread: 0.22,
-  randomnessPower: 2.8,
-  armContrast: 0.8,
-  bulgeFraction: 0.18,
-  bulgeSize: 0.1,
-  bulgeFlatten: 0.6,
+  bulgeFraction: 0.16,
+  bulgeSize: 0.09,
+  bulgeFlatten: 0.7,
   barLength: 0,
-  thickness: 0.035,
+  discScale: 0.3,
+  discThickness: 0.022,
+  youngFraction: 0.18,
   clumps: 0,
   haloFraction: 0.02,
-  dustAmount: 0.12,
+  hiiAmount: 0.02,
+};
+
+export const DEFAULT_STRUCTURE = {
+  arms: 2,
+  armWinding: 0.55,
+  eccentricity: 0.25,
+  armContrast: 0.7,
+  flocculence: 0.45,
+  dustStrength: 1,
+  glow: 1,
+  bulgeSersic: 2.5,
 };
 
 export const DEFAULT_LOOK = {
   radius: 6,
   starSize: 1,
   brightness: 1,
-  colorInner: '#ffcf8a',
-  colorOuter: '#4f7dff',
+  colorInner: '#ffd9a8',
+  colorOuter: '#8fb0ff',
+  physicalColor: 0.75,
   tiltX: 0,
   tiltZ: 0,
   position: [0, 0, 0],
@@ -75,7 +97,8 @@ export const DEFAULT_LOOK = {
 
 export const DEFAULT_MOTION = {
   speed: 0.3,
-  differential: 0.25,
+  differential: 0.6,
+  patternSpeed: 0.3,
 };
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
@@ -99,6 +122,11 @@ function clampGroup(input, limits, defaults) {
 /** @param {Partial<typeof DEFAULT_SHAPE>} [shape] */
 export function clampShape(shape) {
   return clampGroup(shape, LIMITS.shape, DEFAULT_SHAPE);
+}
+
+/** @param {Partial<typeof DEFAULT_STRUCTURE>} [structure] */
+export function clampStructure(structure) {
+  return clampGroup(structure, LIMITS.structure, DEFAULT_STRUCTURE);
 }
 
 /** @param {Partial<typeof DEFAULT_LOOK>} [look] */

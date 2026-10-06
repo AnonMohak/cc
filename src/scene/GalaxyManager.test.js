@@ -61,7 +61,10 @@ describe('GalaxyManager', () => {
     expect(setShape).not.toHaveBeenCalled();
     expect(setLook).toHaveBeenCalledTimes(2);
     expect(galaxy.speed).toBe(2);
-    store.dispatch(actions.updateGalaxy('id1', { shape: { arms: 4 } }));
+    store.dispatch(actions.updateGalaxy('id1', { structure: { arms: 4 } }));
+    expect(setShape).not.toHaveBeenCalled();
+    expect(galaxy.uniforms.uArms.value).toBe(4);
+    store.dispatch(actions.updateGalaxy('id1', { shape: { barLength: 0.2 } }));
     expect(setShape).toHaveBeenCalledOnce();
   });
 
@@ -95,7 +98,7 @@ describe('GalaxyManager selection', () => {
     expect(manager.get('id1').emphasisTarget).toBe(EMPHASIS_SELECTED);
     expect(manager.get('id2').emphasisTarget).toBe(EMPHASIS_OTHERS);
     manager.tick(0, 1);
-    expect(manager.get('id2').material.uniforms.uEmphasis.value).toBe(EMPHASIS_OTHERS);
+    expect(manager.get('id2').uniforms.uEmphasis.value).toBe(EMPHASIS_OTHERS);
     store.dispatch(actions.selectGalaxy(null));
     expect(manager.get('id1').emphasisTarget).toBe(1);
     expect(manager.get('id2').emphasisTarget).toBe(1);
@@ -107,10 +110,11 @@ describe('GalaxyManager dust settings', () => {
   it('applies dust settings to existing and new galaxies', () => {
     const { store, actions, manager, add } = setup();
     add();
-    store.dispatch(actions.updateSettings({ dust: false, dustOpacity: 0.3 }));
-    expect(manager.get('id1').dust.visible).toBe(false);
+    store.dispatch(actions.updateSettings({ dustOpacity: 0.3 }));
+    expect(manager.get('id1').uniforms.uDustStrength.value).toBeCloseTo(0.5);
+    store.dispatch(actions.updateSettings({ dust: false }));
+    expect(manager.get('id1').uniforms.uDustStrength.value).toBe(0);
     add();
-    expect(manager.get('id2').dust.visible).toBe(false);
-    expect(manager.get('id2').dustMaterial.uniforms.uOpacity.value).toBe(0.3);
+    expect(manager.get('id2').uniforms.uDustStrength.value).toBe(0);
   });
 });

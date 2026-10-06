@@ -1,6 +1,7 @@
 import { Galaxy } from '../galaxy/Galaxy.js';
 import { diffGalaxies } from './diffGalaxies.js';
 import { emphasisTarget } from '../galaxy/emphasis.js';
+import { dustScaleFromSettings } from '../state/store.js';
 
 /**
  * Keeps the Three.js scene in step with the store. The only owner of
@@ -12,8 +13,7 @@ export class GalaxyManager {
    */
   constructor({ scene, store, pixelRatio = 1, GalaxyClass = Galaxy }) {
     this.scene = scene;
-    const { dust, dustOpacity } = store.getState().settings;
-    this.dust = { enabled: dust, opacity: dustOpacity };
+    this.dustScale = dustScaleFromSettings(store.getState().settings);
     this.pixelRatio = pixelRatio;
     this.GalaxyClass = GalaxyClass;
     /** @type {Map<string, Galaxy>} */
@@ -27,7 +27,7 @@ export class GalaxyManager {
       if (next.selectedId !== prev.selectedId) this.setSelected(next.selectedId);
       const s = next.settings;
       if (s.dust !== prev.settings.dust || s.dustOpacity !== prev.settings.dustOpacity) {
-        this.setDust({ enabled: s.dust, opacity: s.dustOpacity });
+        this.setDustScale(dustScaleFromSettings(s));
       }
     });
   }
@@ -39,7 +39,7 @@ export class GalaxyManager {
       this.galaxies.delete(id);
     }
     for (const entry of diff.added) {
-      const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio, dust: this.dust });
+      const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio, dustScale: this.dustScale });
       galaxy.id = entry.id;
       galaxy.setEmphasis(emphasisTarget(entry.id, this.selectedId), true);
       this.galaxies.set(entry.id, galaxy);
@@ -50,6 +50,7 @@ export class GalaxyManager {
     }
     for (const entry of diff.lookChanged) {
       const galaxy = this.galaxies.get(entry.id);
+      galaxy?.setStructure(entry.structure);
       galaxy?.setLook(entry.look);
       galaxy?.setMotion(entry.motion);
     }
@@ -61,9 +62,14 @@ export class GalaxyManager {
     for (const [gid, galaxy] of this.galaxies) galaxy.setEmphasis(emphasisTarget(gid, id));
   }
 
-  setDust(dust) {
-    this.dust = dust;
-    for (const galaxy of this.galaxies.values()) galaxy.setDust(dust);
+  setDustScale(scale) {
+    this.dustScale = scale;
+    for (const galaxy of this.galaxies.values()) galaxy.setDustScale(scale);
+  }
+
+  /** Per-frame: camera position in each galaxy's local space (for dust). */
+  updateCamera(cameraWorld) {
+    for (const galaxy of this.galaxies.values()) galaxy.updateCamera(cameraWorld);
   }
 
   pickTargets() {

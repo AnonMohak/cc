@@ -85,6 +85,7 @@ export function startApp(container) {
     galaxies.tick(dt, realDt);
     cameraFly.update(realDt);
     controls.update();
+    galaxies.updateCamera(camera.position);
     starfield.update(camera.position);
   });
   loop.setRender(() => post.render());

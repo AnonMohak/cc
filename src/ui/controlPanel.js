@@ -5,27 +5,38 @@ import { canAddGalaxy, totalParticles, SETTINGS_LIMITS } from '../state/store.js
 import { debounce } from '../util/debounce.js';
 
 const LABELS = {
+  // Stars (rebuild)
   count: 'Stars',
-  arms: 'Arms',
-  spin: 'Arm winding',
-  armSpread: 'Arm spread',
-  randomnessPower: 'Arm sharpness',
-  armContrast: 'Stars on arms',
   bulgeFraction: 'Bulge share',
   bulgeSize: 'Bulge size',
   bulgeFlatten: 'Bulge flatness',
   barLength: 'Bar length',
-  thickness: 'Disc thickness',
-  clumps: 'Star clusters',
+  discScale: 'Disc scale length',
+  discThickness: 'Disc thickness',
+  youngFraction: 'Young blue stars',
+  clumps: 'Star-forming clumps',
   haloFraction: 'Halo share',
-  dustAmount: 'Dust lanes',
+  hiiAmount: 'Nebulae (H II)',
+  // Structure (live)
+  arms: 'Arms',
+  armWinding: 'Arm winding',
+  eccentricity: 'Density wave',
+  armContrast: 'Arm contrast',
+  flocculence: 'Flocculence',
+  dustStrength: 'Dust',
+  glow: 'Diffuse glow',
+  bulgeSersic: 'Bulge profile (n)',
+  // Look
   radius: 'Size',
   starSize: 'Star size',
   brightness: 'Brightness',
+  physicalColor: 'Physical colour',
   tiltX: 'Tilt X°',
   tiltZ: 'Tilt Z°',
+  // Motion
   speed: 'Rotation speed',
   differential: 'Differential',
+  patternSpeed: 'Pattern speed',
 };
 
 const POSITION_RANGE = 150;
@@ -117,6 +128,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       name: entry.name,
       preset: entry.preset,
       shape: { ...entry.shape },
+      structure: { ...entry.structure },
       look: { ...entry.look },
       position: { x: entry.look.position[0], y: entry.look.position[1], z: entry.look.position[2] },
       motion: { ...entry.motion },
@@ -143,7 +155,16 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
 
     // Shape changes rebuild geometry, so debounce while dragging.
     pendingShape = debounce((patch) => dispatch(actions.updateGalaxy(id, { shape: patch })), SHAPE_DEBOUNCE_MS);
-    const shapeFolder = folder.addFolder('Shape').close();
+    const structureFolder = folder.addFolder('Structure');
+    for (const key of Object.keys(LIMITS.structure)) {
+      const l = LIMITS.structure[key];
+      structureFolder
+        .add(proxy.structure, key, l.min, l.max, l.step)
+        .name(LABELS[key])
+        .onChange((v) => dispatch(actions.updateGalaxy(id, { structure: { [key]: v } })));
+    }
+
+    const shapeFolder = folder.addFolder('Stars (rebuild)').close();
     for (const key of SHAPE_KEYS) {
       const l = LIMITS.shape[key];
       shapeFolder
@@ -155,7 +176,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
 
     const lookFolder = folder.addFolder('Look');
     const look = (patch) => dispatch(actions.updateGalaxy(id, { look: patch }));
-    for (const key of ['radius', 'starSize', 'brightness']) {
+    for (const key of ['radius', 'starSize', 'brightness', 'physicalColor']) {
       const l = LIMITS.look[key];
       lookFolder.add(proxy.look, key, l.min, l.max, l.step).name(LABELS[key]).onChange((v) => look({ [key]: v }));
     }
@@ -173,7 +194,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     }
 
     const motionFolder = folder.addFolder('Motion');
-    for (const key of ['speed', 'differential']) {
+    for (const key of ['speed', 'differential', 'patternSpeed']) {
       const l = LIMITS.motion[key];
       motionFolder
         .add(proxy.motion, key, l.min, l.max, l.step)
@@ -192,6 +213,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       [proxy.position.x, proxy.position.y, proxy.position.z] = entry.look.position;
     }
     if (entry.motion !== lastEntry.motion) Object.assign(proxy.motion, entry.motion);
+    if (entry.structure !== lastEntry.structure) Object.assign(proxy.structure, entry.structure);
     proxy.preset = entry.preset;
     if (entry.name !== lastEntry.name) {
       proxy.name = entry.name;
@@ -218,7 +240,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   settingsFolder.add(settingsProxy, 'dust').name('Dust lanes').onChange((v) => setting({ dust: v }));
   settingsFolder
     .add(settingsProxy, 'dustOpacity', SETTINGS_LIMITS.dustOpacity.min, SETTINGS_LIMITS.dustOpacity.max, SETTINGS_LIMITS.dustOpacity.step)
-    .name('Dust opacity')
+    .name('Dust amount')
     .onChange((v) => setting({ dustOpacity: v }));
   const sceneActions = {
     screenshot: () => onScreenshot?.(),

@@ -138,7 +138,8 @@ describe('reducer: galaxies', () => {
     const g = store.getState().galaxies[0];
     store.dispatch(actions.applyPreset(g, 'elliptical'));
     const after = store.getState().galaxies[0];
-    expect(after.shape.arms).toBe(0);
+    expect(after.structure.arms).toBe(0);
+    expect(after.shape.bulgeFraction).toBeGreaterThan(0.9);
     expect(after.preset).toBe('elliptical');
     expect(after.look.position).toEqual([5, 1, 5]);
   });

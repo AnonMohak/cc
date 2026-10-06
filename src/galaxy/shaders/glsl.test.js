@@ -11,6 +11,8 @@ describe('glsl chunks', () => {
 
   it('keeps the same magic numbers as densityModel.js', () => {
     expect(CHUNKS.model).toContain('differential / (a + 0.25)');
+    expect(CHUNKS.model).toContain('log(1.0 + max(a, 0.0) / 0.25) / 1.6094379124');
+    expect(Math.log(5)).toBeCloseTo(1.6094379124, 9);
     expect(CHUNKS.model).toContain('gm_smoothstep(0.04, 0.3, a)');
     expect(CHUNKS.model).toContain('99.4708025861');
   });

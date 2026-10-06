@@ -1,5 +1,6 @@
 import {
   clampShape,
+  clampStructure,
   clampLook,
   clampMotion,
   MAX_GALAXIES,
@@ -24,6 +25,11 @@ export const DEFAULT_SETTINGS = {
   dust: true,
   dustOpacity: 0.6,
 };
+
+/** Global dust multiplier: 1 at the default amount, 0 when dust is off. */
+export function dustScaleFromSettings(settings) {
+  return settings.dust ? settings.dustOpacity / DEFAULT_SETTINGS.dustOpacity : 0;
+}
 
 export function createInitialState() {
   return { version: STATE_VERSION, galaxies: [], selectedId: null, settings: { ...DEFAULT_SETTINGS } };
@@ -64,6 +70,7 @@ export function sanitizeGalaxy(entry) {
     preset,
     seed,
     shape: clampShape(entry.shape),
+    structure: clampStructure(entry.structure ?? PRESETS[preset].structure),
     look: clampLook(entry.look),
     motion: clampMotion(entry.motion),
   };
@@ -105,7 +112,7 @@ export function reducer(state, action) {
       const index = state.galaxies.findIndex((g) => g.id === action.id);
       if (index === -1) return state;
       const prev = state.galaxies[index];
-      const { shape, look, motion, name, seed, preset } = action.patch ?? {};
+      const { shape, structure, look, motion, name, seed, preset } = action.patch ?? {};
       const next = { ...prev };
       if (shape) {
         next.shape = clampShape({ ...prev.shape, ...shape });
@@ -114,6 +121,7 @@ export function reducer(state, action) {
         const maxCount = Math.max(LIMITS.shape.count.min, room);
         if (next.shape.count > maxCount) next.shape.count = maxCount;
       }
+      if (structure) next.structure = clampStructure({ ...prev.structure, ...structure });
       if (look) next.look = clampLook({ ...prev.look, ...look });
       if (motion) next.motion = clampMotion({ ...prev.motion, ...motion });
       if (typeof name === 'string' && name.trim()) next.name = name.trim().slice(0, 40);

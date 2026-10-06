@@ -65,7 +65,7 @@ describe('persistence robustness', () => {
     const json = JSON.stringify({
       version: STATE_VERSION,
       galaxies: [
-        { id: 'a', preset: 'spiral', seed: 1, shape: { count: 1e9, arms: -3 }, look: { radius: -5 }, motion: { speed: 99 } },
+        { id: 'a', preset: 'spiral', seed: 1, shape: { count: 1e9, clumps: -3 }, structure: { arms: 99 }, look: { radius: -5 }, motion: { speed: 99 } },
         { nope: true },
         { id: 'a', preset: 'spiral', seed: 2 },
       ],
@@ -75,7 +75,8 @@ describe('persistence robustness', () => {
     const s = deserialize(json);
     expect(s.galaxies).toHaveLength(1);
     expect(s.galaxies[0].shape.count).toBe(LIMITS.shape.count.max);
-    expect(s.galaxies[0].shape.arms).toBe(0);
+    expect(s.galaxies[0].shape.clumps).toBe(0);
+    expect(s.galaxies[0].structure.arms).toBe(6);
     expect(s.galaxies[0].look.radius).toBe(LIMITS.look.radius.min);
     expect(s.galaxies[0].motion.speed).toBe(LIMITS.motion.speed.max);
     expect(s.selectedId).toBeNull();

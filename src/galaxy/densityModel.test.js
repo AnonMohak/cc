@@ -118,3 +118,34 @@ describe('sersic', () => {
     expect(sersic(0.05, 0.1, 1)).toBeGreaterThan(sersic(0.05, 0.1, 4));
   });
 });
+
+describe('barAngle', () => {
+  it('points the bar end at an arm crest for either winding sign', async () => {
+    const { barAngle } = await import('./densityModel.js');
+    for (const winding of [0.5, -0.5]) {
+      const theta = barAngle(0.3, 2, winding, 1.7, 0.3);
+      expect(crest(armPhase(theta, 0.3, 2, winding, 1.7, 0.3), winding)).toBeCloseTo(1);
+      // m = 2: the other bar end is on the other arm.
+      expect(crest(armPhase(theta + Math.PI, 0.3, 2, winding, 1.7, 0.3), winding)).toBeCloseTo(1);
+    }
+  });
+});
+
+describe('log-spiral arms', () => {
+  it('make `winding` turns between the centre and a = 1', () => {
+    expect(orbitAngle(1, 0.5, 0, 0) - orbitAngle(0, 0.5, 0, 0)).toBeCloseTo(Math.PI);
+  });
+
+  it('keep the pitch angle roughly constant across the disc', () => {
+    const pitch = (a) => {
+      const da = 1e-4;
+      const dphi = (orbitAngle(a + da, 0.55, 0, 0) - orbitAngle(a, 0.55, 0, 0)) / da;
+      return Math.atan(1 / (a * dphi));
+    };
+    const deg = (r) => (r * 180) / Math.PI;
+    // Grand-design spirals have pitch ~15–35°; it must not collapse outward.
+    expect(deg(pitch(0.5))).toBeGreaterThan(15);
+    expect(deg(pitch(0.9))).toBeGreaterThan(15);
+    expect(Math.abs(deg(pitch(0.9)) - deg(pitch(0.5)))).toBeLessThan(12);
+  });
+});

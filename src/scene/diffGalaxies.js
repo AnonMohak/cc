@@ -26,7 +26,7 @@ export function diffGalaxies(prev, next) {
     if (g.seed !== before.seed || SHAPE_KEYS.some((k) => g.shape[k] !== before.shape[k])) {
       result.shapeChanged.push(g);
     }
-    if (g.look !== before.look || g.motion !== before.motion) {
+    if (g.look !== before.look || g.motion !== before.motion || g.structure !== before.structure) {
       result.lookChanged.push(g);
     }
   }

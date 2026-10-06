@@ -30,6 +30,7 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
           preset: PRESETS[presetName] ? presetName : 'spiral',
           seed: makeSeed(),
           shape: { ...preset.shape },
+          structure: { ...preset.structure },
           look,
           motion: { ...preset.motion },
         },
@@ -48,6 +49,7 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
         patch: {
           preset: presetName,
           shape: { ...preset.shape },
+          structure: { ...preset.structure },
           look: { ...preset.look, position: galaxy.look.position },
           motion: { ...preset.motion },
         },

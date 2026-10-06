@@ -1,66 +1,61 @@
-import { DEFAULT_SHAPE, DEFAULT_LOOK, DEFAULT_MOTION } from './params.js';
+import { DEFAULT_SHAPE, DEFAULT_STRUCTURE, DEFAULT_LOOK, DEFAULT_MOTION } from './params.js';
 
 /**
  * Starting points for new galaxies. Each preset is complete, so a new galaxy
- * never depends on whatever defaults happen to be.
+ * never depends on whatever defaults happen to be. Values are tuned by eye
+ * against reference photos of the named galaxies.
  */
 export const PRESETS = {
+  // Grand-design two-arm spiral (M51 / M101 face-on look).
   spiral: {
     label: 'Spiral',
     shape: { ...DEFAULT_SHAPE },
-    look: { ...DEFAULT_LOOK, colorInner: '#ffcf8a', colorOuter: '#4f7dff' },
+    structure: { ...DEFAULT_STRUCTURE },
+    look: { ...DEFAULT_LOOK },
     motion: { ...DEFAULT_MOTION },
   },
+  // Strong bar with arms from its ends (NGC 1300).
   barred: {
     label: 'Barred spiral',
-    shape: {
-      ...DEFAULT_SHAPE,
-      arms: 2,
-      spin: 0.7,
-      armSpread: 0.18,
-      barLength: 0.3,
-      bulgeFraction: 0.14,
-      bulgeSize: 0.08,
-    },
-    look: { ...DEFAULT_LOOK, colorInner: '#ffd7a8', colorOuter: '#6aa0ff' },
-    motion: { ...DEFAULT_MOTION },
+    shape: { ...DEFAULT_SHAPE, barLength: 0.3, bulgeFraction: 0.12, bulgeSize: 0.07, discScale: 0.34 },
+    structure: { ...DEFAULT_STRUCTURE, armWinding: 0.42, eccentricity: 0.24, armContrast: 0.8, flocculence: 0.35 },
+    look: { ...DEFAULT_LOOK, colorInner: '#ffdcb0', colorOuter: '#9ab8ff' },
+    motion: { ...DEFAULT_MOTION, patternSpeed: 0.35 },
   },
+  // Smooth, old, dust-free ellipsoid (M87).
   elliptical: {
     label: 'Elliptical',
     shape: {
       ...DEFAULT_SHAPE,
-      count: 60_000,
-      arms: 0,
-      spin: 0,
-      armSpread: 0,
-      armContrast: 0,
-      bulgeFraction: 0.92,
-      bulgeSize: 0.3,
-      bulgeFlatten: 0.65,
-      thickness: 0.06,
-      haloFraction: 0.06,
-      dustAmount: 0,
+      count: 50_000,
+      bulgeFraction: 0.94,
+      bulgeSize: 0.28,
+      bulgeFlatten: 0.7,
+      youngFraction: 0,
+      haloFraction: 0.05,
+      hiiAmount: 0,
     },
-    look: { ...DEFAULT_LOOK, colorInner: '#ffe3b3', colorOuter: '#ff9f6b', starSize: 0.9 },
-    motion: { ...DEFAULT_MOTION, speed: 0.12 },
+    structure: { ...DEFAULT_STRUCTURE, arms: 0, eccentricity: 0, armContrast: 0, flocculence: 0.1, dustStrength: 0, glow: 1.2, bulgeSersic: 4 },
+    look: { ...DEFAULT_LOOK, colorInner: '#ffe2b8', colorOuter: '#ffc28f', physicalColor: 0.85 },
+    motion: { ...DEFAULT_MOTION, speed: 0.1, differential: 0.2 },
   },
+  // Clumpy, gas-rich, no clear arms (Large Magellanic Cloud).
   irregular: {
     label: 'Irregular',
     shape: {
       ...DEFAULT_SHAPE,
       count: 50_000,
-      arms: 2,
-      spin: 0.4,
-      armSpread: 0.8,
-      randomnessPower: 1.6,
-      armContrast: 0.25,
-      bulgeFraction: 0.05,
-      bulgeSize: 0.15,
-      thickness: 0.08,
+      bulgeFraction: 0.04,
+      bulgeSize: 0.12,
+      barLength: 0.18,
+      discScale: 0.4,
+      discThickness: 0.05,
+      youngFraction: 0.3,
       clumps: 5,
-      dustAmount: 0.08,
+      hiiAmount: 0.04,
     },
-    look: { ...DEFAULT_LOOK, colorInner: '#fff1dd', colorOuter: '#7fb8ff', radius: 4 },
+    structure: { ...DEFAULT_STRUCTURE, arms: 1, armWinding: 0.3, eccentricity: 0.12, armContrast: 0.35, flocculence: 0.9, dustStrength: 0.6, glow: 0.8 },
+    look: { ...DEFAULT_LOOK, radius: 4, colorInner: '#fff0dc', colorOuter: '#a8c8ff' },
     motion: { ...DEFAULT_MOTION, speed: 0.2 },
   },
 };

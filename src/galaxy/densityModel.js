@@ -14,15 +14,22 @@
  */
 
 const TAU = Math.PI * 2;
+// Log-spiral softening: φ ∝ ln(1 + a/A0). Real arms are close to
+// logarithmic spirals (constant pitch); a linear φ(a) closes into rings.
+const SPIRAL_A0 = 0.25;
+const SPIRAL_NORM = Math.log(1 + 1 / SPIRAL_A0);
 
 /** Angular speed factor: damped flat-rotation-curve law (inner orbits faster). */
 export function omega(a, differential) {
   return (1 - differential) + differential / (a + 0.25);
 }
 
-/** Orbit orientation φ(a): `winding` turns across the radius, plus the pattern's rigid rotation. */
+/**
+ * Orbit orientation φ(a): a logarithmic spiral making `winding` turns from the
+ * centre to a = 1, plus the pattern's rigid rotation.
+ */
 export function orbitAngle(a, winding, phase, patternSpeed) {
-  return TAU * winding * a + phase * patternSpeed;
+  return (TAU * winding * Math.log(1 + Math.max(a, 0) / SPIRAL_A0)) / SPIRAL_NORM + phase * patternSpeed;
 }
 
 /** Eccentricity profile: zero in the bulge, peaks in the inner disc, fades outward. */
@@ -96,4 +103,15 @@ export function sersic(r, re, n) {
 export function smoothstep(e0, e1, x) {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
   return t * t * (3 - 2 * t);
+}
+
+/**
+ * Bar orientation: the bar turns rigidly with the pattern and points at the
+ * arm crests at radius `barLength`, so arms start from the bar ends.
+ * Crest: m(θ − φ) = −sign(k)·π/2  ⇒  θ = φ(barLength) − sign(k)·π/(2m).
+ */
+export function barAngle(barLength, arms, winding, phase, patternSpeed) {
+  const m = Math.max(arms, 1);
+  const s = winding < 0 ? -1 : 1;
+  return orbitAngle(barLength, winding, phase, patternSpeed) - (s * Math.PI) / (2 * m);
 }

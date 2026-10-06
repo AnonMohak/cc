@@ -16,9 +16,10 @@ float gm_omega(float a, float differential) {
   return (1.0 - differential) + differential / (a + 0.25);
 }
 
-// Orbit orientation φ(a): winding turns across the radius + rigid pattern rotation.
+// Orbit orientation φ(a): log spiral, `winding` turns from the centre to a = 1,
+// plus rigid pattern rotation. ln(1 + 1/0.25) = ln 5.
 float gm_orbitAngle(float a, float winding, float phase, float patternSpeed) {
-  return TAU * winding * a + phase * patternSpeed;
+  return TAU * winding * log(1.0 + max(a, 0.0) / 0.25) / 1.6094379124 + phase * patternSpeed;
 }
 
 float gm_eccentricity(float a, float eMax) {
@@ -66,6 +67,13 @@ vec3 gm_blackbody(float kelvin) {
 float gm_sersic(float r, float re, float n) {
   float b = 2.0 * n - 1.0 / 3.0;
   return exp(-b * pow(max(r, 0.0) / re, 1.0 / n));
+}
+
+// Bar turns with the pattern and points at the arm crests at its ends.
+float gm_barAngle(float barLength, float arms, float winding, float phase, float patternSpeed) {
+  float m = max(arms, 1.0);
+  float s = winding < 0.0 ? -1.0 : 1.0;
+  return gm_orbitAngle(barLength, winding, phase, patternSpeed) - s * 1.5707963268 / m;
 }
 
 #endif

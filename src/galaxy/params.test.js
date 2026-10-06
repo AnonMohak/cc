@@ -3,6 +3,7 @@ import {
   clampShape,
   clampLook,
   clampMotion,
+  clampStructure,
   DEFAULT_SHAPE,
   DEFAULT_LOOK,
   DEFAULT_MOTION,
@@ -18,17 +19,17 @@ describe('clampShape', () => {
   });
 
   it('falls back to the default for NaN, null and non-numeric values', () => {
-    const out = clampShape({ count: NaN, arms: 'abc', spin: null });
+    const out = clampShape({ count: NaN, clumps: 'abc', discScale: null });
     expect(out.count).toBe(DEFAULT_SHAPE.count);
-    expect(out.arms).toBe(DEFAULT_SHAPE.arms);
-    expect(out.spin).toBe(DEFAULT_SHAPE.spin);
+    expect(out.clumps).toBe(DEFAULT_SHAPE.clumps);
+    expect(out.discScale).toBe(DEFAULT_SHAPE.discScale);
   });
 
   it('clamps out-of-range values and rounds integer fields', () => {
-    const out = clampShape({ count: -5, arms: 99, spin: 10, clumps: 2.6 });
+    const out = clampShape({ count: -5, bulgeFraction: 99, discScale: 10, clumps: 2.6 });
     expect(out.count).toBe(LIMITS.shape.count.min);
-    expect(out.arms).toBe(LIMITS.shape.arms.max);
-    expect(out.spin).toBe(LIMITS.shape.spin.max);
+    expect(out.bulgeFraction).toBe(LIMITS.shape.bulgeFraction.max);
+    expect(out.discScale).toBe(LIMITS.shape.discScale.max);
     expect(out.clumps).toBe(3);
   });
 
@@ -67,5 +68,6 @@ describe('presets', () => {
     expect(clampShape(preset.shape)).toEqual(preset.shape);
     expect(clampLook(preset.look)).toEqual(preset.look);
     expect(clampMotion(preset.motion)).toEqual(preset.motion);
+    expect(clampStructure(preset.structure)).toEqual(preset.structure);
   });
 });
