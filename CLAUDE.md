@@ -114,6 +114,7 @@ src/
 │   ├── universe.js          # PURE seeded cluster/filament generator
 │   └── persistence.js       # Serialize/deserialize store to localStorage (versioned, storage injected)
 ├── util/debounce.js
+├── util/formatCount.js        # Short star counts: 80k, 1m
 ├── util/gif.js               # PURE GIF89a encoder (palette, dither, LZW)
 └── ui/
     ├── controlPanel.js      # lil-gui: Scene / Selected galaxy / Settings folders; dispatches store actions

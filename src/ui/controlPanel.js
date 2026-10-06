@@ -6,6 +6,7 @@ import { canAddGalaxy, totalParticles, SETTINGS_LIMITS } from '../state/store.js
 import { QUALITY, QUALITY_OPTIONS } from '../core/quality.js';
 import { LAYOUTS } from '../state/universe.js';
 import { debounce } from '../util/debounce.js';
+import { formatCount } from '../util/formatCount.js';
 
 const LABELS = {
   // Stars (rebuild)
@@ -143,9 +144,9 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     const preset = PRESETS[sceneProxy.preset];
     const allowed = canAddGalaxy(state, preset.shape.count);
     addButton.enable(allowed);
-    addButton.name(allowed ? '➕ Add galaxy' : `Limit reached (${MAX_GALAXIES} galaxies / ${fmt(MAX_TOTAL_PARTICLES)} stars)`);
+    addButton.name(allowed ? '➕ Add galaxy' : `Limit reached (${MAX_GALAXIES} galaxies / ${formatCount(MAX_TOTAL_PARTICLES)} stars)`);
     addRealButton.enable(canAddGalaxy(state, catalogueParams(sceneProxy.real).shape.count));
-    sceneProxy.particles = `${fmt(totalParticles(state))} / ${fmt(MAX_TOTAL_PARTICLES)}`;
+    sceneProxy.particles = `${formatCount(totalParticles(state))} / ${formatCount(MAX_TOTAL_PARTICLES)}`;
     particlesController.updateDisplay();
   }
 
@@ -390,8 +391,4 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       gui.destroy();
     },
   };
-}
-
-function fmt(n) {
-  return n.toLocaleString('en-US');
 }
