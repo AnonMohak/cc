@@ -11,3 +11,17 @@ export function showNotice(container, text) {
   container.appendChild(el);
   return () => el.remove();
 }
+
+/**
+ * Short message that fades out by itself (e.g. "Link copied").
+ * @param {HTMLElement} container
+ * @param {string} text
+ */
+export function showToast(container, text, ms = 2200) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.setAttribute('role', 'status');
+  el.textContent = text;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), ms);
+}

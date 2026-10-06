@@ -156,6 +156,13 @@ export function reducer(state, action) {
       return id === state.selectedId ? state : { ...state, selectedId: id };
     }
 
+    // Undo/redo: galaxies come from an earlier state, so they are already valid.
+    case 'galaxies/restore': {
+      if (!Array.isArray(action.galaxies)) return state;
+      const keep = action.galaxies.some((g) => g.id === state.selectedId);
+      return { ...state, galaxies: action.galaxies, selectedId: keep ? state.selectedId : null };
+    }
+
     case 'settings/update':
       return { ...state, settings: clampSettings({ ...state.settings, ...action.patch }) };
 

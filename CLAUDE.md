@@ -26,6 +26,8 @@ Additional:
 - **FPS readout**: add `?fps` to the URL.
 - **Persistence**: the scene saves to `localStorage` and restores on reload; "Reset scene" clears it.
 - **Screenshot**: export the canvas as PNG.
+- **Sharing** (`state/shareCodec.js`): copy a share link (scene → deflate → base64url in `#scene=`; opened links go through `deserialize` validation, then the hash is removed), export/import the scene as JSON (`ui/fileIO.js`).
+- **Undo / redo** (`state/history.js`): galaxy changes only (not selection or settings); bursts within 400 ms are one step. Ctrl/Cmd+Z, Ctrl+Shift+Z, Ctrl+Y, and panel buttons.
 - **Keyboard**: Space pause · N add · F focus · Delete remove · Esc deselect · H hide panel · P screenshot (`ui/keyboard.js`).
 - **Robustness**: a notice when WebGL 2 is missing; WebGL context loss pauses and restores.
 
@@ -92,6 +94,8 @@ src/
 │   ├── store.js             # Tiny observable store + pure reducer
 │   ├── actions.js           # Action creators (inject id/seed sources for tests)
 │   ├── placement.js         # PURE: free spot for a new galaxy near the camera target
+│   ├── history.js           # Undo/redo stack over store galaxies (grouped steps)
+│   ├── shareCodec.js        # Scene ⇄ URL-safe code (CompressionStream deflate-raw)
 │   └── persistence.js       # Serialize/deserialize store to localStorage (versioned, storage injected)
 ├── util/debounce.js
 └── ui/

@@ -58,9 +58,13 @@ const catalogueOptions = Object.fromEntries(CATALOGUE_IDS.map((id) => [CATALOGUE
  *   onFocus?: (id: string) => void,
  *   onReset?: () => void,
  *   onScreenshot?: () => void,
+ *   history?: ReturnType<typeof import('../state/history.js').createHistory>,
+ *   onShare?: () => void,
+ *   onExport?: () => void,
+ *   onImport?: () => void,
  * }} options
  */
-export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot }) {
+export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport }) {
   const gui = new GUI({ title: 'Galaxy Sandbox', width: 300 });
   if (window.innerWidth < NARROW_SCREEN) gui.close();
 
@@ -93,6 +97,17 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .onChange(() => refreshSceneFolder(store.getState()));
   const addRealButton = sceneFolder.add(sceneProxy, 'addReal').name('🔭 Add real galaxy');
   let selectController = null;
+  const undoButtons = [];
+  if (history) {
+    const h = { undo: () => history.undo(), redo: () => history.redo() };
+    undoButtons.push(sceneFolder.add(h, 'undo').name('↶ Undo (Ctrl+Z)'), sceneFolder.add(h, 'redo').name('↷ Redo (Ctrl+Shift+Z)'));
+    const refreshUndo = () => {
+      undoButtons[0].enable(history.canUndo());
+      undoButtons[1].enable(history.canRedo());
+    };
+    history.onChange(refreshUndo);
+    refreshUndo();
+  }
   const particlesController = sceneFolder.add(sceneProxy, 'particles').name('Stars in scene').disable();
 
   function galaxyOptions(state) {
@@ -236,6 +251,15 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     for (const c of selectedFolder.controllersRecursive()) c.updateDisplay();
   }
 
+  // ── Share ────────────────────────────────────────────────────────────
+  if (onShare || onExport || onImport) {
+    const shareFolder = gui.addFolder('Share').close();
+    const s = { share: () => onShare?.(), exportJson: () => onExport?.(), importJson: () => onImport?.() };
+    if (onShare) shareFolder.add(s, 'share').name('🔗 Copy share link');
+    if (onExport) shareFolder.add(s, 'exportJson').name('💾 Export scene (JSON)');
+    if (onImport) shareFolder.add(s, 'importJson').name('📂 Import scene (JSON)');
+  }
+
   // ── Settings ─────────────────────────────────────────────────────────
   const settingsFolder = gui.addFolder('Settings');
   const settingsProxy = { ...store.getState().settings };
@@ -270,7 +294,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   if (onScreenshot) settingsFolder.add(sceneActions, 'screenshot').name('📷 Screenshot (P)');
   if (onReset) settingsFolder.add(sceneActions, 'reset').name('↺ Reset scene');
   const help = settingsFolder.addFolder('Keyboard').close();
-  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot' };
+  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot', 'Ctrl+Z': 'undo', 'Ctrl+Shift+Z': 'redo' };
   for (const [key, text] of Object.entries(keys)) help.add({ [key]: text }, key).disable();
 
   // ── Store wiring ─────────────────────────────────────────────────────
@@ -287,8 +311,8 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     const entry = state.galaxies.find((g) => g.id === state.selectedId) ?? null;
     if (!prev || state.selectedId !== prev.selectedId || (entry === null) !== (lastEntry === null)) {
       buildSelectedFolder(entry);
-      // Keep folder order stable: Scene, Selected, Settings.
-      if (selectedFolder) settingsFolder.domElement.before(selectedFolder.domElement);
+      // Keep folder order stable: Scene, Selected, Share, Settings.
+      if (selectedFolder) sceneFolder.domElement.after(selectedFolder.domElement);
     } else if (entry && entry !== lastEntry) {
       refreshSelectedFolder(entry);
     }

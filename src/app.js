@@ -16,7 +16,10 @@ import { attachPointerInput } from './ui/pointerInput.js';
 import { attachKeyboard } from './ui/keyboard.js';
 import { debounce } from './util/debounce.js';
 import { PRESETS } from './galaxy/presets.js';
-import { showNotice } from './ui/notice.js';
+import { showNotice, showToast } from './ui/notice.js';
+import { createHistory } from './state/history.js';
+import { shareUrl, decodeScene, codeFromHash } from './state/shareCodec.js';
+import { downloadText, pickTextFile } from './ui/fileIO.js';
 import { createFpsMeter } from './ui/fpsMeter.js';
 import { createInfoCard } from './ui/infoCard.js';
 import { catalogueViewDirection } from './galaxy/catalogue.js';
@@ -51,6 +54,27 @@ export function startApp(container) {
   const save = debounce(() => persistence.save(store.getState(), storage), SAVE_DEBOUNCE_MS);
   store.subscribe(save);
   window.addEventListener('pagehide', () => save.flush());
+
+  const history = createHistory(store);
+
+  /** Replace the whole scene (share link or imported file). */
+  function loadScene(state, message) {
+    store.dispatch(actions.loadState(state));
+    history.clear();
+    showToast(container, message);
+  }
+
+  async function loadFromHash() {
+    const code = codeFromHash(window.location.hash);
+    if (!code) return;
+    // Drop the hash so a reload does not re-apply it over later edits.
+    window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    const state = await decodeScene(code);
+    if (state) loadScene(state, 'Shared scene loaded');
+    else showToast(container, 'This share link is broken or from a newer version');
+  }
+  loadFromHash();
+  window.addEventListener('hashchange', loadFromHash);
 
   const galaxies = new GalaxyManager({ scene, store, pixelRatio: renderer.getPixelRatio() });
   const post = createComposer(renderer, scene, camera, { bloomStrength: store.getState().settings.bloomStrength });
@@ -135,6 +159,29 @@ export function startApp(container) {
     deselect: () => store.dispatch(actions.selectGalaxy(null)),
     togglePause: () => store.dispatch(actions.updateSettings({ paused: !store.getState().settings.paused })),
     screenshot: () => captureScreenshot({ canvas: renderer.domElement, render: () => post.render() }),
+    undo: () => history.undo(),
+    redo: () => history.redo(),
+    async copyShareLink() {
+      const url = await shareUrl(store.getState(), window.location);
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast(container, 'Share link copied');
+      } catch {
+        // Clipboard needs a secure context and permission; let the user copy.
+        window.prompt('Copy this share link:', url);
+      }
+    },
+    exportJson() {
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      downloadText(`galaxy-scene-${stamp}.json`, JSON.stringify(JSON.parse(persistence.serialize(store.getState())), null, 2));
+    },
+    async importJson() {
+      const text = await pickTextFile();
+      if (text === null) return;
+      const state = persistence.deserialize(text);
+      if (state) loadScene(state, 'Scene imported');
+      else showToast(container, 'That file is not a valid Galaxy Sandbox scene');
+    },
     reset() {
       if (!window.confirm('Delete all galaxies and start again with one spiral?')) return;
       store.dispatch(actions.resetScene());
@@ -150,6 +197,10 @@ export function startApp(container) {
     onFocus: focusGalaxy,
     onReset: commands.reset,
     onScreenshot: commands.screenshot,
+    history,
+    onShare: commands.copyShareLink,
+    onExport: commands.exportJson,
+    onImport: commands.importJson,
   });
   commands.togglePanel = () => panel.toggle();
   createInfoCard(container, store);
@@ -179,6 +230,6 @@ export function startApp(container) {
   loop.start(renderer);
 
   if (import.meta.env.DEV) {
-    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands };
+    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history };
   }
 }

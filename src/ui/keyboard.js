@@ -22,9 +22,16 @@ const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
  * @param {{ key: string, target?: { tagName?: string, isContentEditable?: boolean } | null, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean }} event
  */
 export function keyToCommand(event) {
-  if (event.ctrlKey || event.metaKey || event.altKey) return null;
   const target = event.target;
   if (target && (TYPING_TAGS.has(target.tagName) || target.isContentEditable)) return null;
+  if (event.altKey) return null;
+  if (event.ctrlKey || event.metaKey) {
+    // Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z or Ctrl+Y redo.
+    const k = event.key.toLowerCase();
+    if (k === 'z') return event.shiftKey ? 'redo' : 'undo';
+    if (k === 'y') return 'redo';
+    return null;
+  }
   // Space on a focused panel button presses that button.
   if (event.key === ' ' && target?.tagName === 'BUTTON') return null;
   return KEY_COMMANDS[event.key] ?? null;

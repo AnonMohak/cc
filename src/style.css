@@ -131,3 +131,22 @@ canvas {
     bottom: 12px;
   }
 }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  top: 16px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: rgba(10, 12, 24, 0.9);
+  color: #dfe6ff;
+  font: 13px/1.4 system-ui, sans-serif;
+  pointer-events: none;
+  animation: toast-fade 2.2s ease forwards;
+}
+
+@keyframes toast-fade {
+  0%, 80% { opacity: 1; }
+  100% { opacity: 0; }
+}

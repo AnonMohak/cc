@@ -49,3 +49,18 @@ describe('screenshotFilename', () => {
     expect(screenshotFilename(new Date(2026, 9, 6, 9, 5, 3))).toBe('galaxy-20261006-090503.png');
   });
 });
+
+describe('undo/redo shortcuts', () => {
+  it('maps Ctrl/Cmd+Z, Ctrl+Shift+Z and Ctrl+Y', () => {
+    expect(keyToCommand({ key: 'z', ctrlKey: true })).toBe('undo');
+    expect(keyToCommand({ key: 'z', metaKey: true })).toBe('undo');
+    expect(keyToCommand({ key: 'Z', ctrlKey: true, shiftKey: true })).toBe('redo');
+    expect(keyToCommand({ key: 'y', ctrlKey: true })).toBe('redo');
+    expect(keyToCommand({ key: 'c', ctrlKey: true })).toBeNull();
+    expect(keyToCommand({ key: 'z', ctrlKey: true, altKey: true })).toBeNull();
+  });
+
+  it('leaves Ctrl+Z to text fields', () => {
+    expect(keyToCommand({ key: 'z', ctrlKey: true, target: { tagName: 'INPUT' } })).toBeNull();
+  });
+});
