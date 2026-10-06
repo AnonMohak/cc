@@ -10,13 +10,18 @@ export const CAMERA_LIMITS = {
   maxDistance: 500,
 };
 
+export const CAMERA_HOME = {
+  position: new THREE.Vector3(0, 9, 16),
+  target: new THREE.Vector3(0, 0, 0),
+};
+
 /**
  * @param {HTMLElement} domElement
  * @param {number} aspect
  */
 export function createCamera(domElement, aspect) {
   const camera = new THREE.PerspectiveCamera(55, aspect, CAMERA_LIMITS.near, CAMERA_LIMITS.far);
-  camera.position.set(0, 9, 16);
+  camera.position.copy(CAMERA_HOME.position);
 
   const controls = new OrbitControls(camera, domElement);
   controls.enableDamping = true;

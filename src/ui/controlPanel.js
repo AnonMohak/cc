@@ -43,9 +43,11 @@ const presetOptions = Object.fromEntries(PRESET_NAMES.map((n) => [PRESETS[n].lab
  *   actions: ReturnType<typeof import('../state/actions.js').createActions>,
  *   getTarget: () => number[],
  *   onFocus?: (id: string) => void,
+ *   onReset?: () => void,
+ *   onScreenshot?: () => void,
  * }} options
  */
-export function createControlPanel({ store, actions, getTarget, onFocus }) {
+export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot }) {
   const gui = new GUI({ title: 'Galaxy Sandbox', width: 300 });
   if (window.innerWidth < NARROW_SCREEN) gui.close();
 
@@ -218,6 +220,15 @@ export function createControlPanel({ store, actions, getTarget, onFocus }) {
     .add(settingsProxy, 'dustOpacity', SETTINGS_LIMITS.dustOpacity.min, SETTINGS_LIMITS.dustOpacity.max, SETTINGS_LIMITS.dustOpacity.step)
     .name('Dust opacity')
     .onChange((v) => setting({ dustOpacity: v }));
+  const sceneActions = {
+    screenshot: () => onScreenshot?.(),
+    reset: () => onReset?.(),
+  };
+  if (onScreenshot) settingsFolder.add(sceneActions, 'screenshot').name('📷 Screenshot (P)');
+  if (onReset) settingsFolder.add(sceneActions, 'reset').name('↺ Reset scene');
+  const help = settingsFolder.addFolder('Keyboard').close();
+  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot' };
+  for (const [key, text] of Object.entries(keys)) help.add({ [key]: text }, key).disable();
 
   // ── Store wiring ─────────────────────────────────────────────────────
   function galaxyListKey(state) {
@@ -251,6 +262,9 @@ export function createControlPanel({ store, actions, getTarget, onFocus }) {
   return {
     gui,
     settingsFolder,
+    toggle() {
+      gui.show(gui._hidden);
+    },
     dispose() {
       unsubscribe();
       pendingShape?.cancel();

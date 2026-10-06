@@ -1,18 +1,24 @@
 import * as THREE from 'three';
 import './style.css';
 import { createRenderer } from './core/createRenderer.js';
-import { createCamera } from './core/createCamera.js';
+import { createCamera, CAMERA_LIMITS, CAMERA_HOME } from './core/createCamera.js';
+import { createComposer } from './core/createComposer.js';
 import { createLoop } from './core/loop.js';
+import { createCameraFly, framingPosition } from './core/cameraFly.js';
+import { captureScreenshot } from './core/screenshot.js';
 import { createStarfield } from './scene/starfield.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
-import { createStore } from './state/store.js';
+import { pickGalaxy } from './scene/picking.js';
+import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
 import { createActions } from './state/actions.js';
+import * as persistence from './state/persistence.js';
 import { createControlPanel } from './ui/controlPanel.js';
 import { attachPointerInput } from './ui/pointerInput.js';
-import { createCameraFly, framingPosition } from './core/cameraFly.js';
-import { pickGalaxy } from './scene/picking.js';
-import { CAMERA_LIMITS } from './core/createCamera.js';
-import { createComposer } from './core/createComposer.js';
+import { attachKeyboard } from './ui/keyboard.js';
+import { debounce } from './util/debounce.js';
+import { PRESETS } from './galaxy/presets.js';
+
+const SAVE_DEBOUNCE_MS = 500;
 
 const container = document.getElementById('app');
 
@@ -28,14 +34,22 @@ const { camera, controls, resize: resizeCamera } = createCamera(
 const starfield = createStarfield({ pixelRatio: renderer.getPixelRatio() });
 scene.add(starfield.object);
 
-const store = createStore();
+// ── State ──────────────────────────────────────────────────────────────
+const storage = window.localStorage;
 const actions = createActions();
+const store = createStore(undefined, persistence.load(storage) ?? createInitialState());
+if (store.getState().galaxies.length === 0) {
+  store.dispatch(actions.addGalaxy(store.getState(), 'spiral'));
+}
+
+const save = debounce(() => persistence.save(store.getState(), storage), SAVE_DEBOUNCE_MS);
+store.subscribe(save);
+window.addEventListener('pagehide', () => save.flush());
+
 const galaxies = new GalaxyManager({ scene, store, pixelRatio: renderer.getPixelRatio() });
-
-store.dispatch(actions.addGalaxy(store.getState(), 'spiral'));
-
 const post = createComposer(renderer, scene, camera, { bloomStrength: store.getState().settings.bloomStrength });
 
+// ── Loop and camera ────────────────────────────────────────────────────
 const loop = createLoop();
 const cameraFly = createCameraFly(camera, controls);
 // Any user orbit/zoom takes over from an automatic camera move.
@@ -81,12 +95,44 @@ window.addEventListener('resize', () => {
   galaxies.setPixelRatio(renderer.getPixelRatio());
 });
 
-createControlPanel({
+// ── Commands ───────────────────────────────────────────────────────────
+const getTarget = () => controls.target.toArray().map((v) => Math.round(v * 100) / 100);
+
+const commands = {
+  addGalaxy() {
+    const state = store.getState();
+    if (canAddGalaxy(state, PRESETS.spiral.shape.count)) {
+      store.dispatch(actions.addGalaxy(state, 'spiral', getTarget()));
+    }
+  },
+  deleteSelected() {
+    const { selectedId } = store.getState();
+    if (selectedId) store.dispatch(actions.removeGalaxy(selectedId));
+  },
+  focusSelected() {
+    const { selectedId } = store.getState();
+    if (selectedId) focusGalaxy(selectedId);
+  },
+  deselect: () => store.dispatch(actions.selectGalaxy(null)),
+  togglePause: () => store.dispatch(actions.updateSettings({ paused: !store.getState().settings.paused })),
+  screenshot: () => captureScreenshot({ canvas: renderer.domElement, render: () => post.render() }),
+  reset() {
+    if (!window.confirm('Delete all galaxies and start again with one spiral?')) return;
+    store.dispatch(actions.resetScene());
+    store.dispatch(actions.addGalaxy(store.getState(), 'spiral'));
+    cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position);
+  },
+};
+
+const panel = createControlPanel({
   store,
   actions,
-  getTarget: () => controls.target.toArray().map((v) => Math.round(v * 100) / 100),
+  getTarget,
   onFocus: focusGalaxy,
+  onReset: commands.reset,
+  onScreenshot: commands.screenshot,
 });
+commands.togglePanel = () => panel.toggle();
 
 attachPointerInput({
   dom: renderer.domElement,
@@ -95,13 +141,10 @@ attachPointerInput({
   onSelect: (id) => store.dispatch(actions.selectGalaxy(id)),
   onFocus: focusGalaxy,
 });
-
-window.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') store.dispatch(actions.selectGalaxy(null));
-});
+attachKeyboard(window, commands);
 
 loop.start(renderer);
 
 if (import.meta.env.DEV) {
-  window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post };
+  window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands };
 }
