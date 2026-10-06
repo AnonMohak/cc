@@ -31,7 +31,7 @@ describe('generateGalaxy', () => {
       const [a, , z, kind] = g.orbit.subarray(i * 4, i * 4 + 4);
       const [temp, size, youth] = g.star.subarray(i * 3, i * 3 + 3);
       expect(Number.isFinite(a + z)).toBe(true);
-      expect([0, 1, 2, 3]).toContain(kind);
+      expect([0, 1, 2, 3, 4]).toContain(kind);
       expect(Math.abs(a)).toBeLessThanOrEqual(1.41);
       expect(Math.abs(z)).toBeLessThanOrEqual(1);
       expect(temp).toBeGreaterThanOrEqual(3000);
@@ -43,8 +43,8 @@ describe('generateGalaxy', () => {
 
   it('population stats add up and follow the fractions', () => {
     const g = generateGalaxy(small({ count: 20000, bulgeFraction: 0.3, haloFraction: 0.05 }), 4);
-    const { disc, bulge, halo, bar } = g.stats;
-    expect(disc + bulge + halo + bar).toBe(g.count);
+    const { disc, bulge, halo, bar, cluster } = g.stats;
+    expect(disc + bulge + halo + bar + cluster).toBe(g.count);
     expect(bulge / g.count).toBeCloseTo(0.3, 1);
     expect(halo / g.count).toBeCloseTo(0.05, 1);
   });
@@ -136,5 +136,28 @@ describe('baked star colours', () => {
       expect(g.color[i * 3]).toBeCloseTo(bb[0], 5);
       expect(g.color[i * 3 + 2]).toBeCloseTo(bb[2], 5);
     }
+  });
+});
+
+describe('globular clusters', () => {
+  it('makes tight balls of old stars in the halo, more in bulge-rich galaxies', () => {
+    const spiral = generateGalaxy({ ...DEFAULT_SHAPE, count: 40000, bulgeFraction: 0.15, haloFraction: 0.03 }, 3);
+    const elliptical = generateGalaxy({ ...DEFAULT_SHAPE, count: 40000, bulgeFraction: 0.8, haloFraction: 0.1 }, 3);
+    expect(spiral.stats.cluster).toBeGreaterThan(0);
+    expect(elliptical.stats.cluster).toBeGreaterThan(spiral.stats.cluster * 2);
+
+    const centres = new Map();
+    for (let i = 0; i < spiral.count; i++) {
+      if (spiral.orbit[i * 4 + 3] !== KIND.CLUSTER) continue;
+      expect(spiral.star[i * 3 + 2]).toBe(0); // never "young"
+      const key = `${spiral.orbit[i * 4]},${spiral.orbit[i * 4 + 1]}`;
+      centres.set(key, (centres.get(key) ?? 0) + 1);
+      // Offset from the centre is small (≤ 6 core radii ≤ 0.042).
+      expect(Math.hypot(spiral.positions[i * 3], spiral.positions[i * 3 + 1], spiral.positions[i * 3 + 2])).toBeLessThan(0.043);
+    }
+    // Stars share a few centres: clusters, not a smooth halo.
+    expect(centres.size).toBeGreaterThan(3);
+    expect(centres.size).toBeLessThanOrEqual(40);
+    expect(spiral.stats.cluster / centres.size).toBeGreaterThan(30);
   });
 });

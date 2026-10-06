@@ -33,6 +33,7 @@ export const DEFAULT_SETTINGS = {
   quality: 'auto',
   exposure: 1,
   sky: true, // Milky Way background (scene/sky.js)
+  supernovae: true, // flashes in every galaxy (galaxy/supernovae.js)
   // HUD
   labels: false,
   minimap: true,
@@ -60,7 +61,7 @@ export function canAddGalaxy(state, count) {
 export function clampSettings(settings) {
   const src = settings && typeof settings === 'object' ? settings : {};
   const out = { ...DEFAULT_SETTINGS };
-  for (const key of ['paused', 'autoRotate', 'dust', 'sky', 'labels', 'minimap', 'scaleBar']) {
+  for (const key of ['paused', 'autoRotate', 'dust', 'sky', 'supernovae', 'labels', 'minimap', 'scaleBar']) {
     if (typeof src[key] === 'boolean') out[key] = src[key];
   }
   if (QUALITY_OPTIONS.includes(src.quality)) out.quality = src.quality;

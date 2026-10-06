@@ -15,6 +15,7 @@ export class GalaxyManager {
   constructor({ scene, store, pixelRatio = 1, GalaxyClass = Galaxy }) {
     this.scene = scene;
     this.dustScale = dustScaleFromSettings(store.getState().settings);
+    this.supernovae = store.getState().settings.supernovae ?? true;
     // The app sets the active tier (Auto can change it at any time).
     this.quality = QUALITY.medium;
     this.pixelRatio = pixelRatio;
@@ -32,6 +33,10 @@ export class GalaxyManager {
       if (s.dust !== prev.settings.dust || s.dustOpacity !== prev.settings.dustOpacity) {
         this.setDustScale(dustScaleFromSettings(s));
       }
+      if (s.supernovae !== prev.settings.supernovae) {
+        this.supernovae = s.supernovae;
+        for (const galaxy of this.galaxies.values()) galaxy.setSupernovae(s.supernovae);
+      }
     });
   }
 
@@ -42,7 +47,7 @@ export class GalaxyManager {
       this.galaxies.delete(id);
     }
     for (const entry of diff.added) {
-      const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio, dustScale: this.dustScale });
+      const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio, dustScale: this.dustScale, supernovae: this.supernovae });
       galaxy.id = entry.id;
       galaxy.onBaked = () => this.onChange?.();
       galaxy.setQuality(this.quality);

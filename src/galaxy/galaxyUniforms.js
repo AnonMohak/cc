@@ -10,6 +10,7 @@ export function createGalaxyUniforms() {
   return {
     // Motion
     uPhase: { value: 0 },
+    uSnTime: { value: 0 }, // galaxy simulation time, for supernova flashes
     uDifferential: { value: 0.6 },
     uPatternSpeed: { value: 0.3 },
     // Structure

@@ -19,6 +19,8 @@ Additional:
 - **Real-galaxy catalogue** (`galaxy/catalogue.js`): M31, M51, M101, M104, M87, LMC with real facts in an info card (`ui/infoCard.js`). Size follows the real diameter; the true inclination is shown from the home camera view, and Focus keeps it.
 - **Selection**: click or tap a galaxy to select it; the selected galaxy brightens ×1.15 and the others dim to ×0.75 (no overlay). Double-click / double-tap or "Focus" flies the camera to it.
 - **Realistic rendering** (researched against real galaxies): density-wave spiral arms, black-body star colours, young blue stars that light up on arm crests, pink H II nebulae, a Sérsic bulge, an exponential × sech² disc and dust lanes on the inner arm edges (edge-on: a midplane dust lane).
+- **Globular clusters**: 4–40 per galaxy (more in bulge-rich galaxies), dense Plummer balls of old stars on slow halo orbits. They are star kind `CLUSTER` (4) inside the normal star geometry (~2–6% of the count): `aOrbit` holds the cluster centre orbit and the `position` attribute holds the star's offset from the centre (`stars.vert.glsl` adds it only for this kind).
+- **Supernovae** (`galaxy/supernovae.js`, Settings → Supernovae): a seeded Poisson schedule (mean 9 s of simulation time per galaxy; nothing while paused) picks a star (young/arm stars preferred, never the bright core or cluster stars) and lights one of 4 reused flash points. The flash copies the star's `aOrbit`, so `gs_position` moves it with the star; light curve: fast rise, ~5 s fade, peak above the bloom threshold. The GLSL light curve mirrors `supernovaLight`.
 - **Live structure controls**: arm count, winding, density wave, arm contrast, flocculence, dust, diffuse glow and bulge profile change instantly (shader uniforms).
 - **Bloom**: lifts only bright cores and stars (threshold 0.45).
 - **Background sky** (`scene/sky.js`, model in `scene/skyMap.js`): a faint Milky Way band (thicker and warmer toward the galactic centre, star clouds, a filamentary dust rift, red/blue nebulae near the plane) baked once into a 1024×512 equirectangular sRGB texture in a Web Worker (`skyWorker.js`; main-thread fallback at 512×256), drawn on a camera-following sphere: one texture fetch per pixel. The static starfield is denser along the band (`starDensity`). Settings → Milky Way sky toggles it. Keep it far below the bloom threshold (`SKY_INTENSITY`).
@@ -93,6 +95,7 @@ src/
 │   ├── volumeMaterial.js    # Raymarched body (back faces, dst = emission + dst·transmittance)
 │   ├── Galaxy.js            # Owns group + volume Mesh + stars Points + H II Points; set{Shape,Structure,Look,Motion}, tick, dispose
 │   ├── emphasis.js          # PURE: selection brightness targets + frame-rate independent ease
+│   ├── supernovae.js        # PURE: supernova light curve, Poisson schedule, site choice
 │   ├── lod.js               # PURE: on-screen footprint → volume steps + star LOD (fewer, brighter far stars)
 │   ├── presets.js           # spiral (M51/M101), barred (NGC 1300), elliptical (M87), irregular (LMC)
 │   ├── catalogue.js         # Real galaxies: facts + params; tiltForInclination, catalogueViewDirection

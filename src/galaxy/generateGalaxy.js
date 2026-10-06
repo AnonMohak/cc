@@ -6,7 +6,7 @@ import { sersic, blackbody } from './densityModel.js';
  * Star populations. The kind is stored in aOrbit.w and selects how the
  * vertex shader moves the star (see shaders/chunks/stars.glsl).
  */
-export const KIND = { DISC: 0, BULGE: 1, HALO: 2, BAR: 3 };
+export const KIND = { DISC: 0, BULGE: 1, HALO: 2, BAR: 3, CLUSTER: 4 };
 
 const DISC_MAX = 1.15;
 const HALO_RADIUS = 1.4;
@@ -16,16 +16,22 @@ const CLUMP_SHARE = 0.3;
 const CLUMP_SD = 0.06;
 const SECH2_CLAMP = 4;
 const BULGE_CDF_STEPS = 256;
+// Globular clusters: more in bulge-rich galaxies (M87 has ~12,000; the Milky
+// Way ~150). Star share is small, so the other populations barely change.
+const CLUSTER_STAR_SHARE = 0.0018; // per cluster
+const MAX_CLUSTER_SHARE = 0.06;
 
 /**
  * Generate star data for one galaxy in UNIT space (disc radius ≈ 1, y up).
  *
  * Disc stars are not positions but orbital elements; the shader moves them
  * along density-wave orbits. Every star has:
- *   orbit = (a, θ0, z, kind)  — for BAR stars: (x along bar, lateral offset, z, kind)
+ *   orbit = (a, θ0, z, kind)  — for BAR stars: (x along bar, lateral offset, z, kind);
+ *           for CLUSTER stars: the orbit of the cluster centre
  *   star  = (temperature K, size, youth 0|1)
  *   color = linear black-body colour (rgb)
- * `positions` is a rough initial layout, only used for bounds.
+ * `positions` is a rough initial layout (unused by the shader), except for
+ * CLUSTER stars: there it is the star's offset from the cluster centre.
  *
  * Pure and deterministic: same (shape, seed) → identical arrays.
  *
@@ -42,7 +48,7 @@ export function generateGalaxy(shapeInput, seed) {
   // Linear-light black-body colour per star (was computed per vertex per frame).
   const color = new Float32Array(n * 3);
   const positions = new Float32Array(n * 3);
-  const stats = { disc: 0, bulge: 0, halo: 0, bar: 0, young: 0, clump: 0 };
+  const stats = { disc: 0, bulge: 0, halo: 0, bar: 0, cluster: 0, young: 0, clump: 0 };
 
   const bulgeCdf = buildBulgeCdf(shape.bulgeSize);
   const clumps = Array.from({ length: shape.clumps }, () => ({
@@ -50,6 +56,8 @@ export function generateGalaxy(shapeInput, seed) {
     theta: rng.range(0, Math.PI * 2),
   }));
   const barShare = shape.barLength > 0 ? Math.min(0.2, shape.barLength * 0.45) : 0;
+  const clusters = makeClusters(rng, shape);
+  const clusterShare = Math.min(MAX_CLUSTER_SHARE, clusters.length * CLUSTER_STAR_SHARE);
 
   for (let i = 0; i < n; i++) {
     const pick = rng.next();
@@ -60,8 +68,24 @@ export function generateGalaxy(shapeInput, seed) {
     let temp;
     let size;
     let youth = 0;
+    let offset = null;
 
-    if (pick < shape.bulgeFraction) {
+    if (clusters.length > 0 && rng.next() < clusterShare) {
+      kind = KIND.CLUSTER;
+      const c = clusters[Math.floor(rng.next() * clusters.length)];
+      a = c.a;
+      theta0 = c.theta;
+      z = c.z;
+      // Plummer sphere: dense core, sparse envelope (capped at 6 core radii).
+      const u = Math.max(rng.next(), 1e-6);
+      const r = Math.min(6 * c.rc, c.rc / Math.sqrt(Math.pow(u, -2 / 3) - 1 + 1e-9));
+      const dir = randomDirection(rng);
+      offset = [r * dir[0], r * dir[1], r * dir[2]];
+      // Old, metal-poor giants; a few hot blue stragglers.
+      temp = rng.next() < 0.04 ? 7500 + 2000 * rng.next() : 4300 + 1700 * Math.pow(rng.next(), 1.2);
+      size = 0.5 + 0.8 * Math.pow(rng.next(), 6);
+      stats.cluster++;
+    } else if (pick < shape.bulgeFraction) {
       kind = KIND.BULGE;
       const r = sampleCdf(bulgeCdf, rng.next());
       const dir = randomDirection(rng);
@@ -138,7 +162,11 @@ export function generateGalaxy(shapeInput, seed) {
     color[i3] = bb[0] ** 2.2;
     color[i3 + 1] = bb[1] ** 2.2;
     color[i3 + 2] = bb[2] ** 2.2;
-    if (kind === KIND.BAR) {
+    if (offset) {
+      positions[i3] = offset[0];
+      positions[i3 + 1] = offset[1];
+      positions[i3 + 2] = offset[2];
+    } else if (kind === KIND.BAR) {
       positions[i3] = a;
       positions[i3 + 1] = z;
       positions[i3 + 2] = theta0;
@@ -151,6 +179,25 @@ export function generateGalaxy(shapeInput, seed) {
 
   const hii = generateHii(rng, shape);
   return { count: n, orbit, star, color, positions, stats, hii };
+}
+
+/**
+ * Globular clusters: centres spread through the halo, concentrated toward
+ * the middle. Core radii are exaggerated (real ones are ~10 ly) so a cluster
+ * reads as a dense fuzzy ball, not a single star.
+ */
+function makeClusters(rng, shape) {
+  const n = Math.round(Math.min(40, Math.max(4, 6 + 30 * shape.bulgeFraction + 40 * shape.haloFraction)));
+  return Array.from({ length: n }, () => {
+    const dir = randomDirection(rng);
+    const r = 0.12 + 1.1 * Math.pow(rng.next(), 1.6);
+    return {
+      a: r * Math.hypot(dir[0], dir[2]),
+      theta: Math.atan2(dir[2], dir[0]),
+      z: r * dir[1] * 0.85,
+      rc: 0.003 + 0.004 * rng.next(),
+    };
+  });
 }
 
 /**

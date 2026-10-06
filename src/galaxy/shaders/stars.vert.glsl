@@ -22,6 +22,8 @@ const float POINT_SCALE = 5.0;
 void main() {
   float crestV;
   vec3 p = gs_position(aOrbit, crestV);
+  // Globular-cluster stars: offset from the cluster centre (generateGalaxy.js).
+  p += position * step(KIND_CLUSTER, aOrbit.w);
   vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mvPosition;
 

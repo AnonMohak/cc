@@ -9,6 +9,7 @@ Spiral arms are real **density waves**: stars move on twisted elliptical orbits 
 - **Make and edit galaxies** — spiral, barred spiral, elliptical and irregular presets; change size, colours, tilt, rotation speed, arm count and winding, dust, bulge and more. Most sliders update live.
 - **Real galaxies** — Andromeda (M31), Whirlpool (M51), Pinwheel (M101), Sombrero (M104), M87 and the Large Magellanic Cloud, shown at their real inclination with a fact card.
 - **Universe generator** — one click builds a galaxy cluster (ellipticals in the core) or a filament.
+- **Globular clusters and supernovae** — dense balls of old stars orbit in each halo, and supernovae flare up and fade in the arms every few seconds (can be turned off).
 - **Milky Way sky** — a faint procedural Milky Way band with dust lanes and nebulae behind the galaxies (can be turned off).
 - **Explore** — orbit and zoom, click to select, double-click to fly to a galaxy, a guided tour, and a free-fly mode.
 - **HUD** — galaxy name labels (off by default; Settings → HUD), a light-year scale bar and a clickable minimap.

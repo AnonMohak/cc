@@ -18,6 +18,7 @@ uniform vec3 uCameraLocal;
 // Kinds, see generateGalaxy.js KIND.
 #define KIND_DISC 0.5
 #define KIND_HALO 2.5
+#define KIND_CLUSTER 3.5
 
 // How strongly dust absorbs; tuned so a face-on lane dims stars by ~60%.
 const float DUST_KAPPA = 1.1;
@@ -42,6 +43,13 @@ vec3 gs_position(vec4 orbit, out float crestOut) {
 
   if (kind < KIND_HALO) {
     // Bulge and halo: hot, random orbits; slow net rotation.
+    float theta = orbit.y + uPhase * gm_omega(a, uDifferential) * 0.6;
+    return vec3(a * cos(theta), orbit.z, a * sin(theta));
+  }
+
+  if (kind > KIND_CLUSTER) {
+    // Globular cluster centre: a slow halo orbit. The star's offset from the
+    // centre is added by the star shader (position attribute).
     float theta = orbit.y + uPhase * gm_omega(a, uDifferential) * 0.6;
     return vec3(a * cos(theta), orbit.z, a * sin(theta));
   }

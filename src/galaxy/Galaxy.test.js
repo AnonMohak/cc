@@ -234,3 +234,21 @@ describe('Galaxy star LOD', () => {
     expect(g.uniforms.uLodGain.value).toBe(1);
   });
 });
+
+describe('Galaxy supernovae', () => {
+  it('fires flashes on simulation time only, and can be switched off', () => {
+    const g = makeGalaxy({ shape: { ...PRESETS.spiral.shape, count: 5000 } });
+    const birth = g.supernovae.geometry.getAttribute('aBirth').array;
+    for (let i = 0; i < 100; i++) g.tick(0); // paused: nothing happens
+    expect(Math.max(...birth)).toBeLessThan(0);
+    for (let i = 0; i < 600; i++) g.tick(0.1); // 60 s
+    expect(Math.max(...birth)).toBeGreaterThan(0);
+    expect(g.uniforms.uSnTime.value).toBeCloseTo(60, 5);
+
+    g.setSupernovae(false);
+    const before = Array.from(birth);
+    for (let i = 0; i < 600; i++) g.tick(0.1);
+    expect(Array.from(birth)).toEqual(before);
+    expect(g.supernovae.visible).toBe(false);
+  });
+});

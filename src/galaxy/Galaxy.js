@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { generateGalaxy } from './generateGalaxy.js';
-import { createStarMaterial, createHiiMaterial } from './starMaterials.js';
+import { createStarMaterial, createHiiMaterial, createSupernovaMaterial } from './starMaterials.js';
+import { createSupernovaSchedule, pickSupernovaSite, SUPERNOVA_SLOTS } from './supernovae.js';
 import { createVolumeMaterial } from './volumeMaterial.js';
 import { volumeBounds, marchBounds } from './densityModel.js';
 import { clampShape, clampStructure } from './params.js';
@@ -33,12 +34,13 @@ const REBAKE_DELAY_MS = 120;
  *   volume — raymarched body: diffuse light + dust (renderOrder 0, drawn first)
  *   stars — density-wave star particles (renderOrder 1)
  *   hii   — H II nebulae that glow on the arm crests (renderOrder 2)
+ *   supernovae — a few flash points that follow their exploding star (renderOrder 3)
  */
 export class Galaxy {
   /**
-   * @param {{ shape: object, seed: number, structure?: object, look?: object, motion?: object, pixelRatio?: number, dustScale?: number }} params
+   * @param {{ shape: object, seed: number, structure?: object, look?: object, motion?: object, pixelRatio?: number, dustScale?: number, supernovae?: boolean }} params
    */
-  constructor({ shape, seed, structure, look, motion, pixelRatio = 1, dustScale = 1 }) {
+  constructor({ shape, seed, structure, look, motion, pixelRatio = 1, dustScale = 1, supernovae = true }) {
     this.group = new THREE.Group();
     this.uniforms = createGalaxyUniforms();
     this.uniforms.uPixelRatio.value = pixelRatio;
@@ -57,7 +59,22 @@ export class Galaxy {
     // Rendered at reduced resolution by GalaxyScenePass.
     this.volume.layers.set(LAYERS.VOLUME);
 
-    this.group.add(this.volume, this.stars, this.hii);
+    // Supernovae: SUPERNOVA_SLOTS points, reused oldest-first.
+    const snGeometry = new THREE.BufferGeometry();
+    snGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SUPERNOVA_SLOTS * 3), 3));
+    snGeometry.setAttribute('aOrbit', new THREE.BufferAttribute(new Float32Array(SUPERNOVA_SLOTS * 4), 4));
+    // Born long ago = dark until the first explosion.
+    snGeometry.setAttribute('aBirth', new THREE.BufferAttribute(new Float32Array(SUPERNOVA_SLOTS).fill(-1e4), 1));
+    snGeometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), BOUND_RADIUS);
+    this.supernovaMaterial = createSupernovaMaterial(this.uniforms);
+    this.supernovae = new THREE.Points(snGeometry, this.supernovaMaterial);
+    this.supernovae.renderOrder = 3;
+    this.supernovae.visible = supernovae;
+    this.snSchedule = createSupernovaSchedule(seed);
+    this.snSlot = 0;
+    this.snTime = 0;
+
+    this.group.add(this.volume, this.stars, this.hii, this.supernovae);
 
     this.phase = 0;
     this.speed = 0;
@@ -178,10 +195,40 @@ export class Galaxy {
   tick(dt, realDt = dt) {
     this.phase += dt * this.speed;
     this.uniforms.uPhase.value = this.phase;
+    this.tickSupernovae(dt);
     if (this.emphasis !== this.emphasisTarget) {
       this.emphasis = approach(this.emphasis, this.emphasisTarget, realDt);
       this.uniforms.uEmphasis.value = this.emphasis;
     }
+  }
+
+  /** Fire scheduled explosions (simulation time: nothing happens while paused). */
+  tickSupernovae(dt) {
+    this.snTime += dt;
+    this.uniforms.uSnTime.value = this.snTime;
+    if (!this.supernovae.visible) return;
+    const events = this.snSchedule.update(dt);
+    if (events === 0) return;
+    const geo = this.stars.geometry;
+    const orbit = geo.getAttribute('aOrbit').array;
+    const star = geo.getAttribute('aStar').array;
+    const snOrbit = this.supernovae.geometry.getAttribute('aOrbit');
+    const snBirth = this.supernovae.geometry.getAttribute('aBirth');
+    for (let e = 0; e < events; e++) {
+      const i = pickSupernovaSite(this.snSchedule.rng, orbit, star, this.count);
+      if (i < 0) continue;
+      const slot = this.snSlot;
+      this.snSlot = (slot + 1) % SUPERNOVA_SLOTS;
+      for (let k = 0; k < 4; k++) snOrbit.array[slot * 4 + k] = orbit[i * 4 + k];
+      snBirth.array[slot] = this.snTime;
+    }
+    snOrbit.needsUpdate = true;
+    snBirth.needsUpdate = true;
+  }
+
+  /** Settings → Supernovae. */
+  setSupernovae(on) {
+    this.supernovae.visible = on;
   }
 
   /**
@@ -271,6 +318,8 @@ export class Galaxy {
     this.group.removeFromParent();
     this.stars.geometry.dispose();
     this.hii.geometry.dispose();
+    this.supernovae.geometry.dispose();
+    this.supernovaMaterial.dispose();
     this.volume.geometry.dispose();
     this.starMaterial.dispose();
     this.hiiMaterial.dispose();
