@@ -39,6 +39,10 @@ export const DEFAULT_SETTINGS = {
   dustOpacity: 0.6,
   quality: 'medium',
   exposure: 1,
+  // HUD
+  labels: true,
+  minimap: true,
+  scaleBar: true,
 };
 
 /** Global dust multiplier: 1 at the default amount, 0 when dust is off. */
@@ -62,7 +66,7 @@ export function canAddGalaxy(state, count) {
 export function clampSettings(settings) {
   const src = settings && typeof settings === 'object' ? settings : {};
   const out = { ...DEFAULT_SETTINGS };
-  for (const key of ['paused', 'autoRotate', 'dust']) {
+  for (const key of ['paused', 'autoRotate', 'dust', 'labels', 'minimap', 'scaleBar']) {
     if (typeof src[key] === 'boolean') out[key] = src[key];
   }
   if (Object.hasOwn(QUALITY, src.quality)) out.quality = src.quality;

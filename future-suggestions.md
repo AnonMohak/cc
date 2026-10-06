@@ -18,7 +18,6 @@ Ideas to make Galaxy Sandbox more feature-rich and better looking. None of these
 - **Universe generator.** Build a random cluster or filament of galaxies in one click.
 - **Camera modes.** A guided tour or cinematic fly-through, and a free-fly WASD mode.
 - **Recording.** Video capture (MediaRecorder on the canvas stream) and GIF export.
-- **HUD.** A scale bar in light-years, a minimap and galaxy name labels.
 
 ## Platform
 

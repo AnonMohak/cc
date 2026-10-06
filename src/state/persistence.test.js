@@ -176,3 +176,11 @@ describe('catalogue persistence', () => {
     expect(deserialize(serialize(store.getState())).galaxies[0].catalog).toBe('lmc');
   });
 });
+
+describe('HUD settings', () => {
+  it('default on, accept booleans, and round-trip', async () => {
+    const { clampSettings } = await import('./store.js');
+    expect(clampSettings({})).toMatchObject({ labels: true, minimap: true, scaleBar: true });
+    expect(clampSettings({ minimap: false, labels: 'no' })).toMatchObject({ minimap: false, labels: true });
+  });
+});

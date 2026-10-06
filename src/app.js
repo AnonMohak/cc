@@ -22,6 +22,7 @@ import { shareUrl, decodeScene, codeFromHash } from './state/shareCodec.js';
 import { downloadText, pickTextFile } from './ui/fileIO.js';
 import { createFpsMeter } from './ui/fpsMeter.js';
 import { createInfoCard } from './ui/infoCard.js';
+import { createHud } from './ui/hud.js';
 import { catalogueViewDirection } from './galaxy/catalogue.js';
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -204,6 +205,15 @@ export function startApp(container) {
   });
   commands.togglePanel = () => panel.toggle();
   createInfoCard(container, store);
+  const hud = createHud({
+    container,
+    store,
+    camera,
+    controls,
+    onSelect: (id) => store.dispatch(actions.selectGalaxy(id)),
+    onFocus: focusGalaxy,
+  });
+  loop.onTick(() => hud.update());
 
   attachPointerInput({
     dom: renderer.domElement,

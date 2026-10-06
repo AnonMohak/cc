@@ -150,3 +150,72 @@ canvas {
   0%, 80% { opacity: 1; }
   100% { opacity: 0; }
 }
+
+.hud-labels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.hud-labels[hidden],
+.hud-scale[hidden],
+.hud-minimap[hidden] {
+  display: none;
+}
+
+.hud-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: rgba(10, 12, 24, 0.45);
+  color: rgba(220, 228, 255, 0.85);
+  font: 11px/1.4 system-ui, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  will-change: transform;
+}
+
+.hud-label:hover,
+.hud-label.is-selected {
+  background: rgba(70, 90, 160, 0.6);
+  color: #fff;
+}
+
+.hud-scale {
+  position: fixed;
+  right: 16px;
+  bottom: 196px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  color: rgba(220, 228, 255, 0.8);
+  font: 11px/1.2 system-ui, sans-serif;
+  pointer-events: none;
+}
+
+.hud-scale-bar {
+  height: 6px;
+  border: 1px solid rgba(220, 228, 255, 0.8);
+  border-top: 0;
+}
+
+.hud-minimap {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  border-radius: 8px;
+  background: rgba(10, 12, 24, 0.7);
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .hud-scale {
+    bottom: 140px;
+  }
+}

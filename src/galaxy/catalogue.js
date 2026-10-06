@@ -99,6 +99,12 @@ const LY_PER_UNIT = 18_000;
 const MIN_RADIUS = 2.5;
 const MAX_RADIUS = 12;
 
+/**
+ * Light-years per world unit, consistent with radiusForDiameter: a galaxy of
+ * radius r units spans 2r units ≈ LY_PER_UNIT · r light-years.
+ */
+export const LY_PER_WORLD_UNIT = LY_PER_UNIT / 2;
+
 /** Scene radius for a real diameter, clamped so small galaxies stay visible. */
 export function radiusForDiameter(diameterLy) {
   return Math.min(MAX_RADIUS, Math.max(MIN_RADIUS, diameterLy / LY_PER_UNIT));

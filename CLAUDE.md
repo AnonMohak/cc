@@ -27,6 +27,7 @@ Additional:
 - **Persistence**: the scene saves to `localStorage` and restores on reload; "Reset scene" clears it.
 - **Screenshot**: export the canvas as PNG.
 - **Sharing** (`state/shareCodec.js`): copy a share link (scene → deflate → base64url in `#scene=`; opened links go through `deserialize` validation, then the hash is removed), export/import the scene as JSON (`ui/fileIO.js`).
+- **HUD** (`ui/hud.js`, math in `ui/hudMath.js`): clickable galaxy name labels, a light-year scale bar (1 world unit = 9,000 ly, `LY_PER_WORLD_UNIT`) and a top-down minimap (click a galaxy to fly to it). Each part toggles in Settings → HUD.
 - **Undo / redo** (`state/history.js`): galaxy changes only (not selection or settings); bursts within 400 ms are one step. Ctrl/Cmd+Z, Ctrl+Shift+Z, Ctrl+Y, and panel buttons.
 - **Keyboard**: Space pause · N add · F focus · Delete remove · Esc deselect · H hide panel · P screenshot (`ui/keyboard.js`).
 - **Robustness**: a notice when WebGL 2 is missing; WebGL context loss pauses and restores.
@@ -103,6 +104,9 @@ src/
     ├── pointerInput.js      # Tap/click select, double-tap focus (pure createTapDetector)
     ├── keyboard.js          # PURE keyToCommand + attachKeyboard
     ├── fpsMeter.js          # ?fps readout (own clock; loop dt is capped)
+    ├── hud.js / hudMath.js  # Labels, scale bar, minimap (pure layout math in hudMath)
+    ├── infoCard.js          # Facts card for catalogue galaxies
+    ├── fileIO.js            # Download text / pick a file
     └── notice.js            # Centred message overlay
 ```
 

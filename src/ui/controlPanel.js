@@ -287,6 +287,10 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .add(settingsProxy, 'dustOpacity', SETTINGS_LIMITS.dustOpacity.min, SETTINGS_LIMITS.dustOpacity.max, SETTINGS_LIMITS.dustOpacity.step)
     .name('Dust amount')
     .onChange((v) => setting({ dustOpacity: v }));
+  const hudFolder = settingsFolder.addFolder('HUD');
+  hudFolder.add(settingsProxy, 'labels').name('Galaxy labels').onChange((v) => setting({ labels: v }));
+  hudFolder.add(settingsProxy, 'scaleBar').name('Scale bar (ly)').onChange((v) => setting({ scaleBar: v }));
+  hudFolder.add(settingsProxy, 'minimap').name('Minimap').onChange((v) => setting({ minimap: v }));
   const sceneActions = {
     screenshot: () => onScreenshot?.(),
     reset: () => onReset?.(),
