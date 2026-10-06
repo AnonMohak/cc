@@ -9,7 +9,7 @@ import {
 } from '../galaxy/params.js';
 import { PRESETS } from '../galaxy/presets.js';
 import { CATALOGUE } from '../galaxy/catalogue.js';
-import { QUALITY_OPTIONS } from '../core/quality.js';
+import { QUALITY_OPTIONS, SPIKE_OPTIONS } from '../core/quality.js';
 
 // v2: density-wave renderer (structure group, new shape keys, quality/exposure).
 export const STATE_VERSION = 2;
@@ -34,6 +34,7 @@ export const DEFAULT_SETTINGS = {
   exposure: 1,
   sky: true, // Milky Way background (scene/sky.js)
   supernovae: true, // flashes in every galaxy (galaxy/supernovae.js)
+  spikes: 'jwst', // diffraction spikes: 'jwst' | 'hubble' | 'off'
   // HUD
   labels: false,
   minimap: true,
@@ -65,6 +66,7 @@ export function clampSettings(settings) {
     if (typeof src[key] === 'boolean') out[key] = src[key];
   }
   if (QUALITY_OPTIONS.includes(src.quality)) out.quality = src.quality;
+  if (SPIKE_OPTIONS.includes(src.spikes)) out.spikes = src.spikes;
   for (const [key, limit] of Object.entries(SETTINGS_LIMITS)) {
     const n = Number(src[key]);
     if (src[key] !== null && src[key] !== '' && Number.isFinite(n)) {

@@ -39,7 +39,7 @@ export function createHiiMaterial(uniforms) {
 export function createSupernovaMaterial(uniforms) {
   return new THREE.ShaderMaterial({
     vertexShader: glsl(CHUNKS.model, starsChunk, supernovaVert),
-    fragmentShader: supernovaFrag,
+    fragmentShader: glsl(CHUNKS.spikes, supernovaFrag),
     uniforms,
     ...additive,
   });

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createRandom } from '../galaxy/random.js';
 import { LAYERS } from '../core/layers.js';
 import { starDensity } from './skyMap.js';
+import spikesChunk from '../galaxy/shaders/chunks/spikes.glsl?raw';
 
 const vertexShader = /* glsl */ `
   uniform float uPixelRatio;
@@ -24,6 +25,37 @@ const fragmentShader = /* glsl */ `
     gl_FragColor = vec4(vColor * a, 1.0);
   }
 `;
+
+// Diffraction spikes on the brightest field stars: a second, larger sprite
+// that draws only the spikes (the star itself stays in the main points).
+const spikeVertexShader = /* glsl */ `
+  uniform float uPixelRatio;
+  attribute float aSize;
+  attribute vec3 aColor;
+  varying vec3 vColor;
+  varying float vSizePx;
+  void main() {
+    vColor = aColor;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vSizePx = aSize * uPixelRatio;
+    gl_PointSize = vSizePx;
+  }
+`;
+
+const spikeFragmentShader = /* glsl */ `
+  uniform float uSpikeStyle;
+  varying vec3 vColor;
+  varying float vSizePx;
+  ${spikesChunk}
+  void main() {
+    float a = gk_spikes(gl_PointCoord, vSizePx, uSpikeStyle);
+    if (a <= 0.003) discard;
+    gl_FragColor = vec4(vColor * a * 0.55, 1.0);
+  }
+`;
+
+/** How many of the brightest field stars get spikes. */
+export const SPIKE_STARS = 30;
 
 // Rough stellar colors from cool to hot; most field stars look white.
 const STAR_TINTS = [
@@ -80,7 +112,41 @@ export function createStarfield({ count = 8000, radius = 900, seed = 1337, pixel
     transparent: true,
   });
 
+  // The brightest stars (colour × sprite area) get spike sprites.
+  const order = Array.from({ length: count }, (_, i) => i);
+  const score = (i) => (colors[i * 3] + colors[i * 3 + 1] + colors[i * 3 + 2]) * sizes[i] * sizes[i];
+  order.sort((a, b) => score(b) - score(a));
+  const top = order.slice(0, Math.min(SPIKE_STARS, count));
+  const best = top.length ? score(top[0]) : 1;
+  const spikePositions = new Float32Array(top.length * 3);
+  const spikeColors = new Float32Array(top.length * 3);
+  const spikeSizes = new Float32Array(top.length);
+  top.forEach((i, k) => {
+    for (let c = 0; c < 3; c++) {
+      spikePositions[k * 3 + c] = positions[i * 3 + c];
+      spikeColors[k * 3 + c] = colors[i * 3 + c];
+    }
+    spikeSizes[k] = 24 + 56 * (score(i) / best);
+  });
+  const spikeGeometry = new THREE.BufferGeometry();
+  spikeGeometry.setAttribute('position', new THREE.BufferAttribute(spikePositions, 3));
+  spikeGeometry.setAttribute('aColor', new THREE.BufferAttribute(spikeColors, 3));
+  spikeGeometry.setAttribute('aSize', new THREE.BufferAttribute(spikeSizes, 1));
+  const spikeMaterial = new THREE.ShaderMaterial({
+    vertexShader: spikeVertexShader,
+    fragmentShader: spikeFragmentShader,
+    uniforms: { uPixelRatio: material.uniforms.uPixelRatio, uSpikeStyle: { value: 0 } },
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    transparent: true,
+  });
+  const spikes = new THREE.Points(spikeGeometry, spikeMaterial);
+  spikes.frustumCulled = false;
+  spikes.layers.set(LAYERS.BACKGROUND);
+  spikes.visible = false;
+
   const points = new THREE.Points(geometry, material);
+  points.add(spikes); // follows the camera with the field
   points.frustumCulled = false;
   points.renderOrder = -1;
   points.layers.set(LAYERS.BACKGROUND);
@@ -94,9 +160,17 @@ export function createStarfield({ count = 8000, radius = 900, seed = 1337, pixel
     setPixelRatio(value) {
       material.uniforms.uPixelRatio.value = value;
     },
+    /** 0 off, 1 Hubble, 2 JWST (see spikes.glsl). */
+    setSpikeStyle(style) {
+      spikeMaterial.uniforms.uSpikeStyle.value = style;
+      spikes.visible = style > 0;
+    },
+    spikes,
     dispose() {
       geometry.dispose();
       material.dispose();
+      spikeGeometry.dispose();
+      spikeMaterial.dispose();
     },
   };
 }

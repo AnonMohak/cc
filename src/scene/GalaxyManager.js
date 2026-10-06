@@ -16,6 +16,7 @@ export class GalaxyManager {
     this.scene = scene;
     this.dustScale = dustScaleFromSettings(store.getState().settings);
     this.supernovae = store.getState().settings.supernovae ?? true;
+    this.spikeStyle = 0; // set by the app (setting × tier)
     // The app sets the active tier (Auto can change it at any time).
     this.quality = QUALITY.medium;
     this.pixelRatio = pixelRatio;
@@ -51,6 +52,7 @@ export class GalaxyManager {
       galaxy.id = entry.id;
       galaxy.onBaked = () => this.onChange?.();
       galaxy.setQuality(this.quality);
+      galaxy.setSpikeStyle(this.spikeStyle);
       galaxy.setEmphasis(emphasisTarget(entry.id, this.selectedId), true);
       this.galaxies.set(entry.id, galaxy);
       this.scene.add(galaxy.group);
@@ -76,6 +78,11 @@ export class GalaxyManager {
   setSelected(id) {
     this.selectedId = id;
     for (const [gid, galaxy] of this.galaxies) galaxy.setEmphasis(emphasisTarget(gid, id));
+  }
+
+  setSpikeStyle(style) {
+    this.spikeStyle = style;
+    for (const galaxy of this.galaxies.values()) galaxy.setSpikeStyle(style);
   }
 
   setDustScale(scale) {

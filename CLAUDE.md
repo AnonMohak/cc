@@ -23,6 +23,7 @@ Additional:
 - **Supernovae** (`galaxy/supernovae.js`, Settings → Supernovae): a seeded Poisson schedule (mean 9 s of simulation time per galaxy; nothing while paused) picks a star (young/arm stars preferred, never the bright core or cluster stars) and lights one of 4 reused flash points. The flash copies the star's `aOrbit`, so `gs_position` moves it with the star; light curve: fast rise, ~5 s fade, peak above the bloom threshold. The GLSL light curve mirrors `supernovaLight`.
 - **Live structure controls**: arm count, winding, density wave, arm contrast, flocculence, dust, diffuse glow and bulge profile change instantly (shader uniforms).
 - **Bloom**: lifts only bright cores and stars (threshold 0.45).
+- **Diffraction spikes** (`shaders/chunks/spikes.glsl`, Settings → Star spikes: JWST 6+2 / Hubble 4 / Off): drawn inside point sprites, aligned to the screen like real telescope optics. On the 30 brightest background stars (a second sprite layer in `starfield.js`) and on supernova flashes (their sprite grows ×4). `spikeStyle(setting, tier)` in `quality.js` turns them off on Low/Minimal.
 - **Background sky** (`scene/sky.js`, model in `scene/skyMap.js`): a faint Milky Way band (thicker and warmer toward the galactic centre, star clouds, a filamentary dust rift, red/blue nebulae near the plane) baked once into a 1024×512 equirectangular sRGB texture in a Web Worker (`skyWorker.js`; main-thread fallback at 512×256), drawn on a camera-following sphere: one texture fetch per pixel. The static starfield is denser along the band (`starDensity`). Settings → Milky Way sky toggles it. Keep it far below the bloom threshold (`SKY_INTENSITY`).
 - **Global controls**: pause/resume, time scale, quality (Auto or a fixed tier), exposure, bloom, dust on/off and amount, auto-rotate camera.
 - **FPS readout**: add `?fps` to the URL — frame rate, GPU name, active quality tier and GPU ms per pass (`core/gpuTimer.js`).
@@ -102,7 +103,7 @@ src/
 │   ├── discMap.js           # PURE bake of in-plane arms/bar/dust (pattern frame) → half-float texture
 │   ├── noiseTexture.js      # Shared tileable fbm texture (flocculence, dust filaments)
 │   ├── params.js            # LIMITS + defaults for shape / structure / look / motion, clamp functions
-│   └── shaders/             # *.glsl via ?raw; chunks/{model,noise,stars}.glsl joined by glsl.js
+│   └── shaders/             # *.glsl via ?raw; chunks/{model,noise,stars,spikes}.glsl joined by glsl.js
 ├── scene/
 │   ├── GalaxyManager.js     # Map<id, Galaxy>; applies store diffs to the scene
 │   ├── diffGalaxies.js      # PURE: prev/next galaxy lists → { added, removed, shapeChanged, lookChanged }

@@ -32,3 +32,23 @@ describe('createStarfield', () => {
     expect(m).toHaveBeenCalled();
   });
 });
+
+describe('starfield diffraction spikes', () => {
+  it('puts spike sprites on the brightest stars, hidden until a style is set', () => {
+    const field = createStarfield({ count: 2000 });
+    const spikes = field.spikes;
+    expect(spikes.geometry.getAttribute('position').count).toBe(30);
+    expect(spikes.visible).toBe(false);
+    field.setSpikeStyle(2);
+    expect(spikes.visible).toBe(true);
+    expect(spikes.material.uniforms.uSpikeStyle.value).toBe(2);
+    field.setSpikeStyle(0);
+    expect(spikes.visible).toBe(false);
+    // Spike stars are among the brightest: every one beats the field median.
+    const lum = (arr, i) => arr[i * 3] + arr[i * 3 + 1] + arr[i * 3 + 2];
+    const all = field.object.geometry.getAttribute('aColor').array;
+    const median = Array.from({ length: 2000 }, (_, i) => lum(all, i)).sort((a, b) => a - b)[1000];
+    const top = spikes.geometry.getAttribute('aColor').array;
+    for (let k = 0; k < 30; k++) expect(lum(top, k)).toBeGreaterThan(median);
+  });
+});

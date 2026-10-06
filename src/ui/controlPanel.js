@@ -334,6 +334,10 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .onChange((v) => setting({ dustOpacity: v }));
   settingsFolder.add(settingsProxy, 'sky').name('Milky Way sky').onChange((v) => setting({ sky: v }));
   settingsFolder.add(settingsProxy, 'supernovae').name('Supernovae').onChange((v) => setting({ supernovae: v }));
+  settingsFolder
+    .add(settingsProxy, 'spikes', { 'JWST (6)': 'jwst', 'Hubble (4)': 'hubble', Off: 'off' })
+    .name('Star spikes')
+    .onChange((v) => setting({ spikes: v }));
   const hudFolder = settingsFolder.addFolder('HUD');
   hudFolder.add(settingsProxy, 'labels').name('Galaxy labels').onChange((v) => setting({ labels: v }));
   hudFolder.add(settingsProxy, 'scaleBar').name('Scale bar (ly)').onChange((v) => setting({ scaleBar: v }));

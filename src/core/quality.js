@@ -14,10 +14,11 @@ export const QUALITY = {
     starCap: 30_000, // stars drawn per galaxy (setDrawRange, no rebuild)
     volumeDust: false, // stars keep their own analytic dust either way
     maxPointPx: 8,
+    spikes: false, // diffraction spikes (extra sprite fill)
   },
-  low: { label: 'Low', volumeScale: 0.35, steps: 14, bloom: 'off', maxPixelRatio: 1, starCap: 60_000, volumeDust: true, maxPointPx: 10 },
-  medium: { label: 'Medium', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14 },
-  high: { label: 'High', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18 },
+  low: { label: 'Low', volumeScale: 0.35, steps: 14, bloom: 'off', maxPixelRatio: 1, starCap: 60_000, volumeDust: true, maxPointPx: 10, spikes: false },
+  medium: { label: 'Medium', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true },
+  high: { label: 'High', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true },
 };
 
 /** Cheapest first: the governor moves along this list. */
@@ -57,4 +58,16 @@ export function pixelRatioFor(devicePixelRatio, tierName) {
 /** Whether the bloom pass runs, from the user's strength and the tier. */
 export function bloomEnabled(strength, tierName) {
   return strength > 0 && QUALITY[tierName].bloom !== 'off';
+}
+
+/** Values allowed in settings.spikes (diffraction spike style). */
+export const SPIKE_OPTIONS = ['jwst', 'hubble', 'off'];
+const SPIKE_STYLE = { off: 0, hubble: 1, jwst: 2 };
+
+/**
+ * Shader spike style (0 off, 1 Hubble, 2 JWST) from the setting and the tier:
+ * cheap tiers skip the extra sprite fill.
+ */
+export function spikeStyle(setting, tierName) {
+  return QUALITY[tierName]?.spikes ? (SPIKE_STYLE[setting] ?? 0) : 0;
 }

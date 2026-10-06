@@ -2,11 +2,14 @@ uniform float uPixelRatio;
 uniform float uBrightness;
 uniform float uEmphasis;
 uniform float uSnTime;
+uniform float uSpikeStyle;
 
 attribute vec4 aOrbit; // the exploding star's orbit: the flash moves with it
 attribute float aBirth; // galaxy simulation time of the explosion
 
 varying vec3 vColor;
+varying float vCorePx;
+varying float vSizePx;
 
 // Must match supernovae.js (RISE, DECAY, LIFETIME).
 const float RISE = 0.25;
@@ -33,7 +36,10 @@ void main() {
 
   float l = light(uSnTime - aBirth);
   // A point source: its glow grows with brightness, not with closeness.
-  gl_PointSize = l > 0.0 ? mix(4.0, 26.0, l) * uPixelRatio : 0.0;
+  vCorePx = mix(4.0, 26.0, l) * uPixelRatio;
+  // Spikes reach well past the core glow.
+  vSizePx = uSpikeStyle > 0.5 ? vCorePx * 4.0 : vCorePx;
+  gl_PointSize = l > 0.0 ? vSizePx : 0.0;
   // Hot blue-white, dimmed and reddened by the galaxy's own dust.
   vColor = vec3(0.75, 0.85, 1.0) * l * PEAK * uBrightness * uEmphasis * gs_extinction(gs_dustTau(p));
 }

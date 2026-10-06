@@ -10,7 +10,7 @@ import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
 import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
-import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier } from './core/quality.js';
+import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createRenderGate } from './core/renderGate.js';
 import { createActions } from './state/actions.js';
@@ -122,6 +122,13 @@ export function startApp(container, { startScreen } = {}) {
     if (setMaxPixelRatio(tier.maxPixelRatio)) resizeAll();
     gate.invalidate();
     onTierChange(name);
+    applySpikes();
+  }
+
+  function applySpikes() {
+    const style = spikeStyle(store.getState().settings.spikes, currentTier);
+    galaxies.setSpikeStyle(style);
+    starfield.setSpikeStyle(style);
   }
 
   // ── Loop and camera ────────────────────────────────────────────────────
@@ -212,6 +219,7 @@ export function startApp(container, { startScreen } = {}) {
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
     sky.setVisible(settings.sky);
+    if (currentTier) applySpikes();
   }
   applySettings(store.getState().settings);
   applyTier(activeTier(store.getState().settings.quality, governor.tier()));

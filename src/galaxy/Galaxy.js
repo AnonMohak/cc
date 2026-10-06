@@ -226,6 +226,11 @@ export class Galaxy {
     snBirth.needsUpdate = true;
   }
 
+  /** Diffraction spike style for the supernova flashes (0 off, 1 Hubble, 2 JWST). */
+  setSpikeStyle(style) {
+    this.uniforms.uSpikeStyle.value = style;
+  }
+
   /** Settings → Supernovae. */
   setSupernovae(on) {
     this.supernovae.visible = on;
