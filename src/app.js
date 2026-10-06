@@ -18,6 +18,8 @@ import { debounce } from './util/debounce.js';
 import { PRESETS } from './galaxy/presets.js';
 import { showNotice } from './ui/notice.js';
 import { createFpsMeter } from './ui/fpsMeter.js';
+import { createInfoCard } from './ui/infoCard.js';
+import { catalogueViewDirection } from './galaxy/catalogue.js';
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -64,10 +66,17 @@ export function startApp(container) {
     if (!galaxy) return;
     store.dispatch(actions.selectGalaxy(id));
     const { center, normal, radius } = galaxy.pickTarget();
-    const position = framingPosition(camera.position, center, normal, radius, {
-      min: CAMERA_LIMITS.minDistance,
-      max: CAMERA_LIMITS.maxDistance,
-    });
+    const entry = store.getState().galaxies.find((g) => g.id === id);
+    // Real galaxies are framed from the direction that shows their true inclination.
+    const viewDir = entry?.catalog ? catalogueViewDirection() : undefined;
+    const position = framingPosition(
+      camera.position,
+      center,
+      normal,
+      radius,
+      { min: CAMERA_LIMITS.minDistance, max: CAMERA_LIMITS.maxDistance },
+      viewDir,
+    );
     cameraFly.flyTo(center, position);
   }
 
@@ -143,6 +152,7 @@ export function startApp(container) {
     onScreenshot: commands.screenshot,
   });
   commands.togglePanel = () => panel.toggle();
+  createInfoCard(container, store);
 
   attachPointerInput({
     dom: renderer.domElement,

@@ -1,4 +1,5 @@
 import { PRESETS } from '../galaxy/presets.js';
+import { CATALOGUE, catalogueParams } from '../galaxy/catalogue.js';
 import { randomSeed } from '../galaxy/random.js';
 import { findFreePosition } from './placement.js';
 
@@ -36,6 +37,29 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
         },
       };
     },
+    /**
+     * Add a real galaxy from the catalogue (named, tilted to its true
+     * inclination, sized by its real diameter).
+     */
+    addCatalogueGalaxy(state, catalogId, target = [0, 0, 0]) {
+      const params = catalogueParams(catalogId);
+      if (!params) return { type: 'noop' };
+      const look = { ...params.look, position: findFreePosition(state.galaxies, target, params.look.radius) };
+      return {
+        type: 'galaxy/add',
+        galaxy: {
+          id: makeId(),
+          name: CATALOGUE[catalogId].name,
+          preset: params.preset,
+          catalog: catalogId,
+          seed: makeSeed(),
+          shape: params.shape,
+          structure: params.structure,
+          look,
+          motion: params.motion,
+        },
+      };
+    },
     removeGalaxy: (id) => ({ type: 'galaxy/remove', id }),
     updateGalaxy: (id, patch) => ({ type: 'galaxy/update', id, patch }),
     reseedGalaxy: (id) => ({ type: 'galaxy/update', id, patch: { seed: makeSeed() } }),
@@ -48,6 +72,8 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
         id: galaxy.id,
         patch: {
           preset: presetName,
+          // A generic preset replaces the real-galaxy parameters.
+          catalog: null,
           shape: { ...preset.shape },
           structure: { ...preset.structure },
           look: { ...preset.look, position: galaxy.look.position },

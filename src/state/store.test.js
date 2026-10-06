@@ -10,6 +10,7 @@ import {
   DEFAULT_SETTINGS,
 } from './store.js';
 import { createActions } from './actions.js';
+import { tiltForInclination } from '../galaxy/catalogue.js';
 import { MAX_GALAXIES, MAX_TOTAL_PARTICLES, LIMITS } from '../galaxy/params.js';
 
 function setup() {
@@ -184,5 +185,39 @@ describe('sanitizeGalaxy', () => {
     expect(g.preset).toBe('spiral');
     expect(g.seed).toBe(1);
     expect(g.shape.count).toBe(LIMITS.shape.count.min);
+  });
+});
+
+describe('catalogue galaxies', () => {
+  it('addCatalogueGalaxy adds a named, tilted galaxy that remembers its origin', () => {
+    const { store, actions } = setup();
+    store.dispatch(actions.addCatalogueGalaxy(store.getState(), 'm104'));
+    const g = store.getState().galaxies[0];
+    expect(g).toMatchObject({ name: 'Sombrero (M104)', catalog: 'm104', preset: 'spiral' });
+    expect(g.look.tiltX).toBe(tiltForInclination(84));
+    expect(store.getState().selectedId).toBe(g.id);
+  });
+
+  it('unknown catalogue ids are a no-op', () => {
+    const { store, actions } = setup();
+    const before = store.getState();
+    store.dispatch(actions.addCatalogueGalaxy(before, 'm999'));
+    expect(store.getState()).toBe(before);
+  });
+
+  it('applying a generic preset clears the catalogue link', () => {
+    const { store, actions } = setup();
+    store.dispatch(actions.addCatalogueGalaxy(store.getState(), 'm31'));
+    const g = store.getState().galaxies[0];
+    store.dispatch(actions.applyPreset(g, 'barred'));
+    expect(store.getState().galaxies[0].catalog).toBeNull();
+  });
+
+  it('sanitize keeps valid catalogue ids and drops invalid ones; preset galaxies have none', () => {
+    expect(sanitizeGalaxy({ id: 'a', catalog: 'm87' }).catalog).toBe('m87');
+    expect(sanitizeGalaxy({ id: 'a', catalog: 'evil' }).catalog).toBeNull();
+    const { store, add } = setup();
+    add();
+    expect(store.getState().galaxies[0].catalog).toBeNull();
   });
 });

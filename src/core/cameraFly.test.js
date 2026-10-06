@@ -50,3 +50,12 @@ describe('framingPosition', () => {
     expect(clamped.distanceTo(center)).toBeCloseTo(50);
   });
 });
+
+describe('framingPosition with a fixed view direction', () => {
+  it('places the camera along that direction, ignoring the disc normal', () => {
+    const center = new THREE.Vector3(5, 0, 0);
+    const dir = new THREE.Vector3(0, 0, 1);
+    const pos = framingPosition(new THREE.Vector3(0, 50, 0), center, new THREE.Vector3(0, 1, 0), 4, { min: 1, max: 100 }, dir);
+    expect(pos.toArray().map((v) => +v.toFixed(6))).toEqual([5, 0, 10.4]);
+  });
+});

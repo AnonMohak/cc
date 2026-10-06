@@ -15,7 +15,6 @@ Ideas to make Galaxy Sandbox more feature-rich and better looking. None of these
 ## Features
 
 - **Galaxy collisions.** A GPU "N-body-lite" step (GPGPU textures or WebGPU compute) that creates tidal tails and bridges when two galaxies pass close.
-- **Real-galaxy catalogue.** Presets for M31 Andromeda, M51 Whirlpool, M101 Pinwheel, M104 Sombrero, M87 and the LMC, with true inclination and arm pitch, plus an info card with real facts (distance, size, type).
 - **Universe generator.** Build a random cluster or filament of galaxies in one click.
 - **Camera modes.** A guided tour or cinematic fly-through, and a free-fly WASD mode.
 - **Recording.** Video capture (MediaRecorder on the canvas stream) and GIF export.

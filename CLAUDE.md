@@ -16,6 +16,7 @@ Required:
 Additional:
 
 - **Presets**: spiral, barred spiral, elliptical, irregular. A new galaxy starts from a preset.
+- **Real-galaxy catalogue** (`galaxy/catalogue.js`): M31, M51, M101, M104, M87, LMC with real facts in an info card (`ui/infoCard.js`). Size follows the real diameter; the true inclination is shown from the home camera view, and Focus keeps it.
 - **Selection**: click or tap a galaxy to select it; the selected galaxy brightens ×1.15 and the others dim to ×0.75 (no overlay). Double-click / double-tap or "Focus" flies the camera to it.
 - **Realistic rendering** (researched against real galaxies): density-wave spiral arms, black-body star colours, young blue stars that light up on arm crests, pink H II nebulae, a Sérsic bulge, an exponential × sech² disc and dust lanes on the inner arm edges (edge-on: a midplane dust lane).
 - **Live structure controls**: arm count, winding, density wave, arm contrast, flocculence, dust, diffuse glow and bulge profile change instantly (shader uniforms).
@@ -79,6 +80,7 @@ src/
 │   ├── emphasis.js          # PURE: selection brightness targets + frame-rate independent ease
 │   ├── lod.js               # PURE: on-screen footprint → volume step count
 │   ├── presets.js           # spiral (M51/M101), barred (NGC 1300), elliptical (M87), irregular (LMC)
+│   ├── catalogue.js         # Real galaxies: facts + params; tiltForInclination, catalogueViewDirection
 │   ├── params.js            # LIMITS + defaults for shape / structure / look / motion, clamp functions
 │   └── shaders/             # *.glsl via ?raw; chunks/{model,noise,stars}.glsl joined by glsl.js
 ├── scene/

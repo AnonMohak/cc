@@ -8,6 +8,7 @@ import {
   LIMITS,
 } from '../galaxy/params.js';
 import { PRESETS } from '../galaxy/presets.js';
+import { CATALOGUE } from '../galaxy/catalogue.js';
 
 // v2: density-wave renderer (structure group, new shape keys, quality/exposure).
 export const STATE_VERSION = 2;
@@ -83,6 +84,8 @@ export function sanitizeGalaxy(entry) {
     id: entry.id,
     name: typeof entry.name === 'string' && entry.name ? entry.name.slice(0, 40) : PRESETS[preset].label,
     preset,
+    // Real-galaxy origin (catalogue id) for the info card; null for presets.
+    catalog: Object.hasOwn(CATALOGUE, entry.catalog) ? entry.catalog : null,
     seed,
     shape: clampShape(entry.shape),
     structure: clampStructure(entry.structure ?? PRESETS[preset].structure),
@@ -127,7 +130,7 @@ export function reducer(state, action) {
       const index = state.galaxies.findIndex((g) => g.id === action.id);
       if (index === -1) return state;
       const prev = state.galaxies[index];
-      const { shape, structure, look, motion, name, seed, preset } = action.patch ?? {};
+      const { shape, structure, look, motion, name, seed, preset, catalog } = action.patch ?? {};
       const next = { ...prev };
       if (shape) {
         next.shape = clampShape({ ...prev.shape, ...shape });
@@ -142,6 +145,7 @@ export function reducer(state, action) {
       if (typeof name === 'string' && name.trim()) next.name = name.trim().slice(0, 40);
       if (Number.isFinite(seed)) next.seed = seed >>> 0;
       if (PRESETS[preset]) next.preset = preset;
+      if (catalog === null || Object.hasOwn(CATALOGUE, catalog)) next.catalog = catalog;
       const galaxies = state.galaxies.slice();
       galaxies[index] = next;
       return { ...state, galaxies };

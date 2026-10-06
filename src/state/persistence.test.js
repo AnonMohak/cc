@@ -167,3 +167,12 @@ describe('quality and exposure settings', () => {
     expect(QUALITY.high.steps).toBeLessThanOrEqual(96); // shader MAX_STEPS
   });
 });
+
+describe('catalogue persistence', () => {
+  it('round-trips the catalogue link', () => {
+    const actions = createActions({ makeId: () => 'c1', makeSeed: () => 5 });
+    const store = createStore();
+    store.dispatch(actions.addCatalogueGalaxy(store.getState(), 'lmc'));
+    expect(deserialize(serialize(store.getState())).galaxies[0].catalog).toBe('lmc');
+  });
+});

@@ -1,6 +1,7 @@
 import GUI from 'lil-gui';
 import { LIMITS, SHAPE_KEYS, MAX_TOTAL_PARTICLES, MAX_GALAXIES } from '../galaxy/params.js';
 import { PRESETS, PRESET_NAMES } from '../galaxy/presets.js';
+import { CATALOGUE, CATALOGUE_IDS, catalogueParams } from '../galaxy/catalogue.js';
 import { canAddGalaxy, totalParticles, SETTINGS_LIMITS, QUALITY } from '../state/store.js';
 import { debounce } from '../util/debounce.js';
 
@@ -44,6 +45,7 @@ const SHAPE_DEBOUNCE_MS = 150;
 const NARROW_SCREEN = 640;
 
 const presetOptions = Object.fromEntries(PRESET_NAMES.map((n) => [PRESETS[n].label, n]));
+const catalogueOptions = Object.fromEntries(CATALOGUE_IDS.map((id) => [CATALOGUE[id].name, id]));
 
 /**
  * lil-gui control panel. Reads the store and dispatches actions; it never
@@ -68,11 +70,16 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   const sceneFolder = gui.addFolder('Scene');
   const sceneProxy = {
     preset: 'spiral',
+    real: CATALOGUE_IDS[0],
     selected: '',
     particles: '',
     add() {
       const state = store.getState();
       dispatch(actions.addGalaxy(state, sceneProxy.preset, getTarget()));
+    },
+    addReal() {
+      const state = store.getState();
+      dispatch(actions.addCatalogueGalaxy(state, sceneProxy.real, getTarget()));
     },
   };
   sceneFolder
@@ -80,6 +87,11 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .name('New galaxy type')
     .onChange(() => refreshSceneFolder(store.getState()));
   const addButton = sceneFolder.add(sceneProxy, 'add').name('➕ Add galaxy');
+  sceneFolder
+    .add(sceneProxy, 'real', catalogueOptions)
+    .name('Real galaxy')
+    .onChange(() => refreshSceneFolder(store.getState()));
+  const addRealButton = sceneFolder.add(sceneProxy, 'addReal').name('🔭 Add real galaxy');
   let selectController = null;
   const particlesController = sceneFolder.add(sceneProxy, 'particles').name('Stars in scene').disable();
 
@@ -97,8 +109,8 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       .add(sceneProxy, 'selected', galaxyOptions(state))
       .name('Selected')
       .onChange((id) => dispatch(actions.selectGalaxy(id || null)));
-    // Keep the selector directly under the add button.
-    addButton.domElement.after(selectController.domElement);
+    // Keep the selector directly under the add buttons.
+    addRealButton.domElement.after(selectController.domElement);
   }
 
   function refreshSceneFolder(state) {
@@ -106,6 +118,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     const allowed = canAddGalaxy(state, preset.shape.count);
     addButton.enable(allowed);
     addButton.name(allowed ? '➕ Add galaxy' : `Limit reached (${MAX_GALAXIES} galaxies / ${fmt(MAX_TOTAL_PARTICLES)} stars)`);
+    addRealButton.enable(canAddGalaxy(state, catalogueParams(sceneProxy.real).shape.count));
     sceneProxy.particles = `${fmt(totalParticles(state))} / ${fmt(MAX_TOTAL_PARTICLES)}`;
     particlesController.updateDisplay();
   }

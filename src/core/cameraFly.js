@@ -60,14 +60,20 @@ const _dir = new THREE.Vector3();
  * @param {THREE.Vector3} normal unit disc normal
  * @param {number} radius
  * @param {{ min: number, max: number }} distanceLimits
+ * @param {THREE.Vector3} [viewDir] fixed unit direction from the galaxy to the
+ *   camera (keeps a real galaxy's inclination); default: mostly face-on
  */
-export function framingPosition(cameraPosition, center, normal, radius, distanceLimits) {
-  _dir.subVectors(cameraPosition, center);
-  if (_dir.lengthSq() < 1e-8) _dir.copy(normal);
-  _dir.normalize();
-  // View from the disc's visible side, tilted toward face-on.
-  const side = Math.sign(_dir.dot(normal)) || 1;
-  _dir.multiplyScalar(0.45).addScaledVector(normal, 0.9 * side).normalize();
+export function framingPosition(cameraPosition, center, normal, radius, distanceLimits, viewDir) {
+  if (viewDir) {
+    _dir.copy(viewDir).normalize();
+  } else {
+    _dir.subVectors(cameraPosition, center);
+    if (_dir.lengthSq() < 1e-8) _dir.copy(normal);
+    _dir.normalize();
+    // View from the disc's visible side, tilted toward face-on.
+    const side = Math.sign(_dir.dot(normal)) || 1;
+    _dir.multiplyScalar(0.45).addScaledVector(normal, 0.9 * side).normalize();
+  }
   const distance = THREE.MathUtils.clamp(radius * 2.6, distanceLimits.min, distanceLimits.max);
   return center.clone().addScaledVector(_dir, distance);
 }
