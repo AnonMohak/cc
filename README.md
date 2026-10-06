@@ -17,7 +17,7 @@ Spiral arms are real **density waves**: stars move on twisted elliptical orbits 
 
 ## Quick start
 
-Requires [Node.js](https://nodejs.org/) 20+ and a browser with WebGL 2.
+Requires [Node.js](https://nodejs.org/) 22.12+ (needed by Vitest; Vite alone needs 20.19+) and a browser with WebGL 2.
 
 ```sh
 npm install
