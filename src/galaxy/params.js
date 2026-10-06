@@ -47,7 +47,7 @@ export const SHAPE_KEYS = Object.keys(LIMITS.shape);
 export const DEFAULT_SHAPE = {
   count: 80_000,
   arms: 2,
-  spin: 0.9,
+  spin: 1.15,
   armSpread: 0.22,
   randomnessPower: 2.8,
   armContrast: 0.8,

@@ -2,8 +2,8 @@ import { createRandom } from './random.js';
 import { clampShape } from './params.js';
 
 // Exponential disc scale length (fraction of the radius). Real discs fall
-// off roughly as e^(-r/h); 0.35 keeps enough stars in the outer arms.
-const DISC_SCALE = 0.35;
+// off roughly as e^(-r/h); 0.45 keeps enough stars in the outer arms.
+const DISC_SCALE = 0.45;
 const EXP_TRUNC = 1 - Math.exp(-1 / DISC_SCALE);
 const CLUMP_SHARE = 0.3;
 const CLUMP_SD = 0.07;
@@ -150,7 +150,7 @@ function sampleDisc(rng, shape, armStart, out) {
 
   if (onArm) {
     // pow(u, power) packs most stars close to the arm centre line.
-    const spread = shape.armSpread * (0.2 + 0.8 * r);
+    const spread = shape.armSpread * (0.45 + 0.55 * r);
     const dx = Math.pow(rng.next(), shape.randomnessPower) * rng.sign() * spread;
     const dz = Math.pow(rng.next(), shape.randomnessPower) * rng.sign() * spread;
     out[0] += dx;
