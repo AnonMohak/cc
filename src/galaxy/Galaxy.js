@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { generateGalaxy } from './generateGalaxy.js';
 import { createStarMaterial, createHiiMaterial } from './starMaterials.js';
 import { createVolumeMaterial } from './volumeMaterial.js';
-import { volumeBounds } from './densityModel.js';
+import { volumeBounds, marchBounds } from './densityModel.js';
 import { clampShape, clampStructure } from './params.js';
 import {
   createGalaxyUniforms,
@@ -126,9 +126,17 @@ export class Galaxy {
   /** Fit the volume box to the current shape and bulge profile. */
   updateVolumeBounds() {
     if (!this.shape || !this.structure) return;
-    const [x, y, z] = volumeBounds(clampShape(this.shape), clampStructure(this.structure));
+    const shape = clampShape(this.shape);
+    const structure = clampStructure(this.structure);
+    const [x, y, z] = volumeBounds(shape, structure);
     this.uniforms.uBoxHalf.value.set(x, y, z);
     this.volume.scale.set(x, y, z);
+    const march = marchBounds(shape, structure);
+    const u = this.uniforms;
+    u.uDiscHalfHeight.value = march.discHalfHeight;
+    u.uDiscRadius.value = march.discRadius;
+    u.uBulgeRadii.value.fromArray(march.bulgeRadii);
+    u.uStepLength.value = march.stepLength;
   }
 
   /** Density-wave arms, dust and volume settings: uniforms only. */

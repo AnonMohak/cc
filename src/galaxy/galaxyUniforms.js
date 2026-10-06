@@ -29,6 +29,11 @@ export function createGalaxyUniforms() {
     uBulgeFlatten: { value: 0.7 },
     uBulgeFraction: { value: 0.16 },
     uBoxHalf: { value: new THREE.Vector3(1.3, 0.3, 1.3) },
+    // Volume march bounds (densityModel.js marchBounds)
+    uDiscHalfHeight: { value: 0.2 },
+    uDiscRadius: { value: 1.3 },
+    uBulgeRadii: { value: new THREE.Vector3(0.2, 0.15, 0.2) },
+    uStepLength: { value: 0.05 },
     // Look
     uSize: { value: 1 },
     uScale: { value: 1 },

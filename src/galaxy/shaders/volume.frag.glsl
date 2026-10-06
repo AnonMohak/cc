@@ -21,6 +21,11 @@ uniform vec3 uColorInner;
 uniform vec3 uColorOuter;
 uniform sampler2D uDiscMap;
 uniform sampler2D uNoise;
+// March bounds (densityModel.js marchBounds / marchInterval).
+uniform float uDiscHalfHeight;
+uniform float uDiscRadius;
+uniform vec3 uBulgeRadii;
+uniform float uStepLength;
 
 varying vec3 vUnitPos;
 
@@ -38,6 +43,43 @@ float sech2(float x) {
   float e = exp(-2.0 * abs(x));
   float d = 1.0 + e;
   return 4.0 * e / (d * d);
+}
+
+// Ray interval inside slab |y| ≤ h ∩ cylinder x²+z² ≤ r² (empty: x > y).
+vec2 intersectDisc(vec3 ro, vec3 rd, float h, float r) {
+  vec2 t = vec2(0.0, 1e9);
+  if (abs(rd.y) < 1e-6) {
+    if (abs(ro.y) > h) return vec2(1.0, 0.0);
+  } else {
+    float a = (-h - ro.y) / rd.y;
+    float c = (h - ro.y) / rd.y;
+    t = vec2(min(a, c), max(a, c));
+  }
+  float A = dot(rd.xz, rd.xz);
+  float C = dot(ro.xz, ro.xz) - r * r;
+  if (A > 1e-8) {
+    float B = dot(ro.xz, rd.xz);
+    float d = B * B - A * C;
+    if (d < 0.0) return vec2(1.0, 0.0);
+    float s = sqrt(d);
+    t = vec2(max(t.x, (-B - s) / A), min(t.y, (-B + s) / A));
+  } else if (C > 0.0) {
+    return vec2(1.0, 0.0);
+  }
+  return vec2(max(t.x, 0.0), t.y);
+}
+
+// Ray interval inside an axis-aligned ellipsoid (empty: x > y).
+vec2 intersectEllipsoid(vec3 ro, vec3 rd, vec3 radii) {
+  vec3 o = ro / radii;
+  vec3 d = rd / radii;
+  float A = dot(d, d);
+  float B = dot(o, d);
+  float C = dot(o, o) - 1.0;
+  float disc = B * B - A * C;
+  if (disc < 0.0) return vec2(1.0, 0.0);
+  float s = sqrt(disc);
+  return vec2(max((-B - s) / A, 0.0), (-B + s) / A);
 }
 
 vec3 physicalTint(vec3 bb, float lumaBb, float R) {
@@ -59,7 +101,20 @@ void main() {
   float tFar = min(min(tHi.x, tHi.y), tHi.z);
   if (tFar <= tNear) discard;
 
-  float steps = max(uSteps, 4.0);
+  // March only where there is matter: (disc ∪ bulge) ∩ box.
+  vec2 dI = intersectDisc(ro, rd, uDiscHalfHeight, uDiscRadius);
+  vec2 bI = intersectEllipsoid(ro, rd, uBulgeRadii);
+  bool hasDisc = dI.y > dI.x;
+  bool hasBulge = bI.y > bI.x;
+  if (!hasDisc && !hasBulge) discard;
+  float a = min(hasDisc ? dI.x : 1e9, hasBulge ? bI.x : 1e9);
+  float b = max(hasDisc ? dI.y : -1e9, hasBulge ? bI.y : -1e9);
+  tNear = max(tNear, a);
+  tFar = min(tFar, b);
+  if (tFar <= tNear) discard;
+
+  // Step count from the chord: face-on rays through the thin disc take few.
+  float steps = clamp(ceil((tFar - tNear) / uStepLength), 3.0, max(uSteps, 3.0));
   float dt = (tFar - tNear) / steps;
   float t = tNear + dt * gn_ign(gl_FragCoord.xy);
 
@@ -98,6 +153,8 @@ void main() {
     // Bulge: flattened Sérsic.
     float rb = length(vec3(p.x, p.y / uBulgeFlatten, p.z));
     float bulge = BULGE_I * uBulgeFraction * gm_sersicRe(rb, uBulgeSize, uBulgeSersic);
+    // Fade out before the march ellipsoid so its surface never shows as an edge.
+    bulge *= 1.0 - gm_smoothstep(0.65, 1.0, length(p / uBulgeRadii));
 
     // Colour: old warm light inside; arm crests bluer (young stars).
     float young = disc.g * 0.8;

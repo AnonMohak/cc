@@ -178,3 +178,52 @@ describe('sersicRe', () => {
     expect(sersicRe(0.6, 0.2, 4)).toBeGreaterThan(0.01);
   });
 });
+
+describe('marchInterval', () => {
+  const load = () => import('./densityModel.js');
+  const norm = (v) => {
+    const l = Math.hypot(...v);
+    return v.map((x) => x / l);
+  };
+
+  it('face-on rays through the thin disc take few steps; edge-on rays the full budget', async () => {
+    const { marchBounds, marchInterval, volumeBounds } = await load();
+    const { PRESETS } = await import('./presets.js');
+    const shape = PRESETS.spiral.shape;
+    const structure = PRESETS.spiral.structure;
+    const bounds = marchBounds(shape, structure);
+    const box = volumeBounds(shape, structure);
+    const faceOn = marchInterval([0.6, 5, 0], [0, -1, 0], box, bounds, 44);
+    const edgeOn = marchInterval([-5, 0, 0.3], [1, 0, 0], box, bounds, 44);
+    expect(faceOn.steps).toBeLessThanOrEqual(10);
+    expect(edgeOn.steps).toBeGreaterThanOrEqual(30);
+    expect(edgeOn.steps).toBeGreaterThan(3 * faceOn.steps);
+  });
+
+  it('skips rays that miss the disc and bulge, even inside the box', async () => {
+    const { marchBounds, marchInterval } = await load();
+    const bounds = { discHalfHeight: 0.2, discRadius: 1.3, bulgeRadii: [0.2, 0.15, 0.2], stepLength: 0.05 };
+    // Through a box corner, outside the disc cylinder.
+    expect(marchInterval([1.4, 2, 1.4], [0, -1, 0], [1.45, 0.3, 1.45], bounds, 32)).toBeNull();
+    // Above the disc, parallel to it.
+    expect(marchInterval([-3, 0.25, 0], [1, 0, 0], [1.45, 0.3, 1.45], bounds, 32)).toBeNull();
+    expect(marchBounds({ bulgeSize: 0.1, bulgeFlatten: 0.5, discThickness: 0.02 }, { bulgeSersic: 2 }).bulgeRadii[1]).toBeLessThan(
+      marchBounds({ bulgeSize: 0.1, bulgeFlatten: 0.5, discThickness: 0.02 }, { bulgeSersic: 2 }).bulgeRadii[0],
+    );
+  });
+
+  it('includes the bulge for rays that pass above the disc through the bulge', async () => {
+    const { marchInterval } = await load();
+    const bounds = { discHalfHeight: 0.05, discRadius: 1.3, bulgeRadii: [0.4, 0.3, 0.4], stepLength: 0.02 };
+    const r = marchInterval([-3, 0.2, 0], norm([1, 0, 0]), [1.45, 0.4, 1.45], bounds, 32);
+    expect(r).not.toBeNull();
+    expect(r.t1 - r.t0).toBeGreaterThan(0.3);
+  });
+
+  it('starts at the camera when the camera is inside', async () => {
+    const { marchInterval } = await load();
+    const bounds = { discHalfHeight: 0.2, discRadius: 1.3, bulgeRadii: [0.2, 0.1, 0.2], stepLength: 0.05 };
+    const r = marchInterval([0.5, 0, 0], [1, 0, 0], [1.45, 0.3, 1.45], bounds, 32);
+    expect(r.t0).toBe(0);
+  });
+});

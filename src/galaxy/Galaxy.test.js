@@ -187,3 +187,13 @@ describe('Galaxy disc map', () => {
     expect(spy).toHaveBeenCalled();
   });
 });
+
+describe('Galaxy march bounds', () => {
+  it('sets the volume march uniforms from the shape (thicker disc → longer steps)', () => {
+    const thin = makeGalaxy({ shape: { ...PRESETS.spiral.shape, count: 1000, discThickness: 0.01 } });
+    const thick = makeGalaxy({ shape: { ...PRESETS.spiral.shape, count: 1000, discThickness: 0.05 } });
+    expect(thin.uniforms.uStepLength.value).toBeLessThan(thick.uniforms.uStepLength.value);
+    expect(thin.uniforms.uDiscHalfHeight.value).toBeLessThan(thick.uniforms.uDiscHalfHeight.value);
+    expect(thin.uniforms.uBulgeRadii.value.x).toBeGreaterThan(0);
+  });
+});

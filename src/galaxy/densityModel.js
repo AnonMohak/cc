@@ -146,3 +146,104 @@ export function volumeBounds(shape, structure) {
   const y = Math.min(1.2, Math.max(0.05, discZ, bulgeR * shape.bulgeFlatten));
   return [xz, y, xz];
 }
+
+/** Disc radius beyond which the volume has no disc light or dust (see discMap). */
+export const DISC_RADIUS = 1.3;
+
+/**
+ * Where the volume shader needs to march (mirrored in volume.frag.glsl):
+ * the disc slab (|y| ≤ discHalfHeight, R ≤ DISC_RADIUS) and the bulge
+ * ellipsoid. stepLength sets the step count from the chord length, so
+ * face-on rays through the thin disc take few steps.
+ */
+export function marchBounds(shape, structure) {
+  const n = structure.bulgeSersic;
+  const b = 2 * n - 1 / 3;
+  const bulgeR = Math.min(1.2, shape.bulgeSize * Math.pow(1 + Math.log(100) / b, n));
+  const discHalfHeight = 6 * shape.discThickness * 1.6 * 1.4;
+  return {
+    discHalfHeight,
+    discRadius: DISC_RADIUS,
+    bulgeRadii: [bulgeR, bulgeR * shape.bulgeFlatten, bulgeR],
+    stepLength: discHalfHeight / 4,
+  };
+}
+
+/** Ray interval [t0, t1] inside an axis-aligned box of half-size h, or null. */
+export function intersectBox(ro, rd, h) {
+  let t0 = 0;
+  let t1 = Infinity;
+  for (let k = 0; k < 3; k++) {
+    if (Math.abs(rd[k]) < 1e-12) {
+      if (Math.abs(ro[k]) > h[k]) return null;
+      continue;
+    }
+    const a = (-h[k] - ro[k]) / rd[k];
+    const c = (h[k] - ro[k]) / rd[k];
+    t0 = Math.max(t0, Math.min(a, c));
+    t1 = Math.min(t1, Math.max(a, c));
+  }
+  return t1 > t0 ? [t0, t1] : null;
+}
+
+/** Ray interval inside the slab |y| ≤ h ∩ cylinder x²+z² ≤ r², or null. */
+export function intersectDisc(ro, rd, h, r) {
+  let t0 = 0;
+  let t1 = Infinity;
+  if (Math.abs(rd[1]) < 1e-12) {
+    if (Math.abs(ro[1]) > h) return null;
+  } else {
+    const a = (-h - ro[1]) / rd[1];
+    const c = (h - ro[1]) / rd[1];
+    t0 = Math.min(a, c);
+    t1 = Math.max(a, c);
+  }
+  const A = rd[0] * rd[0] + rd[2] * rd[2];
+  if (A > 1e-12) {
+    const B = ro[0] * rd[0] + ro[2] * rd[2];
+    const C = ro[0] * ro[0] + ro[2] * ro[2] - r * r;
+    const disc = B * B - A * C;
+    if (disc < 0) return null;
+    const s = Math.sqrt(disc);
+    t0 = Math.max(t0, (-B - s) / A);
+    t1 = Math.min(t1, (-B + s) / A);
+  } else if (ro[0] * ro[0] + ro[2] * ro[2] > r * r) {
+    return null;
+  }
+  t0 = Math.max(t0, 0);
+  return t1 > t0 ? [t0, t1] : null;
+}
+
+/** Ray interval inside an axis-aligned ellipsoid with the given radii, or null. */
+export function intersectEllipsoid(ro, rd, radii) {
+  const o = ro.map((v, k) => v / radii[k]);
+  const d = rd.map((v, k) => v / radii[k]);
+  const A = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+  const B = o[0] * d[0] + o[1] * d[1] + o[2] * d[2];
+  const C = o[0] * o[0] + o[1] * o[1] + o[2] * o[2] - 1;
+  const disc = B * B - A * C;
+  if (disc < 0) return null;
+  const s = Math.sqrt(disc);
+  const t0 = Math.max((-B - s) / A, 0);
+  const t1 = (-B + s) / A;
+  return t1 > t0 ? [t0, t1] : null;
+}
+
+/**
+ * The march interval and step count for one ray: (disc ∪ bulge) ∩ box.
+ * @returns {{ t0: number, t1: number, steps: number } | null}
+ */
+export function marchInterval(ro, rd, boxHalf, bounds, maxSteps) {
+  const box = intersectBox(ro, rd, boxHalf);
+  if (!box) return null;
+  const parts = [
+    intersectDisc(ro, rd, bounds.discHalfHeight, bounds.discRadius),
+    intersectEllipsoid(ro, rd, bounds.bulgeRadii),
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  const t0 = Math.max(box[0], Math.min(...parts.map((p) => p[0])));
+  const t1 = Math.min(box[1], Math.max(...parts.map((p) => p[1])));
+  if (t1 <= t0) return null;
+  const steps = Math.min(maxSteps, Math.max(3, Math.ceil((t1 - t0) / bounds.stepLength)));
+  return { t0, t1, steps };
+}
