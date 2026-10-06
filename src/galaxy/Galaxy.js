@@ -84,6 +84,7 @@ export class Galaxy {
     this.discMap?.dispose();
     this.discMap = map;
     this.uniforms.uDiscMap.value = map;
+    this.onBaked?.();
   }
 
   /** Bake soon, once rapid changes (slider drags) have settled. */
@@ -102,6 +103,7 @@ export class Galaxy {
     stars.setAttribute('position', new THREE.BufferAttribute(data.positions, 3));
     stars.setAttribute('aOrbit', new THREE.BufferAttribute(data.orbit, 4));
     stars.setAttribute('aStar', new THREE.BufferAttribute(data.star, 3));
+    stars.setAttribute('aColor', new THREE.BufferAttribute(data.color, 3));
     stars.boundingSphere = sphere;
 
     const hii = new THREE.BufferGeometry();

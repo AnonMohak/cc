@@ -157,3 +157,21 @@ describe('GalaxyManager LOD', () => {
     expect(manager.get('id1').uniforms.uSteps.value).toBeLessThan(QUALITY.medium.steps);
   });
 });
+
+describe('GalaxyManager render-on-demand hooks', () => {
+  it('reports easing while emphasis animates, and notifies after a disc rebake', () => {
+    const { store, actions, manager, add } = setup();
+    add();
+    add();
+    manager.tick(0, 1); // settle the initial ease
+    expect(manager.isEasing()).toBe(false);
+    store.dispatch(actions.selectGalaxy('id1'));
+    expect(manager.isEasing()).toBe(true);
+    manager.tick(0, 1);
+    expect(manager.isEasing()).toBe(false);
+    let changed = 0;
+    manager.onChange = () => changed++;
+    manager.get('id1').bakeDiscMap();
+    expect(changed).toBe(1);
+  });
+});

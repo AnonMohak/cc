@@ -13,7 +13,7 @@ Spiral arms are real **density waves**: stars move on twisted elliptical orbits 
 - **HUD** — galaxy name labels, a light-year scale bar and a clickable minimap.
 - **Share and save** — the scene saves automatically; copy a share link, export/import JSON, undo/redo.
 - **Record** — screenshots, video (WebM/MP4) and 4-second GIFs.
-- **Quality settings** — Low / Medium / High volume quality, exposure, bloom and dust controls.
+- **Runs on ordinary hardware** — Auto quality adapts to your device (laptop integrated GPUs and phones included); or pick Minimal / Low / Medium / High.
 
 ## Quick start
 
@@ -54,7 +54,9 @@ npm run preview    # serve the build locally
 
 ## Performance
 
-The galaxy body is raymarched, so its cost grows with how much of the screen it covers. If the frame rate is low, set **Settings → Quality** to Low, lower the star count, or close galaxies you are not looking at. The app already reduces the work automatically when a galaxy fills the screen or is very small.
+The app is built to run on integrated laptop GPUs and phones. **Settings → Quality → Auto** (the default) measures your frame rate and picks a quality tier for you; the panel shows the active tier. The galaxy glow renders at reduced resolution, its arm and dust detail is baked into textures, and nothing is redrawn while the scene is paused and still.
+
+If it is still slow, pick **Minimal**, lower the star count, or remove galaxies you are not looking at. Add `?fps` to the URL to see the frame rate, your GPU and where GPU time goes. On laptops with two GPUs, setting the browser to "High performance" in Windows graphics settings helps further.
 
 ## Development
 

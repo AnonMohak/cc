@@ -125,3 +125,16 @@ describe('disc edge', () => {
     expect(inOuterBand).toBeLessThanOrEqual(inInnerBand);
   });
 });
+
+describe('baked star colours', () => {
+  it('match the black-body colour of each star temperature (linear light)', async () => {
+    const { blackbody } = await import('./densityModel.js');
+    const g = generateGalaxy({ ...DEFAULT_SHAPE, count: 500 }, 4);
+    expect(g.color.length).toBe(g.count * 3);
+    for (let i = 0; i < g.count; i += 37) {
+      const bb = blackbody(g.star[i * 3]).map((v) => v ** 2.2);
+      expect(g.color[i * 3]).toBeCloseTo(bb[0], 5);
+      expect(g.color[i * 3 + 2]).toBeCloseTo(bb[2], 5);
+    }
+  });
+});

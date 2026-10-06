@@ -44,6 +44,7 @@ export class GalaxyManager {
     for (const entry of diff.added) {
       const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio, dustScale: this.dustScale });
       galaxy.id = entry.id;
+      galaxy.onBaked = () => this.onChange?.();
       galaxy.setQuality(this.quality);
       galaxy.setEmphasis(emphasisTarget(entry.id, this.selectedId), true);
       this.galaxies.set(entry.id, galaxy);
@@ -61,6 +62,12 @@ export class GalaxyManager {
   }
 
   /** Selection is shown by brightness: see emphasisTarget(). */
+  /** True while any galaxy is still easing its selection brightness. */
+  isEasing() {
+    for (const galaxy of this.galaxies.values()) if (galaxy.emphasis !== galaxy.emphasisTarget) return true;
+    return false;
+  }
+
   setSelected(id) {
     this.selectedId = id;
     for (const [gid, galaxy] of this.galaxies) galaxy.setEmphasis(emphasisTarget(gid, id));

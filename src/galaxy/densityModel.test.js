@@ -227,3 +227,19 @@ describe('marchInterval', () => {
     expect(r.t0).toBe(0);
   });
 });
+
+describe('pattern-frame baking identity', () => {
+  it('arm phase at any phase = arm phase at phase 0, rotated by −phase·patternSpeed', () => {
+    // This is what lets discMap.js bake once and the shaders sample rotated.
+    for (const [theta, R, phase, ps, winding] of [
+      [0.3, 0.5, 4.2, 0.3, 0.55],
+      [2.0, 0.9, -7, 0.8, -0.6],
+      [5.5, 0.2, 100, 0.05, 1.2],
+    ]) {
+      const now = armPhase(theta, R, 2, winding, phase, ps);
+      const baked = armPhase(theta - phase * ps, R, 2, winding, 0, 0);
+      expect(Math.cos(now)).toBeCloseTo(Math.cos(baked), 9);
+      expect(Math.sin(now)).toBeCloseTo(Math.sin(baked), 9);
+    }
+  });
+});

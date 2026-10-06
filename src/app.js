@@ -11,6 +11,7 @@ import { pickGalaxy } from './scene/picking.js';
 import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
 import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
+import { createRenderGate } from './core/renderGate.js';
 import { createActions } from './state/actions.js';
 import * as persistence from './state/persistence.js';
 import { createControlPanel } from './ui/controlPanel.js';
@@ -100,6 +101,10 @@ export function startApp(container) {
     volumeScale: QUALITY[initialTier].volumeScale,
   });
 
+  // Render on demand: skip GPU work when nothing moves or changes.
+  const gate = createRenderGate();
+  galaxies.onChange = () => gate.invalidate(); // e.g. a debounced disc-map rebake
+
   let currentTier = null;
   let onTierChange = () => {};
   function applyTier(name) {
@@ -110,6 +115,7 @@ export function startApp(container) {
     post.setVolumeScale(tier.volumeScale);
     post.setBloomMode(tier.bloom);
     if (setMaxPixelRatio(tier.maxPixelRatio)) resizeAll();
+    gate.invalidate();
     onTierChange(name);
   }
 
@@ -212,16 +218,8 @@ export function startApp(container) {
     }
   });
 
-  // Feed real frame times to the governor (the loop's dt is capped at 0.1 s).
-  let lastFrame = performance.now();
-  loop.onTick(() => {
-    const now = performance.now();
-    const frameMs = now - lastFrame;
-    lastFrame = now;
-    if (store.getState().settings.quality !== 'auto') return;
-    const next = governor.sample(frameMs);
-    if (next) applyTier(next);
-  });
+  store.subscribe(() => gate.invalidate());
+  controls.addEventListener('change', () => gate.invalidate());
 
   loop.onTick((dt, _elapsed, realDt) => {
     galaxies.tick(dt, realDt);
@@ -273,10 +271,31 @@ export function startApp(container) {
     recBadge.textContent = text;
   });
 
+  let lastRender = null;
   loop.setRender(() => {
+    const active =
+      !loop.isPaused() ||
+      cameraFly.isFlying() ||
+      cameraMode !== 'orbit' ||
+      controls.autoRotate ||
+      galaxies.isEasing() ||
+      video.isRecording() ||
+      gif.isCapturing();
+    const now = performance.now();
+    if (!gate.shouldRender(active)) {
+      lastRender = null;
+      return;
+    }
+    // Auto quality: measure only back-to-back rendered frames (real time; the
+    // loop's dt is capped), so idle frames never look "fast".
+    if (lastRender !== null && store.getState().settings.quality === 'auto') {
+      const next = governor.sample(now - lastRender);
+      if (next) applyTier(next);
+    }
+    lastRender = now;
     post.render();
     // Copy GIF frames in the same task as the render (drawing buffer still valid).
-    gif.afterRender(performance.now());
+    gif.afterRender(now);
   });
 
   function resizeAll() {
@@ -286,6 +305,7 @@ export function startApp(container) {
     post.resize(w, h);
     starfield.setPixelRatio(renderer.getPixelRatio());
     galaxies.setPixelRatio(renderer.getPixelRatio());
+    gate.invalidate();
   }
   window.addEventListener('resize', resizeAll);
 

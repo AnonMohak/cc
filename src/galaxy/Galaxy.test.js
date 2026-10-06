@@ -22,6 +22,7 @@ describe('Galaxy layers', () => {
     expect(geo.getAttribute('aOrbit').itemSize).toBe(4);
     expect(geo.getAttribute('aOrbit').count).toBe(2000);
     expect(geo.getAttribute('aStar').itemSize).toBe(3);
+    expect(geo.getAttribute('aColor').count).toBe(2000);
     expect(geo.boundingSphere.center.toArray()).toEqual([0, 0, 0]);
     expect(g.hii.geometry.getAttribute('aOrbit').count).toBe(g.hiiCount);
     expect(g.hiiCount).toBeGreaterThan(0);

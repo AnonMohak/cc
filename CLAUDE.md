@@ -22,8 +22,8 @@ Additional:
 - **Live structure controls**: arm count, winding, density wave, arm contrast, flocculence, dust, diffuse glow and bulge profile change instantly (shader uniforms).
 - **Bloom**: lifts only bright cores and stars (threshold 0.45).
 - **Background starfield**: a static far starfield.
-- **Global controls**: pause/resume, time scale, quality (volume step budget), exposure, bloom, dust on/off and amount, auto-rotate camera.
-- **FPS readout**: add `?fps` to the URL.
+- **Global controls**: pause/resume, time scale, quality (Auto or a fixed tier), exposure, bloom, dust on/off and amount, auto-rotate camera.
+- **FPS readout**: add `?fps` to the URL — frame rate, GPU name, active quality tier and GPU ms per pass (`core/gpuTimer.js`).
 - **Persistence**: the scene saves to `localStorage` and restores on reload; "Reset scene" clears it.
 - **Recording** (`core/recorder.js`, Record folder): screenshot (P); video via MediaRecorder on `canvas.captureStream` (R to start/stop, WebM or MP4, auto-stop at 60 s); 4-second GIF with a dependency-free encoder (`util/gif.js`: median-cut palette, ordered dither, LZW). GIF frames are copied right after each render, so no `preserveDrawingBuffer`.
 - **Sharing** (`state/shareCodec.js`): copy a share link (scene → deflate → base64url in `#scene=`; opened links go through `deserialize` validation, then the hash is removed), export/import the scene as JSON (`ui/fileIO.js`).
@@ -74,6 +74,11 @@ src/
 │   ├── loop.js              # Single animation loop; owns pause, time scale, dt cap
 │   ├── cameraFly.js         # Eased camera move + framingPosition (no tween lib)
 │   ├── flyControls.js       # Free-fly WASD camera (pure moveDirection / applyLook)
+│   ├── GalaxyScenePass.js   # Background → low-res volumes (composite) → stars; replaces RenderPass
+│   ├── layers.js            # Render layers: STARS, VOLUME, BACKGROUND
+│   ├── quality.js           # Quality tiers + helpers; qualityGovernor.js picks one (Auto)
+│   ├── renderGate.js        # Render on demand
+│   ├── gpuTimer.js          # GPU pass timings for ?fps
 │   ├── tour.js              # Guided tour state machine
 │   ├── screenshot.js        # Render one frame → PNG download
 │   └── recorder.js          # Video (MediaRecorder) + GIF capture
@@ -89,6 +94,8 @@ src/
 │   ├── lod.js               # PURE: on-screen footprint → volume step count
 │   ├── presets.js           # spiral (M51/M101), barred (NGC 1300), elliptical (M87), irregular (LMC)
 │   ├── catalogue.js         # Real galaxies: facts + params; tiltForInclination, catalogueViewDirection
+│   ├── discMap.js           # PURE bake of in-plane arms/bar/dust (pattern frame) → half-float texture
+│   ├── noiseTexture.js      # Shared tileable fbm texture (flocculence, dust filaments)
 │   ├── params.js            # LIMITS + defaults for shape / structure / look / motion, clamp functions
 │   └── shaders/             # *.glsl via ?raw; chunks/{model,noise,stars}.glsl joined by glsl.js
 ├── scene/
@@ -159,10 +166,10 @@ Tests live next to the code: `src/galaxy/generateGalaxy.test.js`, etc.
 2. Speed slider changes rotation at once, with no stutter or rebuild.
 3. Zoom from very close to very far. No clipping inside the near/far range.
 4. Reload: the scene restores.
-5. Check the frame rate (`?fps`) with the maximum particle budget and with the camera inside a galaxy, at each Quality level.
+5. Check the frame rate (`?fps`) on an **integrated GPU** (the design target, e.g. Intel UHD 630 at 1080p) with the maximum particle budget and with the camera inside a galaxy, at each quality tier and with Auto.
 6. Look at each preset face-on, at 45° and edge-on; edge-on spirals must show a dark midplane dust lane.
 
-Headless browsers (SwiftShader) render on the CPU at ~1 s per frame with the volume on: use them for correctness and screenshots, never for speed or for wall-clock-sensitive checks.
+Headless browsers (SwiftShader) render on the CPU (~0.1–0.4 s per frame): use them for correctness, screenshots and **relative** speed (fragment cost scales the same way), never for absolute fps or wall-clock-sensitive checks.
 
 To check for GPU leaks, watch `renderer.info.memory.geometries` and `.textures`; the counts must return to the baseline after deletes. In dev, `window.__app` exposes `store`, `actions`, `galaxies`, `renderer`, `loop` and `commands` for console checks.
 
@@ -171,9 +178,14 @@ Do not add WebGL or screenshot tests unless asked; they are slow and flaky in CI
 ## Important constraints
 
 - **Performance budget:** max 200 000 particles per galaxy, max 10 galaxies, ~1 000 000 particles total. Target 60 fps on a mid-range laptop GPU. Enforce limits in `params.js` and in the create action.
-- **Volume fill rate:** the raymarch costs (covered pixels × steps). Keep `QUALITY.*.steps` ≤ the shader `MAX_STEPS` (96), keep the box tight (`volumeBounds`), and keep `lod.js` cutting steps for full-screen and tiny galaxies. Fade emission to 0 at the box faces so the box never shows.
-- **Bloom:** threshold 0.45, radius 0.3. A lower threshold floods dust lanes; a wider radius paints a halo far around bright cores.
-- **Pixel ratio:** cap at `Math.min(devicePixelRatio, 2)`. Pass it to the shader (`uPixelRatio`) so point size is the same on all screens.
+- **Performance target: integrated and mobile GPUs.** Trade visual fidelity for frame rate when needed. GPU cost is mostly the raymarched volume (covered pixels × steps × per-step work); keep all three small:
+  - **Pixels:** volumes render into a reduced-resolution target in `core/GalaxyScenePass.js` (tier `volumeScale` 0.25–0.75), then composite with a small tent blur. Never move the volume back to full resolution.
+  - **Per-step work:** nothing procedural in the step loop. In-plane fields (arms, bar, dust lanes) are baked into `uDiscMap` (`galaxy/discMap.js`, pattern frame, rotated at sample time); noise comes from the shared `noiseTexture.js`. New in-plane features go into the bake, not the shader loop. Loop invariants stay outside the loop.
+  - **Steps:** march only (disc slab ∩ cylinder) ∪ bulge ellipsoid (`marchInterval`, mirrored in JS); steps = chord / `uStepLength`, capped by the tier and `lod.js`. Keep `QUALITY.*.steps` ≤ shader `MAX_STEPS` (96). Fade emission to 0 before the box and ellipsoid edges.
+  - **Quality tiers** (`core/quality.js`) bundle every cost knob; **Auto** (default) uses `core/qualityGovernor.js` on real frame times (hysteresis; very slow frames are clamped, not ignored). Phones start at Low.
+  - **Render on demand** (`core/renderGate.js`): no GPU frame when paused and idle; anything that changes the picture must `invalidate()` the gate or report itself active.
+- **Bloom:** threshold 0.45, radius 0.3, rendered at half resolution; off on Low/Minimal. A lower threshold floods dust lanes; a wider radius paints a halo far around bright cores.
+- **Pixel ratio:** capped per tier (1–2). Pass it to the shader (`uPixelRatio`) so point size is the same on all screens. No MSAA (`antialias: false`): everything goes through the composer.
 - **Dispose GPU resources** on delete and on rebuild. A geometry rebuild must dispose the old `BufferGeometry` first.
 - **No per-frame allocation** in the animation loop (no `new Vector3()` etc. inside `tick`).
 - **Debounce rebuilds** from sliders that change geometry (e.g. on `onFinishChange`, or a ~100 ms debounce) so dragging stays smooth.

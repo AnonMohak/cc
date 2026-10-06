@@ -1,6 +1,6 @@
 import { createRandom } from './random.js';
 import { clampShape } from './params.js';
-import { sersic } from './densityModel.js';
+import { sersic, blackbody } from './densityModel.js';
 
 /**
  * Star populations. The kind is stored in aOrbit.w and selects how the
@@ -24,6 +24,7 @@ const BULGE_CDF_STEPS = 256;
  * along density-wave orbits. Every star has:
  *   orbit = (a, θ0, z, kind)  — for BAR stars: (x along bar, lateral offset, z, kind)
  *   star  = (temperature K, size, youth 0|1)
+ *   color = linear black-body colour (rgb)
  * `positions` is a rough initial layout, only used for bounds.
  *
  * Pure and deterministic: same (shape, seed) → identical arrays.
@@ -38,6 +39,8 @@ export function generateGalaxy(shapeInput, seed) {
 
   const orbit = new Float32Array(n * 4);
   const star = new Float32Array(n * 3);
+  // Linear-light black-body colour per star (was computed per vertex per frame).
+  const color = new Float32Array(n * 3);
   const positions = new Float32Array(n * 3);
   const stats = { disc: 0, bulge: 0, halo: 0, bar: 0, young: 0, clump: 0 };
 
@@ -131,6 +134,10 @@ export function generateGalaxy(shapeInput, seed) {
     star[i3] = temp;
     star[i3 + 1] = size;
     star[i3 + 2] = youth;
+    const bb = blackbody(temp);
+    color[i3] = bb[0] ** 2.2;
+    color[i3 + 1] = bb[1] ** 2.2;
+    color[i3 + 2] = bb[2] ** 2.2;
     if (kind === KIND.BAR) {
       positions[i3] = a;
       positions[i3 + 1] = z;
@@ -143,7 +150,7 @@ export function generateGalaxy(shapeInput, seed) {
   }
 
   const hii = generateHii(rng, shape);
-  return { count: n, orbit, star, positions, stats, hii };
+  return { count: n, orbit, star, color, positions, stats, hii };
 }
 
 /**

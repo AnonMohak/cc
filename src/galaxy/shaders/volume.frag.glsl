@@ -20,7 +20,6 @@ uniform float uEmphasis;
 uniform float uPhysical;
 uniform vec3 uColorInner;
 uniform vec3 uColorOuter;
-uniform sampler2D uDiscMap;
 uniform sampler2D uNoise;
 // March bounds (densityModel.js marchBounds / marchInterval).
 uniform float uDiscHalfHeight;
@@ -32,8 +31,7 @@ varying vec3 vUnitPos;
 
 #define MAX_STEPS 96
 
-// Must match discMap.js / noiseTexture.js.
-const float DISC_MAP_EXTENT = 1.45;
+// Must match noiseTexture.js (DISC_MAP_EXTENT comes from stars.glsl).
 const float NOISE_TILE_UNITS = 2.0;
 const float BULGE_I = 0.3;
 // Dust absorption per unit of (surface density × slab density / zd).

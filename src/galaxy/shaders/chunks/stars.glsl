@@ -53,28 +53,27 @@ vec3 gs_position(vec4 orbit, out float crestOut) {
   return vec3(orbit.x * c - orbit.y * s, orbit.z, orbit.x * s + orbit.y * c);
 }
 
-// Dust surface density: exponential disc, empty bulge, concentrated on the
-// inner (concave) edge of each arm.
-float gs_dustSurface(float R, float theta) {
-  float d = exp(-R / (uDiscScale * 1.3)) * gm_smoothstep(uBulgeSize * 0.5, uBulgeSize * 1.8, R);
-  if (uArms > 0.5) {
-    float sgn = uWinding < 0.0 ? -1.0 : 1.0;
-    float psi = gm_armPhase(theta, R, uArms, uWinding, uPhase, uPatternSpeed);
-    float lane = pow(gm_crest(psi - 0.6 * sgn, uWinding), 4.0);
-    d *= mix(1.0, 0.15 + 2.2 * lane, uArmContrast);
-  }
-  return d;
+// Baked in-plane fields (discMap.js), pattern frame: b = dust surface density.
+uniform sampler2D uDiscMap;
+const float DISC_MAP_EXTENT = 1.45;
+
+// Sample the disc map at a local point (rotated into the pattern frame).
+vec4 gs_discMap(vec2 xz) {
+  float pa = -uPhase * uPatternSpeed;
+  float c = cos(pa);
+  float s = sin(pa);
+  vec2 q = vec2(c * xz.x - s * xz.y, s * xz.x + c * xz.y);
+  return texture2D(uDiscMap, q / (2.0 * DISC_MAP_EXTENT) + 0.5);
 }
 
 // Optical depth from a point to the camera through the galaxy's dust slab.
 float gs_dustTau(vec3 p) {
   if (uDustStrength <= 0.0) return 0.0;
-  float R = length(p.xz);
   vec3 toCam = uCameraLocal - p;
   float side = toCam.y >= 0.0 ? 1.0 : -1.0;
   float col = gm_dustColumn(p.y, side, uDiscThickness * DUST_HEIGHT_RATIO);
   float cosI = abs(toCam.y) / max(length(toCam), 1e-4);
-  return DUST_KAPPA * uDustStrength * gs_dustSurface(R, atan(p.z, p.x)) * col / max(cosI, 0.08);
+  return DUST_KAPPA * uDustStrength * gs_discMap(p.xz).b * col / max(cosI, 0.08);
 }
 
 // Dust reddens: blue light is absorbed more than red.

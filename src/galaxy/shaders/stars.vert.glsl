@@ -10,6 +10,7 @@ uniform vec3 uColorOuter;
 
 attribute vec4 aOrbit;
 attribute vec3 aStar; // (temperature K, size, youth)
+attribute vec3 aColor; // linear black-body colour, baked by the generator
 
 varying vec3 vColor;
 varying float vFade;
@@ -29,7 +30,7 @@ void main() {
   float lum = mix(1.0, mix(0.12, 1.6, smoothstep(0.25, 0.95, crestV)), youth);
 
   float R = length(p.xz);
-  vec3 bb = gm_blackbody(aStar.x);
+  vec3 bb = aColor;
   vec3 tint = mix(uColorInner, uColorOuter, gm_smoothstep(0.0, 0.85, R));
   float luma = dot(bb, vec3(0.2126, 0.7152, 0.0722));
   vec3 color = mix(tint * luma * 1.3, bb, uPhysical);
