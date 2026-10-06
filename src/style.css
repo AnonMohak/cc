@@ -238,3 +238,19 @@ canvas {
 .mode-badge[hidden] {
   display: none;
 }
+
+.rec-badge {
+  position: fixed;
+  left: 16px;
+  top: 44px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(40, 6, 10, 0.85);
+  color: #ff8a8a;
+  font: 600 12px/1.4 ui-monospace, monospace;
+  pointer-events: none;
+}
+
+.rec-badge[hidden] {
+  display: none;
+}

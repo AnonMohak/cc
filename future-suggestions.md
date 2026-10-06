@@ -16,7 +16,6 @@ Ideas to make Galaxy Sandbox more feature-rich and better looking. None of these
 
 - **Galaxy collisions.** A GPU "N-body-lite" step (GPGPU textures or WebGPU compute) that creates tidal tails and bridges when two galaxies pass close.
 - **Universe generator.** Build a random cluster or filament of galaxies in one click.
-- **Recording.** Video capture (MediaRecorder on the canvas stream) and GIF export.
 
 ## Platform
 

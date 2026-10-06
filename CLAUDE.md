@@ -25,12 +25,12 @@ Additional:
 - **Global controls**: pause/resume, time scale, quality (volume step budget), exposure, bloom, dust on/off and amount, auto-rotate camera.
 - **FPS readout**: add `?fps` to the URL.
 - **Persistence**: the scene saves to `localStorage` and restores on reload; "Reset scene" clears it.
-- **Screenshot**: export the canvas as PNG.
+- **Recording** (`core/recorder.js`, Record folder): screenshot (P); video via MediaRecorder on `canvas.captureStream` (R to start/stop, WebM or MP4, auto-stop at 60 s); 4-second GIF with a dependency-free encoder (`util/gif.js`: median-cut palette, ordered dither, LZW). GIF frames are copied right after each render, so no `preserveDrawingBuffer`.
 - **Sharing** (`state/shareCodec.js`): copy a share link (scene → deflate → base64url in `#scene=`; opened links go through `deserialize` validation, then the hash is removed), export/import the scene as JSON (`ui/fileIO.js`).
 - **HUD** (`ui/hud.js`, math in `ui/hudMath.js`): clickable galaxy name labels, a light-year scale bar (1 world unit = 9,000 ly, `LY_PER_WORLD_UNIT`) and a top-down minimap (click a galaxy to fly to it). Each part toggles in Settings → HUD.
 - **Undo / redo** (`state/history.js`): galaxy changes only (not selection or settings); bursts within 400 ms are one step. Ctrl/Cmd+Z, Ctrl+Shift+Z, Ctrl+Y, and panel buttons.
 - **Camera modes** (app.js `setCameraMode`): orbit (default); free-fly (`core/flyControls.js`: WASD, Q/E, Shift, drag to look; OrbitControls disabled, target handed back on exit); guided tour (`core/tour.js` pure state machine: fly to each galaxy, then orbit; any drag/scroll or Esc stops). Focus always returns to orbit.
-- **Keyboard**: Space pause · N add · F focus · Delete remove · Esc leave camera mode / deselect · H hide panel · P screenshot · T tour · G free-fly · Ctrl+Z / Ctrl+Shift+Z undo/redo (`ui/keyboard.js`).
+- **Keyboard**: Space pause · N add · F focus · Delete remove · Esc leave camera mode / deselect · H hide panel · P screenshot · R record video · T tour · G free-fly · Ctrl+Z / Ctrl+Shift+Z undo/redo (`ui/keyboard.js`).
 - **Robustness**: a notice when WebGL 2 is missing; WebGL context loss pauses and restores.
 
 ## Tech stack
@@ -74,7 +74,8 @@ src/
 │   ├── cameraFly.js         # Eased camera move + framingPosition (no tween lib)
 │   ├── flyControls.js       # Free-fly WASD camera (pure moveDirection / applyLook)
 │   ├── tour.js              # Guided tour state machine
-│   └── screenshot.js        # Render one frame → PNG download
+│   ├── screenshot.js        # Render one frame → PNG download
+│   └── recorder.js          # Video (MediaRecorder) + GIF capture
 ├── galaxy/
 │   ├── random.js            # Seeded PRNG (mulberry32) + Gaussian helper
 │   ├── densityModel.js      # PURE JS mirror of shaders/chunks/model.glsl: orbits, arms, dust column, black-body, Sérsic, bounds
@@ -102,6 +103,7 @@ src/
 │   ├── shareCodec.js        # Scene ⇄ URL-safe code (CompressionStream deflate-raw)
 │   └── persistence.js       # Serialize/deserialize store to localStorage (versioned, storage injected)
 ├── util/debounce.js
+├── util/gif.js               # PURE GIF89a encoder (palette, dither, LZW)
 └── ui/
     ├── controlPanel.js      # lil-gui: Scene / Selected galaxy / Settings folders; dispatches store actions
     ├── pointerInput.js      # Tap/click select, double-tap focus (pure createTapDetector)

@@ -71,3 +71,9 @@ describe('camera mode shortcuts', () => {
     expect(keyToCommand({ key: 'G' })).toBe('toggleFly');
   });
 });
+
+describe('recording shortcut', () => {
+  it('maps R to video recording', () => {
+    expect(keyToCommand({ key: 'r' })).toBe('toggleVideo');
+  });
+});

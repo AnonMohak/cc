@@ -19,7 +19,8 @@ import { PRESETS } from './galaxy/presets.js';
 import { showNotice, showToast } from './ui/notice.js';
 import { createHistory } from './state/history.js';
 import { shareUrl, decodeScene, codeFromHash } from './state/shareCodec.js';
-import { downloadText, pickTextFile } from './ui/fileIO.js';
+import { downloadText, downloadBlob, fileStamp, pickTextFile } from './ui/fileIO.js';
+import { createVideoRecorder, createGifCapture, formatClock } from './core/recorder.js';
 import { createFpsMeter } from './ui/fpsMeter.js';
 import { createInfoCard } from './ui/infoCard.js';
 import { createHud } from './ui/hud.js';
@@ -188,7 +189,37 @@ export function startApp(container) {
     const meter = createFpsMeter(container);
     loop.onTick(() => meter.update());
   }
-  loop.setRender(() => post.render());
+  // ── Recording: video (MediaRecorder) and short GIFs ──────────────────
+  const video = createVideoRecorder(renderer.domElement, {
+    onStop: (blob, ext) => {
+      downloadBlob(blob, `galaxy-${fileStamp()}.${ext}`);
+      showToast(container, 'Video saved');
+    },
+  });
+  const gif = createGifCapture(renderer.domElement);
+  const recBadge = document.createElement('div');
+  recBadge.className = 'rec-badge';
+  recBadge.hidden = true;
+  container.appendChild(recBadge);
+  let lastBadge = 0;
+  loop.onTick(() => {
+    const now = performance.now();
+    if (now - lastBadge < 250) return;
+    lastBadge = now;
+    const progress = gif.progress();
+    let text = '';
+    if (video.isRecording()) text = `● REC ${formatClock(video.elapsed())}`;
+    else if (progress) text = `● GIF ${progress.frames}/${progress.total}`;
+    else if (gif.isEncoding()) text = 'Encoding GIF…';
+    recBadge.hidden = !text;
+    recBadge.textContent = text;
+  });
+
+  loop.setRender(() => {
+    post.render();
+    // Copy GIF frames in the same task as the render (drawing buffer still valid).
+    gif.afterRender(performance.now());
+  });
 
   window.addEventListener('resize', () => {
     const { clientWidth: w, clientHeight: h } = container;
@@ -230,6 +261,22 @@ export function startApp(container) {
     },
     togglePause: () => store.dispatch(actions.updateSettings({ paused: !store.getState().settings.paused })),
     screenshot: () => captureScreenshot({ canvas: renderer.domElement, render: () => post.render() }),
+    toggleVideo() {
+      if (!video.isSupported()) {
+        showToast(container, 'Video recording is not supported in this browser');
+      } else if (video.isRecording()) {
+        video.stop();
+      } else {
+        video.start();
+      }
+    },
+    async recordGif() {
+      if (gif.isCapturing() || gif.isEncoding()) return;
+      const capture = gif.start();
+      const total = gif.progress().total;
+      downloadBlob(await capture, `galaxy-${fileStamp()}.gif`);
+      showToast(container, `GIF saved (${total} frames)`);
+    },
     undo: () => history.undo(),
     redo: () => history.redo(),
     async copyShareLink() {
@@ -275,6 +322,8 @@ export function startApp(container) {
     onTour: commands.toggleTour,
     onFly: commands.toggleFly,
     onResetView: commands.resetView,
+    onToggleVideo: commands.toggleVideo,
+    onRecordGif: commands.recordGif,
   });
   commands.togglePanel = () => panel.toggle();
   createInfoCard(container, store);

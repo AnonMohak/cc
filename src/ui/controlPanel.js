@@ -65,9 +65,11 @@ const catalogueOptions = Object.fromEntries(CATALOGUE_IDS.map((id) => [CATALOGUE
  *   onTour?: () => void,
  *   onFly?: () => void,
  *   onResetView?: () => void,
+ *   onToggleVideo?: () => void,
+ *   onRecordGif?: () => void,
  * }} options
  */
-export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport, onTour, onFly, onResetView }) {
+export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport, onTour, onFly, onResetView, onToggleVideo, onRecordGif }) {
   const gui = new GUI({ title: 'Galaxy Sandbox', width: 300 });
   if (window.innerWidth < NARROW_SCREEN) gui.close();
 
@@ -272,6 +274,15 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     if (onResetView) cameraFolder.add(c, 'reset').name('⌂ Reset view');
   }
 
+  // ── Record ───────────────────────────────────────────────────────────
+  if (onToggleVideo || onRecordGif || onScreenshot) {
+    const recordFolder = gui.addFolder('Record').close();
+    const r = { video: () => onToggleVideo?.(), gif: () => onRecordGif?.(), shot: () => onScreenshot?.() };
+    if (onToggleVideo) recordFolder.add(r, 'video').name('⏺ Start / stop video (R)');
+    if (onRecordGif) recordFolder.add(r, 'gif').name('🎞 Record 4-second GIF');
+    if (onScreenshot) recordFolder.add(r, 'shot').name('📷 Screenshot (P)');
+  }
+
   // ── Settings ─────────────────────────────────────────────────────────
   const settingsFolder = gui.addFolder('Settings');
   const settingsProxy = { ...store.getState().settings };
@@ -307,10 +318,9 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     screenshot: () => onScreenshot?.(),
     reset: () => onReset?.(),
   };
-  if (onScreenshot) settingsFolder.add(sceneActions, 'screenshot').name('📷 Screenshot (P)');
   if (onReset) settingsFolder.add(sceneActions, 'reset').name('↺ Reset scene');
   const help = settingsFolder.addFolder('Keyboard').close();
-  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot', 'Ctrl+Z': 'undo', 'Ctrl+Shift+Z': 'redo', T: 'guided tour', G: 'free-fly' };
+  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot', 'Ctrl+Z': 'undo', 'Ctrl+Shift+Z': 'redo', T: 'guided tour', G: 'free-fly', R: 'record video' };
   for (const [key, text] of Object.entries(keys)) help.add({ [key]: text }, key).disable();
 
   // ── Store wiring ─────────────────────────────────────────────────────
