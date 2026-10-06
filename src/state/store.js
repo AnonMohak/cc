@@ -160,6 +160,21 @@ export function reducer(state, action) {
       return id === state.selectedId ? state : { ...state, selectedId: id };
     }
 
+    // Replace every galaxy at once (universe generator). Entries are
+    // sanitized and kept inside the galaxy and star budgets.
+    case 'galaxies/replace': {
+      const galaxies = [];
+      let total = 0;
+      for (const raw of Array.isArray(action.galaxies) ? action.galaxies : []) {
+        const g = sanitizeGalaxy(raw);
+        if (!g || galaxies.some((x) => x.id === g.id)) continue;
+        if (galaxies.length >= MAX_GALAXIES || total + g.shape.count > MAX_TOTAL_PARTICLES) break;
+        total += g.shape.count;
+        galaxies.push(g);
+      }
+      return { ...state, galaxies, selectedId: null };
+    }
+
     // Undo/redo: galaxies come from an earlier state, so they are already valid.
     case 'galaxies/restore': {
       if (!Array.isArray(action.galaxies)) return state;

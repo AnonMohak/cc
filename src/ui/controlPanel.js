@@ -3,6 +3,7 @@ import { LIMITS, SHAPE_KEYS, MAX_TOTAL_PARTICLES, MAX_GALAXIES } from '../galaxy
 import { PRESETS, PRESET_NAMES } from '../galaxy/presets.js';
 import { CATALOGUE, CATALOGUE_IDS, catalogueParams } from '../galaxy/catalogue.js';
 import { canAddGalaxy, totalParticles, SETTINGS_LIMITS, QUALITY } from '../state/store.js';
+import { LAYOUTS } from '../state/universe.js';
 import { debounce } from '../util/debounce.js';
 
 const LABELS = {
@@ -67,9 +68,10 @@ const catalogueOptions = Object.fromEntries(CATALOGUE_IDS.map((id) => [CATALOGUE
  *   onResetView?: () => void,
  *   onToggleVideo?: () => void,
  *   onRecordGif?: () => void,
+ *   onGenerateUniverse?: (layout: string, count: number) => void,
  * }} options
  */
-export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport, onTour, onFly, onResetView, onToggleVideo, onRecordGif }) {
+export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport, onTour, onFly, onResetView, onToggleVideo, onRecordGif, onGenerateUniverse }) {
   const gui = new GUI({ title: 'Galaxy Sandbox', width: 300 });
   if (window.innerWidth < NARROW_SCREEN) gui.close();
 
@@ -254,6 +256,19 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     }
     lastEntry = entry;
     for (const c of selectedFolder.controllersRecursive()) c.updateDisplay();
+  }
+
+  // ── Universe generator ───────────────────────────────────────────────
+  if (onGenerateUniverse) {
+    const universeFolder = gui.addFolder('Universe').close();
+    const u = {
+      layout: 'cluster',
+      count: 8,
+      generate: () => onGenerateUniverse(u.layout, u.count),
+    };
+    universeFolder.add(u, 'layout', Object.fromEntries(Object.entries(LAYOUTS).map(([k, l]) => [l.label, k]))).name('Layout');
+    universeFolder.add(u, 'count', 2, MAX_GALAXIES, 1).name('Galaxies');
+    universeFolder.add(u, 'generate').name('🌌 Generate universe');
   }
 
   // ── Share ────────────────────────────────────────────────────────────

@@ -26,6 +26,7 @@ import { createInfoCard } from './ui/infoCard.js';
 import { createHud } from './ui/hud.js';
 import { createTour } from './core/tour.js';
 import { createFlyControls } from './core/flyControls.js';
+import { universeBounds, LAYOUTS } from './state/universe.js';
 import { catalogueViewDirection } from './galaxy/catalogue.js';
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -277,6 +278,19 @@ export function startApp(container) {
       downloadBlob(await capture, `galaxy-${fileStamp()}.gif`);
       showToast(container, `GIF saved (${total} frames)`);
     },
+    generateUniverse(layout = 'cluster', count = 8) {
+      const hasGalaxies = store.getState().galaxies.length > 0;
+      if (hasGalaxies && !window.confirm(`Replace the scene with a generated ${LAYOUTS[layout].label.toLowerCase()}? (Ctrl+Z undoes it)`)) return;
+      setCameraMode('orbit');
+      store.dispatch(actions.generateUniverse(layout, count));
+      const { galaxies: list } = store.getState();
+      const { center, radius } = universeBounds(list);
+      const target = new THREE.Vector3(...center);
+      const distance = THREE.MathUtils.clamp(radius * 2.2, 30, CAMERA_LIMITS.maxDistance * 0.9);
+      const dir = CAMERA_HOME.position.clone().sub(CAMERA_HOME.target).normalize();
+      cameraFly.flyTo(target, target.clone().addScaledVector(dir, distance), 2);
+      showToast(container, `Generated a ${LAYOUTS[layout].label.toLowerCase()} of ${list.length} galaxies · Ctrl+Z to undo`);
+    },
     undo: () => history.undo(),
     redo: () => history.redo(),
     async copyShareLink() {
@@ -324,6 +338,7 @@ export function startApp(container) {
     onResetView: commands.resetView,
     onToggleVideo: commands.toggleVideo,
     onRecordGif: commands.recordGif,
+    onGenerateUniverse: commands.generateUniverse,
   });
   commands.togglePanel = () => panel.toggle();
   createInfoCard(container, store);

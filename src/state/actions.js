@@ -2,6 +2,7 @@ import { PRESETS } from '../galaxy/presets.js';
 import { CATALOGUE, catalogueParams } from '../galaxy/catalogue.js';
 import { randomSeed } from '../galaxy/random.js';
 import { findFreePosition } from './placement.js';
+import { generateUniverse } from './universe.js';
 
 function defaultId() {
   // randomUUID needs a secure context; plain-HTTP LAN access falls back.
@@ -59,6 +60,15 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
           motion: params.motion,
         },
       };
+    },
+    /**
+     * Replace the scene with a generated cluster or filament (one undo step).
+     * @param {'cluster' | 'filament'} layout
+     * @param {number} count
+     */
+    generateUniverse(layout, count) {
+      const galaxies = generateUniverse({ layout, count, seed: makeSeed() }).map((g) => ({ ...g, id: makeId() }));
+      return { type: 'galaxies/replace', galaxies };
     },
     removeGalaxy: (id) => ({ type: 'galaxy/remove', id }),
     updateGalaxy: (id, patch) => ({ type: 'galaxy/update', id, patch }),
