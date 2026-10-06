@@ -214,3 +214,23 @@ describe('Galaxy quality tier', () => {
     expect(g.stars.geometry.drawRange.count).toBe(40_000);
   });
 });
+
+describe('Galaxy star LOD', () => {
+  it('draws fewer, brighter stars far away and all stars up close', async () => {
+    const { QUALITY } = await import('../core/quality.js');
+    const g = makeGalaxy({ shape: { ...PRESETS.spiral.shape, count: 80_000 } });
+    g.setQuality(QUALITY.high);
+    const camera = new THREE.PerspectiveCamera(55, 1280 / 800, 0.1, 5000);
+
+    camera.position.set(0, 0, 400);
+    g.updateLod(camera, 1280, 800);
+    expect(g.stars.geometry.drawRange.count).toBeLessThan(20_000);
+    expect(g.hii.geometry.drawRange.count).toBeLessThan(g.hiiCount);
+    expect(g.uniforms.uLodGain.value).toBeGreaterThan(1);
+
+    camera.position.set(0, 0, 5);
+    g.updateLod(camera, 1280, 800);
+    expect(g.stars.geometry.drawRange.count).toBe(80_000);
+    expect(g.uniforms.uLodGain.value).toBe(1);
+  });
+});

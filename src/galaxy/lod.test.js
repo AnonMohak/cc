@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { screenFootprint, adaptiveSteps } from './lod.js';
+import { screenFootprint, adaptiveSteps, starLod } from './lod.js';
 
 describe('screenFootprint', () => {
   it('shrinks with distance and covers the screen when the camera is inside', () => {
@@ -23,5 +23,29 @@ describe('adaptiveSteps', () => {
   it('cuts steps for tiny distant galaxies, never below the minimum', () => {
     expect(adaptiveSteps(44, { radiusPx: 20, coverage: 0.001 })).toBeLessThan(25);
     expect(adaptiveSteps(10, { radiusPx: 1, coverage: 0 })).toBe(6);
+  });
+});
+
+describe('starLod', () => {
+  it('keeps every star when the galaxy is big on screen or inside it', () => {
+    expect(starLod(80_000, { radiusPx: 200 })).toEqual({ count: 80_000, gain: 1 });
+    expect(starLod(80_000, { radiusPx: Infinity })).toEqual({ count: 80_000, gain: 1 });
+  });
+
+  it('draws fewer stars far away and keeps the total light', () => {
+    const lod = starLod(80_000, { radiusPx: 40 });
+    expect(lod.count).toBeLessThan(80_000);
+    expect(lod.count * lod.gain).toBeCloseTo(80_000, -1);
+  });
+
+  it('never drops below the minimum or above the gain cap', () => {
+    const tiny = starLod(80_000, { radiusPx: 2 });
+    expect(tiny.count).toBe(3000);
+    expect(tiny.gain).toBe(8);
+    expect(starLod(2000, { radiusPx: 2 })).toEqual({ count: 2000, gain: 1 });
+  });
+
+  it('changes the count only in coarse steps', () => {
+    expect(starLod(80_000, { radiusPx: 40 }).count).toBe(starLod(80_000, { radiusPx: 40.05 }).count);
   });
 });

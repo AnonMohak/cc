@@ -3,6 +3,7 @@ uniform float uScale;
 uniform float uPixelRatio;
 uniform float uBrightness;
 uniform float uEmphasis;
+uniform float uLodGain;
 uniform float uPhysical;
 uniform float uMaxPointPx; // per quality tier
 uniform vec3 uColorInner;
@@ -41,5 +42,5 @@ void main() {
   vFade = clamp(size, 0.0, 1.0);
   // Close stars must not become blobs (and big points cost fill rate).
   gl_PointSize = clamp(size, 1.0, uMaxPointPx * uPixelRatio);
-  vColor = color * lum * uBrightness * uEmphasis;
+  vColor = color * lum * uBrightness * uEmphasis * uLodGain;
 }

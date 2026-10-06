@@ -43,6 +43,7 @@ export function createGalaxyUniforms() {
     uColorOuter: { value: new THREE.Color() },
     // Per-frame / environment
     uEmphasis: { value: 1 },
+    uLodGain: { value: 1 }, // star LOD: fewer, brighter stars far away (lod.js starLod)
     uPixelRatio: { value: 1 },
     uCameraLocal: { value: new THREE.Vector3(0, 10, 0) },
     // Baked textures for the volume (see discMap.js, noiseTexture.js)

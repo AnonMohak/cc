@@ -10,7 +10,6 @@ Ideas to make Galaxy Sandbox more feature-rich and better looking. None of these
 - **Globular clusters** in the halo (dense old star balls), and **supernova flashes** that light up and fade over a few seconds.
 - **Background sky.** A procedural Milky Way band and faint nebulae in place of the uniform starfield.
 - **Cinematic post-processing.** Depth of field on the focused galaxy, vignette, film grain, light chromatic aberration and auto exposure.
-- **Level of detail.** Far galaxies switch to a cheap impostor (a pre-rendered sprite) to save fill rate for the raymarched volume.
 
 ## Features
 

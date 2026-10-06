@@ -13,7 +13,7 @@ import {
 } from './galaxyUniforms.js';
 import { approach } from './emphasis.js';
 import { LAYERS } from '../core/layers.js';
-import { screenFootprint, adaptiveSteps } from './lod.js';
+import { screenFootprint, adaptiveSteps, starLod } from './lod.js';
 import { createDiscMapTexture } from './discMap.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -67,6 +67,7 @@ export class Galaxy {
     this.emphasisTarget = 1;
 
     this.discMap = null;
+    this.lodCount = Infinity; // star LOD; Infinity = no LOD limit
     this.rebakeTimer = null;
 
     this.setShape(shape, seed);
@@ -229,17 +230,21 @@ export class Galaxy {
     this.applyStarCap();
   }
 
-  /** Draw only the first N stars (they are in random order, so it is a fair subset). */
+  /**
+   * Draw only the first N stars (they are in random order, so it is a fair
+   * subset): the tier cap, then the star LOD (updateLod).
+   */
   applyStarCap() {
     if (!this.quality) return;
-    const cap = this.quality.starCap;
-    this.stars.geometry.setDrawRange(0, Math.min(this.count, cap));
-    const hiiCap = Math.ceil(this.hiiCount * Math.min(1, cap / Math.max(this.count, 1)));
+    const drawn = Math.min(this.count, this.quality.starCap, this.lodCount);
+    this.stars.geometry.setDrawRange(0, drawn);
+    const hiiCap = Math.ceil(this.hiiCount * Math.min(1, drawn / Math.max(this.count, 1)));
     this.hii.geometry.setDrawRange(0, hiiCap);
   }
 
   /**
-   * Per-frame volume LOD from the on-screen size (see lod.js).
+   * Per-frame LOD from the on-screen size (see lod.js): volume steps, and
+   * fewer but brighter stars for far galaxies.
    * @param {THREE.PerspectiveCamera} camera
    * @param {number} width viewport px
    * @param {number} height viewport px
@@ -249,6 +254,13 @@ export class Galaxy {
     const distance = camera.position.distanceTo(this.group.position);
     const footprint = screenFootprint(this.radius * 1.3, distance, camera.fov, width, height);
     this.uniforms.uSteps.value = adaptiveSteps(this.baseSteps, footprint);
+    const lod = starLod(Math.min(this.count, this.quality.starCap), footprint);
+    this.uniforms.uLodGain.value = lod.gain;
+    const lodCount = lod.gain === 1 ? Infinity : lod.count;
+    if (lodCount !== this.lodCount) {
+      this.lodCount = lodCount;
+      this.applyStarCap();
+    }
   }
 
   setPixelRatio(value) {

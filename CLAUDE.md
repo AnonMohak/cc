@@ -93,7 +93,7 @@ src/
 │   ├── volumeMaterial.js    # Raymarched body (back faces, dst = emission + dst·transmittance)
 │   ├── Galaxy.js            # Owns group + volume Mesh + stars Points + H II Points; set{Shape,Structure,Look,Motion}, tick, dispose
 │   ├── emphasis.js          # PURE: selection brightness targets + frame-rate independent ease
-│   ├── lod.js               # PURE: on-screen footprint → volume step count
+│   ├── lod.js               # PURE: on-screen footprint → volume steps + star LOD (fewer, brighter far stars)
 │   ├── presets.js           # spiral (M51/M101), barred (NGC 1300), elliptical (M87), irregular (LMC)
 │   ├── catalogue.js         # Real galaxies: facts + params; tiltForInclination, catalogueViewDirection
 │   ├── discMap.js           # PURE bake of in-plane arms/bar/dust (pattern frame) → half-float texture
@@ -187,6 +187,7 @@ Do not add WebGL or screenshot tests unless asked; they are slow and flaky in CI
   - **Per-step work:** nothing procedural in the step loop. In-plane fields (arms, bar, dust lanes) are baked into `uDiscMap` (`galaxy/discMap.js`, pattern frame, rotated at sample time); noise comes from the shared `noiseTexture.js`. New in-plane features go into the bake, not the shader loop. Loop invariants stay outside the loop.
   - **Steps:** march only (disc slab ∩ cylinder) ∪ bulge ellipsoid (`marchInterval`, mirrored in JS); steps = chord / `uStepLength`, capped by the tier and `lod.js`. Keep `QUALITY.*.steps` ≤ shader `MAX_STEPS` (96). Fade emission to 0 before the box and ellipsoid edges.
   - **Quality tiers** (`core/quality.js`) bundle every cost knob; **Auto** (default) uses `core/qualityGovernor.js` on real frame times (hysteresis; very slow frames are clamped, not ignored). Phones start at Low.
+  - **Star LOD** (`lod.js` `starLod`): with many galaxies, star vertices are the main cost (10 far galaxies: ~95% of the frame). A far galaxy draws ~4 stars per covered pixel (min 3,000) via `setDrawRange`, and `uLodGain` (≤ 8) keeps its total light. Tier cap first, then LOD.
   - **Render on demand** (`core/renderGate.js`): no GPU frame when paused and idle; anything that changes the picture must `invalidate()` the gate or report itself active.
 - **Bloom:** threshold 0.45, radius 0.3, rendered at half resolution; off on Low/Minimal. A lower threshold floods dust lanes; a wider radius paints a halo far around bright cores.
 - **Pixel ratio:** capped per tier (1–2). Pass it to the shader (`uPixelRatio`) so point size is the same on all screens. No MSAA (`antialias: false`): everything goes through the composer.
