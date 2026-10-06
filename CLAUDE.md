@@ -2,7 +2,7 @@
 
 An interactive 3D galaxy sandbox in the browser. Users create, edit, and delete realistic procedural galaxies and fly the camera around them.
 
-> Status: in development. The implementation plan has milestones M0–M9; each milestone ends with passing tests, a passing build, and one commit.
+> Status: feature-complete (milestones M0–M9). New work: keep tests passing and `npm run build` clean before each commit.
 
 ## Features
 
@@ -16,13 +16,15 @@ Required:
 Additional:
 
 - **Presets**: spiral, barred spiral, elliptical, irregular. A new galaxy starts from a preset.
-- **Selection**: click a galaxy to select it; the control panel edits the selected one. "Focus" flies the camera to it.
+- **Selection**: click or tap a galaxy to select it (a faint ring marks it); the control panel edits the selected one. Double-click / double-tap or "Focus" flies the camera to it.
 - **Differential rotation**: inner stars orbit faster than outer stars, so arms wind like a real galaxy.
 - **Bloom**: a glow post-process on the bright core and stars.
 - **Background starfield and dust**: a static far starfield, plus dark dust lanes along the arms.
 - **Global controls**: pause/resume time, global time scale, bloom strength, auto-rotate camera.
 - **Persistence**: the scene saves to `localStorage` and restores on reload; "Reset scene" clears it.
 - **Screenshot**: export the canvas as PNG.
+- **Keyboard**: Space pause · N add · F focus · Delete remove · Esc deselect · H hide panel · P screenshot (`ui/keyboard.js`).
+- **Robustness**: a notice when WebGL 2 is missing; WebGL context loss pauses and restores.
 
 ## Tech stack
 
@@ -54,13 +56,16 @@ Data flows one way: **UI → store → scene**. The UI never touches Three.js ob
 
 ```
 src/
-├── main.js                  # Bootstrap: create app, wire store ↔ scene ↔ UI, start loop
+├── main.js                  # Entry: WebGL 2 check, then startApp()
+├── app.js                   # startApp(): wires store ↔ scene ↔ UI, commands, context loss, starts loop
 ├── style.css
 ├── core/
 │   ├── createRenderer.js    # WebGLRenderer, pixel ratio, resize handling
-│   ├── createCamera.js      # PerspectiveCamera + OrbitControls (zoom limits)
-│   ├── createComposer.js    # EffectComposer: RenderPass → UnrealBloomPass → OutputPass
-│   └── loop.js              # Single animation loop; owns the clock, pause, time scale
+│   ├── createCamera.js      # PerspectiveCamera + OrbitControls; CAMERA_LIMITS, CAMERA_HOME
+│   ├── createComposer.js    # EffectComposer: RenderPass → UnrealBloomPass → OutputPass (ACES)
+│   ├── loop.js              # Single animation loop; owns pause, time scale, dt cap
+│   ├── cameraFly.js         # Eased camera move + framingPosition (no tween lib)
+│   └── screenshot.js        # Render one frame → PNG download
 ├── galaxy/
 │   ├── random.js            # Seeded PRNG (mulberry32) + Gaussian helper
 │   ├── generateGalaxy.js    # PURE: shape + seed → { positions, radiusNorm, colorJitter, sizes, dust } in a UNIT disc
@@ -75,15 +80,17 @@ src/
 │   ├── diffGalaxies.js      # PURE: prev/next galaxy lists → { added, removed, shapeChanged, lookChanged }
 │   ├── starfield.js         # Static background stars
 │   └── picking.js           # PURE: ray vs galaxy disc planes → galaxy id
-├── core/cameraFly.js        # Eased camera move to a target (no tween lib)
-├── core/screenshot.js       # Render one frame → PNG download
 ├── state/
 │   ├── store.js             # Tiny observable store + pure reducer
 │   ├── actions.js           # Action creators (inject id/seed sources for tests)
+│   ├── placement.js         # PURE: free spot for a new galaxy near the camera target
 │   └── persistence.js       # Serialize/deserialize store to localStorage (versioned, storage injected)
 ├── util/debounce.js
 └── ui/
-    └── controlPanel.js      # lil-gui: Scene / Selected galaxy / Settings folders; dispatches store actions
+    ├── controlPanel.js      # lil-gui: Scene / Selected galaxy / Settings folders; dispatches store actions
+    ├── pointerInput.js      # Tap/click select, double-tap focus (pure createTapDetector)
+    ├── keyboard.js          # PURE keyToCommand + attachKeyboard
+    └── notice.js            # Centred message overlay
 ```
 
 Tests live next to the code: `src/galaxy/generateGalaxy.test.js`, etc.
@@ -102,7 +109,7 @@ Tests live next to the code: `src/galaxy/generateGalaxy.test.js`, etc.
 
 - ES modules, named exports. One main export per file; file name matches it (`Galaxy.js` exports `Galaxy`).
 - `PascalCase` for classes, `camelCase` for functions and variables, `UPPER_SNAKE_CASE` for constants. Shader uniforms start with `u`, attributes with `a`, varyings with `v`.
-- 2-space indent, single quotes, semicolons (match `src/main.js`).
+- 2-space indent, single quotes, semicolons (match `src/app.js`).
 - Small factory functions over deep class hierarchies. Use classes only when an object owns GPU resources (`Galaxy`, `GalaxyManager`).
 - Every object that creates a geometry, material, or texture has a `dispose()` method and calls it on removal.
 - Keep pure logic (generation, params validation, persistence, store) free of `three` scene objects and the DOM so it runs in Node tests. Using `THREE.Color` for math is fine.
@@ -117,6 +124,8 @@ Tests live next to the code: `src/galaxy/generateGalaxy.test.js`, etc.
 - `params`: clamping and defaults; invalid input (NaN, negative count) falls back safely.
 - `store`: add / update / delete / select actions; subscribers fire; deleting the selected galaxy clears the selection.
 - `persistence`: round trip preserves state; corrupt or old-version data loads the defaults without a throw.
+- `Galaxy` / `GalaxyManager`: run in Node with real `three` objects (no renderer): rebuild vs. uniform-only updates, dispose calls, selection ring, dust settings.
+- Input: `keyToCommand`, `createTapDetector`, `pickGalaxy`, `cameraFly` are pure and tested.
 
 **Manual visual checks (run `npm run dev`) after each rendering change:**
 
@@ -126,7 +135,7 @@ Tests live next to the code: `src/galaxy/generateGalaxy.test.js`, etc.
 4. Reload: the scene restores.
 5. Check the frame rate stays smooth with the maximum total particle budget.
 
-To check for GPU leaks, watch `renderer.info.memory.geometries` and `.textures`; the counts must return to the baseline after deletes.
+To check for GPU leaks, watch `renderer.info.memory.geometries` and `.textures`; the counts must return to the baseline after deletes. In dev, `window.__app` exposes `store`, `actions`, `galaxies`, `renderer`, `loop` and `commands` for console checks.
 
 Do not add WebGL or screenshot tests unless asked; they are slow and flaky in CI.
 
@@ -139,6 +148,7 @@ Do not add WebGL or screenshot tests unless asked; they are slow and flaky in CI
 - **Debounce rebuilds** from sliders that change geometry (e.g. on `onFinishChange`, or a ~100 ms debounce) so dragging stays smooth.
 - **Blending:** galaxy points use `AdditiveBlending`, `depthWrite: false`. Do not enable `depthWrite` on points; it causes black squares.
 - **Camera limits:** set OrbitControls `minDistance` / `maxDistance` and the camera `near` / `far` to match, so zoom never passes through the far plane.
+- **Bundle:** `vite.config.js` puts `three` in its own chunk (~570 kB) and sets `chunkSizeWarningLimit: 600`. App code is ~65 kB.
 - **Persistence is versioned.** Bump the version key when the stored shape changes, and migrate or reset old data.
 - **Browser only, no backend.** The app is a static site from `vite build`.
 

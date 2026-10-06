@@ -1,10 +1,47 @@
 import * as THREE from 'three';
 
-// A press that moves further than this is an orbit drag, not a click.
-const CLICK_TOLERANCE_PX = 5;
+// A press that moves further than this is an orbit drag, not a tap.
+const TAP_MOVE_PX = 5;
+// Two taps this close in time and space are a double tap.
+const DOUBLE_TAP_MS = 300;
+const DOUBLE_TAP_PX = 24;
 
 /**
- * Click to select, double-click to focus. Drags never select.
+ * Classifies pointer down/up pairs as 'tap', 'double', or null (a drag).
+ * Pure, so it works the same for mouse and touch and is unit-testable;
+ * mobile browsers do not reliably fire `dblclick`.
+ */
+export function createTapDetector() {
+  let down = null;
+  let lastTap = null;
+
+  return {
+    /** @param {{ x: number, y: number, time: number, primary: boolean }} e */
+    down(e) {
+      down = e.primary ? e : null;
+    },
+    /** @param {{ x: number, y: number, time: number }} e @returns {'tap' | 'double' | null} */
+    up(e) {
+      if (!down) return null;
+      const moved = Math.hypot(e.x - down.x, e.y - down.y);
+      down = null;
+      if (moved > TAP_MOVE_PX) return null;
+      if (lastTap && e.time - lastTap.time <= DOUBLE_TAP_MS && Math.hypot(e.x - lastTap.x, e.y - lastTap.y) <= DOUBLE_TAP_PX) {
+        lastTap = null;
+        return 'double';
+      }
+      lastTap = e;
+      return 'tap';
+    },
+    cancel() {
+      down = null;
+    },
+  };
+}
+
+/**
+ * Tap or click to select, double-tap or double-click to focus. Drags never
+ * select.
  *
  * @param {{
  *   dom: HTMLElement,
@@ -17,7 +54,7 @@ const CLICK_TOLERANCE_PX = 5;
 export function attachPointerInput({ dom, camera, pick, onSelect, onFocus }) {
   const raycaster = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
-  let down = null;
+  const taps = createTapDetector();
 
   function pickAt(event) {
     const rect = dom.getBoundingClientRect();
@@ -27,30 +64,25 @@ export function attachPointerInput({ dom, camera, pick, onSelect, onFocus }) {
   }
 
   function onPointerDown(event) {
-    down = event.isPrimary && event.button === 0 ? { x: event.clientX, y: event.clientY } : null;
+    taps.down({ x: event.clientX, y: event.clientY, time: event.timeStamp, primary: event.isPrimary && event.button === 0 });
   }
 
   function onPointerUp(event) {
-    if (!down) return;
-    const moved = Math.hypot(event.clientX - down.x, event.clientY - down.y);
-    down = null;
-    if (moved > CLICK_TOLERANCE_PX) return;
+    const kind = taps.up({ x: event.clientX, y: event.clientY, time: event.timeStamp });
+    if (!kind) return;
     const id = pickAt(event);
-    if (id) onSelect(id);
-  }
-
-  function onDoubleClick(event) {
-    const id = pickAt(event);
-    if (id) onFocus(id);
+    if (!id) return;
+    if (kind === 'double') onFocus(id);
+    else onSelect(id);
   }
 
   dom.addEventListener('pointerdown', onPointerDown);
   dom.addEventListener('pointerup', onPointerUp);
-  dom.addEventListener('dblclick', onDoubleClick);
+  dom.addEventListener('pointercancel', taps.cancel);
 
   return () => {
     dom.removeEventListener('pointerdown', onPointerDown);
     dom.removeEventListener('pointerup', onPointerUp);
-    dom.removeEventListener('dblclick', onDoubleClick);
+    dom.removeEventListener('pointercancel', taps.cancel);
   };
 }

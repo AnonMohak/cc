@@ -49,3 +49,18 @@ canvas {
     display: none;
   }
 }
+
+.notice {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  max-width: min(420px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 16px 20px;
+  border-radius: 8px;
+  background: rgba(10, 12, 24, 0.9);
+  color: #dfe6ff;
+  font: 14px/1.5 system-ui, sans-serif;
+  text-align: center;
+}
