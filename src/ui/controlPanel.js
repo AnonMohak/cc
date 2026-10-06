@@ -2,7 +2,8 @@ import GUI from 'lil-gui';
 import { LIMITS, SHAPE_KEYS, MAX_TOTAL_PARTICLES, MAX_GALAXIES } from '../galaxy/params.js';
 import { PRESETS, PRESET_NAMES } from '../galaxy/presets.js';
 import { CATALOGUE, CATALOGUE_IDS, catalogueParams } from '../galaxy/catalogue.js';
-import { canAddGalaxy, totalParticles, SETTINGS_LIMITS, QUALITY } from '../state/store.js';
+import { canAddGalaxy, totalParticles, SETTINGS_LIMITS } from '../state/store.js';
+import { QUALITY, QUALITY_OPTIONS } from '../core/quality.js';
 import { LAYOUTS } from '../state/universe.js';
 import { debounce } from '../util/debounce.js';
 
@@ -304,9 +305,11 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   const setting = (patch) => dispatch(actions.updateSettings(patch));
   settingsFolder.add(settingsProxy, 'paused').name('Pause').onChange((v) => setting({ paused: v }));
   settingsFolder
-    .add(settingsProxy, 'quality', Object.fromEntries(Object.entries(QUALITY).map(([k, q]) => [q.label, k])))
+    .add(settingsProxy, 'quality', Object.fromEntries(QUALITY_OPTIONS.map((k) => [k === 'auto' ? 'Auto (adapts to your device)' : QUALITY[k].label, k])))
     .name('Quality')
     .onChange((v) => setting({ quality: v }));
+  const tierProxy = { active: '' };
+  const tierController = settingsFolder.add(tierProxy, 'active').name('Active tier').disable();
   settingsFolder
     .add(settingsProxy, 'exposure', SETTINGS_LIMITS.exposure.min, SETTINGS_LIMITS.exposure.max, SETTINGS_LIMITS.exposure.step)
     .name('Exposure')
@@ -370,6 +373,11 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   return {
     gui,
     settingsFolder,
+    /** Show the tier in use (Auto changes it). */
+    setActiveTier(name) {
+      tierProxy.active = QUALITY[name]?.label ?? '';
+      tierController.updateDisplay();
+    },
     toggle() {
       gui.show(gui._hidden);
     },

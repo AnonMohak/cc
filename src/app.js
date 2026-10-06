@@ -8,7 +8,9 @@ import { captureScreenshot } from './core/screenshot.js';
 import { createStarfield } from './scene/starfield.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
-import { createStore, createInitialState, canAddGalaxy, QUALITY } from './state/store.js';
+import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
+import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier } from './core/quality.js';
+import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createActions } from './state/actions.js';
 import * as persistence from './state/persistence.js';
 import { createControlPanel } from './ui/controlPanel.js';
@@ -40,7 +42,17 @@ export function startApp(container) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#02030a');
 
-  const { renderer, resize: resizeRenderer } = createRenderer(container);
+  // ── Quality: a fixed tier, or Auto (the governor picks from frame times) ─
+  const mobile = isMobileDevice();
+  const makeGovernor = (start) => createQualityGovernor({ start, targetMs: targetFrameMs(mobile) });
+  let governor = makeGovernor(startTier(mobile));
+  // Start from the device default; applyTier() below switches to the saved
+  // setting (and resizes) as soon as the store exists.
+  const initialTier = governor.tier();
+
+  const { renderer, resize: resizeRenderer, setMaxPixelRatio } = createRenderer(container, {
+    maxPixelRatio: QUALITY[initialTier].maxPixelRatio,
+  });
   const { camera, controls, resize: resizeCamera } = createCamera(
     renderer.domElement,
     container.clientWidth / container.clientHeight,
@@ -85,8 +97,21 @@ export function startApp(container) {
   const galaxies = new GalaxyManager({ scene, store, pixelRatio: renderer.getPixelRatio() });
   const post = createComposer(renderer, scene, camera, {
     bloomStrength: store.getState().settings.bloomStrength,
-    volumeScale: QUALITY[store.getState().settings.quality].volumeScale,
+    volumeScale: QUALITY[initialTier].volumeScale,
   });
+
+  let currentTier = null;
+  let onTierChange = () => {};
+  function applyTier(name) {
+    if (name === currentTier) return;
+    currentTier = name;
+    const tier = QUALITY[name];
+    galaxies.setQuality(tier);
+    post.setVolumeScale(tier.volumeScale);
+    post.setBloomMode(tier.bloom);
+    if (setMaxPixelRatio(tier.maxPixelRatio)) resizeAll();
+    onTierChange(name);
+  }
 
   // ── Loop and camera ────────────────────────────────────────────────────
   const loop = createLoop();
@@ -175,11 +200,27 @@ export function startApp(container) {
     if (cameraMode !== 'tour') controls.autoRotate = settings.autoRotate;
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
-    post.setVolumeScale(QUALITY[settings.quality].volumeScale);
   }
   applySettings(store.getState().settings);
+  applyTier(activeTier(store.getState().settings.quality, governor.tier()));
   store.subscribe((next, prev) => {
     if (next.settings !== prev.settings) applySettings(next.settings);
+    if (next.settings.quality !== prev.settings.quality) {
+      // Switching to Auto starts measuring from the tier in use now.
+      if (next.settings.quality === 'auto') governor = makeGovernor(currentTier);
+      applyTier(activeTier(next.settings.quality, governor.tier()));
+    }
+  });
+
+  // Feed real frame times to the governor (the loop's dt is capped at 0.1 s).
+  let lastFrame = performance.now();
+  loop.onTick(() => {
+    const now = performance.now();
+    const frameMs = now - lastFrame;
+    lastFrame = now;
+    if (store.getState().settings.quality !== 'auto') return;
+    const next = governor.sample(frameMs);
+    if (next) applyTier(next);
   });
 
   loop.onTick((dt, _elapsed, realDt) => {
@@ -198,7 +239,7 @@ export function startApp(container) {
     const gpu = gpuName(gl);
     const meter = createFpsMeter(container, undefined, () => [
       gpu,
-      `quality ${store.getState().settings.quality}`,
+      `quality ${store.getState().settings.quality} → ${currentTier}`,
       timer.supported ? formatTimings(timer.results()) : 'GPU timings unavailable',
     ]);
     loop.onTick(() => {
@@ -238,14 +279,15 @@ export function startApp(container) {
     gif.afterRender(performance.now());
   });
 
-  window.addEventListener('resize', () => {
+  function resizeAll() {
     const { clientWidth: w, clientHeight: h } = container;
     resizeRenderer(w, h);
     resizeCamera(w, h);
     post.resize(w, h);
     starfield.setPixelRatio(renderer.getPixelRatio());
     galaxies.setPixelRatio(renderer.getPixelRatio());
-  });
+  }
+  window.addEventListener('resize', resizeAll);
 
   // ── Commands ───────────────────────────────────────────────────────────
   const getTarget = () => controls.target.toArray().map((v) => Math.round(v * 100) / 100);
@@ -357,6 +399,8 @@ export function startApp(container) {
     onGenerateUniverse: commands.generateUniverse,
   });
   commands.togglePanel = () => panel.toggle();
+  onTierChange = (name) => panel.setActiveTier(name);
+  panel.setActiveTier(currentTier);
   createInfoCard(container, store);
   const hud = createHud({
     container,

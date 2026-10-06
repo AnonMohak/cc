@@ -1,7 +1,8 @@
 import { Galaxy } from '../galaxy/Galaxy.js';
 import { diffGalaxies } from './diffGalaxies.js';
 import { emphasisTarget } from '../galaxy/emphasis.js';
-import { dustScaleFromSettings, QUALITY } from '../state/store.js';
+import { dustScaleFromSettings } from '../state/store.js';
+import { QUALITY } from '../core/quality.js';
 
 /**
  * Keeps the Three.js scene in step with the store. The only owner of
@@ -14,7 +15,8 @@ export class GalaxyManager {
   constructor({ scene, store, pixelRatio = 1, GalaxyClass = Galaxy }) {
     this.scene = scene;
     this.dustScale = dustScaleFromSettings(store.getState().settings);
-    this.quality = QUALITY[store.getState().settings.quality];
+    // The app sets the active tier (Auto can change it at any time).
+    this.quality = QUALITY.medium;
     this.pixelRatio = pixelRatio;
     this.GalaxyClass = GalaxyClass;
     /** @type {Map<string, Galaxy>} */
@@ -30,7 +32,6 @@ export class GalaxyManager {
       if (s.dust !== prev.settings.dust || s.dustOpacity !== prev.settings.dustOpacity) {
         this.setDustScale(dustScaleFromSettings(s));
       }
-      if (s.quality !== prev.settings.quality) this.setQuality(QUALITY[s.quality]);
     });
   }
 

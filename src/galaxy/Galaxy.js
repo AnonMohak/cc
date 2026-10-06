@@ -117,6 +117,7 @@ export class Galaxy {
     this.count = data.count;
     this.hiiCount = data.hii.count;
     this.shape = shape;
+    this.applyStarCap();
     applyShapeUniforms(this.uniforms, shape);
     this.updateVolumeBounds();
     // Shape edits are already debounced by the panel and rebuild geometry anyway.
@@ -215,11 +216,24 @@ export class Galaxy {
     };
   }
 
-  /** Volume raymarch budget (see QUALITY in store.js). */
-  setQuality({ steps, octaves }) {
-    this.baseSteps = steps;
-    this.uniforms.uSteps.value = steps;
-    this.uniforms.uOctaves.value = octaves;
+  /** Apply a quality tier (core/quality.js): steps, star cap, point size, volume dust. */
+  setQuality(tier) {
+    this.quality = tier;
+    this.baseSteps = tier.steps;
+    const u = this.uniforms;
+    u.uSteps.value = tier.steps;
+    u.uMaxPointPx.value = tier.maxPointPx;
+    u.uVolumeDust.value = tier.volumeDust ? 1 : 0;
+    this.applyStarCap();
+  }
+
+  /** Draw only the first N stars (they are in random order, so it is a fair subset). */
+  applyStarCap() {
+    if (!this.quality) return;
+    const cap = this.quality.starCap;
+    this.stars.geometry.setDrawRange(0, Math.min(this.count, cap));
+    const hiiCap = Math.ceil(this.hiiCount * Math.min(1, cap / Math.max(this.count, 1)));
+    this.hii.geometry.setDrawRange(0, hiiCap);
   }
 
   /**

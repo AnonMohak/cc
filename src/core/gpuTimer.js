@@ -43,6 +43,10 @@ export function gpuName(gl) {
 export function createGpuTimer(gl) {
   const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2');
   const averages = new Map();
+  /** label → poll count when it last resolved; passes that stop running drop out */
+  const lastSeen = new Map();
+  const STALE_POLLS = 120;
+  let polls = 0;
   const pending = [];
   let active = null;
 
@@ -61,6 +65,7 @@ export function createGpuTimer(gl) {
       active = null;
     },
     poll() {
+      polls++;
       if (!ext || pending.length === 0) return;
       const disjoint = gl.getParameter(ext.GPU_DISJOINT_EXT);
       while (pending.length && gl.getQueryParameter(pending[0].query, gl.QUERY_RESULT_AVAILABLE)) {
@@ -68,13 +73,16 @@ export function createGpuTimer(gl) {
         if (!disjoint) {
           if (!averages.has(label)) averages.set(label, createRollingAverage());
           averages.get(label).add(gl.getQueryParameter(query, gl.QUERY_RESULT) / 1e6);
+          lastSeen.set(label, polls);
         }
         gl.deleteQuery(query);
       }
     },
     /** @returns {Record<string, number | null>} mean ms per label */
     results() {
-      return Object.fromEntries([...averages].map(([label, avg]) => [label, avg.value()]));
+      return Object.fromEntries(
+        [...averages].filter(([label]) => polls - lastSeen.get(label) <= STALE_POLLS).map(([label, avg]) => [label, avg.value()]),
+      );
     },
     /** Time each composer pass under its own label. */
     wrapPass(pass, label) {

@@ -22,6 +22,6 @@ describe('adaptiveSteps', () => {
 
   it('cuts steps for tiny distant galaxies, never below the minimum', () => {
     expect(adaptiveSteps(44, { radiusPx: 20, coverage: 0.001 })).toBeLessThan(25);
-    expect(adaptiveSteps(24, { radiusPx: 1, coverage: 0 })).toBe(12);
+    expect(adaptiveSteps(10, { radiusPx: 1, coverage: 0 })).toBe(6);
   });
 });

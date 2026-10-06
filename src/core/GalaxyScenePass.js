@@ -42,7 +42,7 @@ export class GalaxyScenePass extends Pass {
 
     this.composite = new FullScreenQuad(
       new THREE.ShaderMaterial({
-        uniforms: { tVolume: { value: this.volumeTarget.texture } },
+        uniforms: { tVolume: { value: this.volumeTarget.texture }, uTexel: { value: new THREE.Vector2(1, 1) } },
         vertexShader: /* glsl */ `
           varying vec2 vUv;
           void main() {
@@ -51,9 +51,17 @@ export class GalaxyScenePass extends Pass {
           }`,
         fragmentShader: /* glsl */ `
           uniform sampler2D tVolume;
+          uniform vec2 uTexel; // one low-res texel in UV
           varying vec2 vUv;
+          // Small tent blur while upscaling: hides the per-pixel ray jitter,
+          // which would otherwise show as a blocky pattern at low scales.
           void main() {
-            gl_FragColor = texture2D(tVolume, vUv);
+            vec2 o = uTexel * 0.6;
+            gl_FragColor = 0.25 * (
+              texture2D(tVolume, vUv + vec2(-o.x, -o.y)) +
+              texture2D(tVolume, vUv + vec2(o.x, -o.y)) +
+              texture2D(tVolume, vUv + vec2(-o.x, o.y)) +
+              texture2D(tVolume, vUv + vec2(o.x, o.y)));
           }`,
         blending: THREE.CustomBlending,
         blendEquation: THREE.AddEquation,
@@ -79,10 +87,10 @@ export class GalaxyScenePass extends Pass {
   }
 
   resizeVolumeTarget() {
-    this.volumeTarget.setSize(
-      Math.max(1, Math.round(this.width * this.volumeScale)),
-      Math.max(1, Math.round(this.height * this.volumeScale)),
-    );
+    const w = Math.max(1, Math.round(this.width * this.volumeScale));
+    const h = Math.max(1, Math.round(this.height * this.volumeScale));
+    this.volumeTarget.setSize(w, h);
+    this.composite.material.uniforms.uTexel.value.set(1 / w, 1 / h);
   }
 
   render(renderer, writeBuffer, readBuffer) {

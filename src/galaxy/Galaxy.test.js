@@ -197,3 +197,19 @@ describe('Galaxy march bounds', () => {
     expect(thin.uniforms.uBulgeRadii.value.x).toBeGreaterThan(0);
   });
 });
+
+describe('Galaxy quality tier', () => {
+  it('caps drawn stars and nebulae without a rebuild, and keeps the cap after a rebuild', async () => {
+    const { QUALITY } = await import('../core/quality.js');
+    const g = makeGalaxy({ shape: { ...PRESETS.spiral.shape, count: 50_000 } });
+    const geo = g.stars.geometry;
+    g.setQuality(QUALITY.minimal);
+    expect(g.stars.geometry).toBe(geo);
+    expect(g.stars.geometry.drawRange.count).toBe(30_000);
+    expect(g.hii.geometry.drawRange.count).toBeLessThan(g.hiiCount);
+    g.setShape({ ...PRESETS.spiral.shape, count: 40_000 }, 2);
+    expect(g.stars.geometry.drawRange.count).toBe(30_000);
+    g.setQuality(QUALITY.high);
+    expect(g.stars.geometry.drawRange.count).toBe(40_000);
+  });
+});

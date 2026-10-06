@@ -120,21 +120,32 @@ describe('GalaxyManager dust settings', () => {
 });
 
 describe('GalaxyManager quality', () => {
-  it('applies the quality budget to existing and new galaxies', async () => {
-    const { QUALITY } = await import('../state/store.js');
-    const { store, actions, manager, add } = setup();
+  it('applies the tier the app sets to existing and new galaxies', async () => {
+    const { QUALITY } = await import('../core/quality.js');
+    const { manager, add } = setup();
     add();
     expect(manager.get('id1').uniforms.uSteps.value).toBe(QUALITY.medium.steps);
-    store.dispatch(actions.updateSettings({ quality: 'low' }));
-    expect(manager.get('id1').uniforms.uSteps.value).toBe(QUALITY.low.steps);
+    manager.setQuality(QUALITY.minimal);
+    const g1 = manager.get('id1');
+    expect(g1.uniforms.uSteps.value).toBe(QUALITY.minimal.steps);
+    expect(g1.uniforms.uVolumeDust.value).toBe(0);
+    expect(g1.uniforms.uMaxPointPx.value).toBe(QUALITY.minimal.maxPointPx);
     add();
-    expect(manager.get('id2').uniforms.uOctaves.value).toBe(QUALITY.low.octaves);
+    expect(manager.get('id2').uniforms.uSteps.value).toBe(QUALITY.minimal.steps);
+  });
+
+  it('ignores the quality setting itself (Auto is resolved by the app)', async () => {
+    const { QUALITY } = await import('../core/quality.js');
+    const { store, actions, manager, add } = setup();
+    add();
+    store.dispatch(actions.updateSettings({ quality: 'low' }));
+    expect(manager.get('id1').uniforms.uSteps.value).toBe(QUALITY.medium.steps);
   });
 });
 
 describe('GalaxyManager LOD', () => {
   it('lowers volume steps when the camera is inside a galaxy', async () => {
-    const { QUALITY } = await import('../state/store.js');
+    const { QUALITY } = await import('../core/quality.js');
     const { manager, add } = setup();
     add();
     const camera = new THREE.PerspectiveCamera(55, 1.6);

@@ -84,3 +84,11 @@ describe('layer assignment', () => {
     expect(createStarfield({ count: 10 }).object.layers.mask).toBe(1 << LAYERS.BACKGROUND);
   });
 });
+
+describe('composite blur', () => {
+  it('uses the low-res texel size for its tent blur', () => {
+    const pass = new GalaxyScenePass(new THREE.Scene(), new THREE.PerspectiveCamera(), { volumeScale: 0.25 });
+    pass.setSize(800, 400);
+    expect(pass.composite.material.uniforms.uTexel.value.toArray()).toEqual([1 / 200, 1 / 100]);
+  });
+});

@@ -158,13 +158,12 @@ describe('v1 → v2 migration', () => {
 
 describe('quality and exposure settings', () => {
   it('accept known quality levels and clamp exposure', async () => {
-    const { clampSettings, QUALITY } = await import('./store.js');
-    expect(clampSettings({ quality: 'high' }).quality).toBe('high');
-    expect(clampSettings({ quality: 'ultra' }).quality).toBe('medium');
+    const { clampSettings } = await import('./store.js');
+    // Old saved values (low/medium/high) stay valid; unknown ones fall back to Auto.
+    for (const q of ['auto', 'minimal', 'low', 'medium', 'high']) expect(clampSettings({ quality: q }).quality).toBe(q);
+    expect(clampSettings({ quality: 'ultra' }).quality).toBe('auto');
+    expect(clampSettings({}).quality).toBe('auto');
     expect(clampSettings({ exposure: 99 }).exposure).toBe(2.5);
-    expect(QUALITY.low.steps).toBeLessThan(QUALITY.medium.steps);
-    expect(QUALITY.medium.steps).toBeLessThan(QUALITY.high.steps);
-    expect(QUALITY.high.steps).toBeLessThanOrEqual(96); // shader MAX_STEPS
   });
 });
 

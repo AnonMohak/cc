@@ -6,7 +6,7 @@
  * - tiny and far away: detail is invisible, so fewer steps too.
  */
 
-const MIN_STEPS = 12;
+const MIN_STEPS = 6;
 
 /**
  * Projected radius in pixels and fraction of the screen the disc covers.

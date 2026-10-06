@@ -9,6 +9,7 @@ import {
 } from '../galaxy/params.js';
 import { PRESETS } from '../galaxy/presets.js';
 import { CATALOGUE } from '../galaxy/catalogue.js';
+import { QUALITY_OPTIONS } from '../core/quality.js';
 
 // v2: density-wave renderer (structure group, new shape keys, quality/exposure).
 export const STATE_VERSION = 2;
@@ -20,15 +21,6 @@ export const SETTINGS_LIMITS = {
   exposure: { min: 0.3, max: 2.5, step: 0.05 },
 };
 
-/**
- * Volume raymarch budget per quality level. Steps dominate GPU cost (it is
- * paid for every covered pixel); octaves set noise detail per step.
- */
-export const QUALITY = {
-  low: { label: 'Low', steps: 24, octaves: 2, volumeScale: 0.35 },
-  medium: { label: 'Medium', steps: 44, octaves: 3, volumeScale: 0.5 },
-  high: { label: 'High', steps: 72, octaves: 4, volumeScale: 0.75 },
-};
 
 export const DEFAULT_SETTINGS = {
   paused: false,
@@ -37,7 +29,8 @@ export const DEFAULT_SETTINGS = {
   bloomStrength: 0.45,
   dust: true,
   dustOpacity: 0.6,
-  quality: 'medium',
+  // 'auto' lets the governor pick a tier; or a fixed tier (core/quality.js).
+  quality: 'auto',
   exposure: 1,
   // HUD
   labels: true,
@@ -69,7 +62,7 @@ export function clampSettings(settings) {
   for (const key of ['paused', 'autoRotate', 'dust', 'labels', 'minimap', 'scaleBar']) {
     if (typeof src[key] === 'boolean') out[key] = src[key];
   }
-  if (Object.hasOwn(QUALITY, src.quality)) out.quality = src.quality;
+  if (QUALITY_OPTIONS.includes(src.quality)) out.quality = src.quality;
   for (const [key, limit] of Object.entries(SETTINGS_LIMITS)) {
     const n = Number(src[key]);
     if (src[key] !== null && src[key] !== '' && Number.isFinite(n)) {

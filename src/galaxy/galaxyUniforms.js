@@ -50,7 +50,8 @@ export function createGalaxyUniforms() {
     uNoise: { value: getNoiseTexture() },
     // Volume quality (see settings.quality)
     uSteps: { value: 48 },
-    uOctaves: { value: 4 },
+    uVolumeDust: { value: 1 },
+    uMaxPointPx: { value: 14 },
   };
 }
 

@@ -9,6 +9,7 @@
 
 uniform vec3 uBoxHalf;
 uniform float uSteps;
+uniform float uVolumeDust; // 0 on the Minimal tier
 uniform float uGlow;
 uniform float uFlocculence;
 uniform float uBulgeSersic;
@@ -131,7 +132,7 @@ void main() {
   float lumaOld = dot(bbOld, lumaW);
   float lumaYoung = dot(bbYoung, lumaW);
   float zd = uDiscThickness * DUST_HEIGHT_RATIO;
-  float dustScale = DUST_K * uDustStrength / zd;
+  float dustScale = DUST_K * uDustStrength * uVolumeDust / zd;
 
   vec3 L = vec3(0.0);
   vec3 T = vec3(1.0);

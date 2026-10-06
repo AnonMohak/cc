@@ -69,3 +69,26 @@ describe('createGpuTimer', () => {
     expect(gl.deleteQuery).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('stale timings', () => {
+  it('drops a pass that stopped running (e.g. bloom turned off)', () => {
+    const gl = {
+      QUERY_RESULT_AVAILABLE: 'avail',
+      QUERY_RESULT: 'result',
+      getExtension: () => ({ TIME_ELAPSED_EXT: 'te', GPU_DISJOINT_EXT: 'dj' }),
+      createQuery: () => ({}),
+      beginQuery: () => {},
+      endQuery: () => {},
+      deleteQuery: () => {},
+      getParameter: () => false,
+      getQueryParameter: (_q, p) => (p === 'avail' ? true : 2_000_000),
+    };
+    const t = createGpuTimer(gl);
+    t.begin('bloom');
+    t.end();
+    t.poll();
+    expect(t.results()).toEqual({ bloom: 2 });
+    for (let i = 0; i < 200; i++) t.poll();
+    expect(t.results()).toEqual({});
+  });
+});

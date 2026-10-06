@@ -4,6 +4,7 @@ uniform float uPixelRatio;
 uniform float uBrightness;
 uniform float uEmphasis;
 uniform float uPhysical;
+uniform float uMaxPointPx; // per quality tier
 uniform vec3 uColorInner;
 uniform vec3 uColorOuter;
 
@@ -15,8 +16,6 @@ varying float vFade;
 
 // World-ish point size → pixels; tuned so typical stars are 1–3 px.
 const float POINT_SCALE = 5.0;
-// Close stars must not become blobs.
-const float MAX_POINT_PX = 18.0;
 
 void main() {
   float crestV;
@@ -39,6 +38,7 @@ void main() {
   float size = aStar.y * uSize * uScale * uPixelRatio * POINT_SCALE / max(-mvPosition.z, 0.001);
   // Sub-pixel points flicker; draw them at 1 px and fade them instead.
   vFade = clamp(size, 0.0, 1.0);
-  gl_PointSize = clamp(size, 1.0, MAX_POINT_PX * uPixelRatio);
+  // Close stars must not become blobs (and big points cost fill rate).
+  gl_PointSize = clamp(size, 1.0, uMaxPointPx * uPixelRatio);
   vColor = color * lum * uBrightness * uEmphasis;
 }
