@@ -33,7 +33,7 @@ export const DEFAULT_SETTINGS = {
   quality: 'auto',
   exposure: 1,
   // HUD
-  labels: true,
+  labels: false,
   minimap: true,
   scaleBar: true,
 };

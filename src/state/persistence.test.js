@@ -179,7 +179,7 @@ describe('catalogue persistence', () => {
 describe('HUD settings', () => {
   it('default on, accept booleans, and round-trip', async () => {
     const { clampSettings } = await import('./store.js');
-    expect(clampSettings({})).toMatchObject({ labels: true, minimap: true, scaleBar: true });
-    expect(clampSettings({ minimap: false, labels: 'no' })).toMatchObject({ minimap: false, labels: true });
+    expect(clampSettings({})).toMatchObject({ labels: false, minimap: true, scaleBar: true });
+    expect(clampSettings({ minimap: false, labels: 'no' })).toMatchObject({ minimap: false, labels: false });
   });
 });

@@ -10,7 +10,7 @@ Spiral arms are real **density waves**: stars move on twisted elliptical orbits 
 - **Real galaxies** — Andromeda (M31), Whirlpool (M51), Pinwheel (M101), Sombrero (M104), M87 and the Large Magellanic Cloud, shown at their real inclination with a fact card.
 - **Universe generator** — one click builds a galaxy cluster (ellipticals in the core) or a filament.
 - **Explore** — orbit and zoom, click to select, double-click to fly to a galaxy, a guided tour, and a free-fly mode.
-- **HUD** — galaxy name labels, a light-year scale bar and a clickable minimap.
+- **HUD** — galaxy name labels (off by default; Settings → HUD), a light-year scale bar and a clickable minimap.
 - **Share and save** — the scene saves automatically; copy a share link, export/import JSON, undo/redo.
 - **Record** — screenshots, video (WebM/MP4) and 4-second GIFs.
 - **Start screen** — a translucent box over the live, blurred scene lists the controls for your device; click or tap to start. The UI uses JetBrains Mono, and the control panel is translucent glass (narrow on phones).
