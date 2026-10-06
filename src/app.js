@@ -75,6 +75,7 @@ export function startApp(container) {
     loop.setTimeScale(settings.timeScale);
     controls.autoRotate = settings.autoRotate;
     post.setBloomStrength(settings.bloomStrength);
+    post.setExposure(settings.exposure);
   }
   applySettings(store.getState().settings);
   store.subscribe((next, prev) => {

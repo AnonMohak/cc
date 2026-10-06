@@ -100,6 +100,19 @@ export function sersic(r, re, n) {
   return Math.exp(-b * (Math.pow(Math.max(r, 0) / re, 1 / n)));
 }
 
+/** Peak of the r_e-normalised Sérsic profile; real n≈4 cusps are ~2000× brighter. */
+export const SERSIC_CAP = 40;
+
+/**
+ * Sérsic profile normalised to 1 at the effective radius r_e (the standard
+ * astronomical form), with the central cusp capped. Unlike `sersic()`, high-n
+ * (elliptical) profiles keep a wide visible envelope.
+ */
+export function sersicRe(r, re, n) {
+  const b = 2 * n - 1 / 3;
+  return Math.min(SERSIC_CAP, Math.exp(-b * (Math.pow(Math.max(r, 0) / re, 1 / n) - 1)));
+}
+
 export function smoothstep(e0, e1, x) {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
   return t * t * (3 - 2 * t);
@@ -126,7 +139,8 @@ export function barAngle(barLength, arms, winding, phase, patternSpeed) {
 export function volumeBounds(shape, structure) {
   const n = structure.bulgeSersic;
   const b = 2 * n - 1 / 3;
-  const bulgeR = shape.bulgeSize * Math.pow(Math.log(1e4) / b, n);
+  // Where sersicRe falls to 1% of its value at r_e.
+  const bulgeR = shape.bulgeSize * Math.pow(1 + Math.log(100) / b, n);
   const discZ = 6 * shape.discThickness * 1.6 * 1.4; // sech² tail at the flared edge
   const xz = Math.min(1.45, Math.max(1.25, bulgeR));
   const y = Math.min(1.2, Math.max(0.05, discZ, bulgeR * shape.bulgeFlatten));

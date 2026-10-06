@@ -44,6 +44,9 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8 } 
     setBloomStrength(value) {
       bloom.strength = value;
     },
+    setExposure(value) {
+      renderer.toneMappingExposure = value;
+    },
     dispose() {
       bloom.dispose();
       composer.dispose();

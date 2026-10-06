@@ -108,3 +108,62 @@ describe('persistence robustness', () => {
     expect(() => clear(broken)).not.toThrow();
   });
 });
+
+describe('v1 → v2 migration', () => {
+  const v1 = {
+    version: 1,
+    galaxies: [
+      {
+        id: 'old',
+        name: 'My spiral',
+        preset: 'barred',
+        seed: 77,
+        shape: { count: 120000, arms: 4, spin: 1.2, armSpread: 0.3 },
+        look: { radius: 9, colorInner: '#ff0000', tiltX: 20, position: [5, 0, 3] },
+        motion: { speed: -1.2, differential: 0.25 },
+      },
+    ],
+    selectedId: 'old',
+    settings: { timeScale: 2, bloomStrength: 1.5 },
+  };
+
+  it('keeps identity, placement, size, tilt and speed; takes the rest from the preset', async () => {
+    const { migrateV1 } = await import('./persistence.js');
+    const { PRESETS } = await import('../galaxy/presets.js');
+    const s = deserialize(JSON.stringify(v1));
+    const g = s.galaxies[0];
+    expect(s.version).toBe(STATE_VERSION);
+    expect(g).toMatchObject({ id: 'old', name: 'My spiral', preset: 'barred', seed: 77 });
+    expect(g.look).toMatchObject({ radius: 9, tiltX: 20, position: [5, 0, 3] });
+    expect(g.motion.speed).toBe(-1.2);
+    expect(g.shape.count).toBe(120000);
+    expect(g.shape.barLength).toBe(PRESETS.barred.shape.barLength);
+    expect(g.structure).toEqual(PRESETS.barred.structure);
+    expect(g.shape).not.toHaveProperty('spin');
+    expect(s.selectedId).toBe('old');
+    expect(s.settings.timeScale).toBe(2);
+    expect(migrateV1({ version: 1 }).galaxies).toEqual([]);
+  });
+
+  it('load() migrates the legacy key once and moves it to the v2 key', () => {
+    const storage = memoryStorage();
+    storage.setItem('galaxy-sandbox:v1', JSON.stringify(v1));
+    const s = load(storage);
+    expect(s.galaxies).toHaveLength(1);
+    expect(storage.getItem('galaxy-sandbox:v1')).toBeNull();
+    expect(storage.getItem(STORAGE_KEY)).not.toBeNull();
+    expect(STORAGE_KEY).toBe('galaxy-sandbox:v2');
+  });
+});
+
+describe('quality and exposure settings', () => {
+  it('accept known quality levels and clamp exposure', async () => {
+    const { clampSettings, QUALITY } = await import('./store.js');
+    expect(clampSettings({ quality: 'high' }).quality).toBe('high');
+    expect(clampSettings({ quality: 'ultra' }).quality).toBe('medium');
+    expect(clampSettings({ exposure: 99 }).exposure).toBe(2.5);
+    expect(QUALITY.low.steps).toBeLessThan(QUALITY.medium.steps);
+    expect(QUALITY.medium.steps).toBeLessThan(QUALITY.high.steps);
+    expect(QUALITY.high.steps).toBeLessThanOrEqual(96); // shader MAX_STEPS
+  });
+});

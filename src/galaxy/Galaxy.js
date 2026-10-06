@@ -175,6 +175,12 @@ export class Galaxy {
     };
   }
 
+  /** Volume raymarch budget (see QUALITY in store.js). */
+  setQuality({ steps, octaves }) {
+    this.uniforms.uSteps.value = steps;
+    this.uniforms.uOctaves.value = octaves;
+  }
+
   setPixelRatio(value) {
     this.uniforms.uPixelRatio.value = value;
   }

@@ -9,21 +9,35 @@ import {
 } from '../galaxy/params.js';
 import { PRESETS } from '../galaxy/presets.js';
 
-export const STATE_VERSION = 1;
+// v2: density-wave renderer (structure group, new shape keys, quality/exposure).
+export const STATE_VERSION = 2;
 
 export const SETTINGS_LIMITS = {
   timeScale: { min: 0, max: 5, step: 0.05 },
   bloomStrength: { min: 0, max: 3, step: 0.05 },
   dustOpacity: { min: 0, max: 1, step: 0.01 },
+  exposure: { min: 0.3, max: 2.5, step: 0.05 },
+};
+
+/**
+ * Volume raymarch budget per quality level. Steps dominate GPU cost (it is
+ * paid for every covered pixel); octaves set noise detail per step.
+ */
+export const QUALITY = {
+  low: { label: 'Low', steps: 24, octaves: 2 },
+  medium: { label: 'Medium', steps: 44, octaves: 3 },
+  high: { label: 'High', steps: 72, octaves: 4 },
 };
 
 export const DEFAULT_SETTINGS = {
   paused: false,
   timeScale: 1,
   autoRotate: false,
-  bloomStrength: 0.8,
+  bloomStrength: 0.6,
   dust: true,
   dustOpacity: 0.6,
+  quality: 'medium',
+  exposure: 1,
 };
 
 /** Global dust multiplier: 1 at the default amount, 0 when dust is off. */
@@ -50,6 +64,7 @@ export function clampSettings(settings) {
   for (const key of ['paused', 'autoRotate', 'dust']) {
     if (typeof src[key] === 'boolean') out[key] = src[key];
   }
+  if (Object.hasOwn(QUALITY, src.quality)) out.quality = src.quality;
   for (const [key, limit] of Object.entries(SETTINGS_LIMITS)) {
     const n = Number(src[key]);
     if (src[key] !== null && src[key] !== '' && Number.isFinite(n)) {

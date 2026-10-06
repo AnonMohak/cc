@@ -118,3 +118,16 @@ describe('GalaxyManager dust settings', () => {
     expect(manager.get('id2').uniforms.uDustStrength.value).toBe(0);
   });
 });
+
+describe('GalaxyManager quality', () => {
+  it('applies the quality budget to existing and new galaxies', async () => {
+    const { QUALITY } = await import('../state/store.js');
+    const { store, actions, manager, add } = setup();
+    add();
+    expect(manager.get('id1').uniforms.uSteps.value).toBe(QUALITY.medium.steps);
+    store.dispatch(actions.updateSettings({ quality: 'low' }));
+    expect(manager.get('id1').uniforms.uSteps.value).toBe(QUALITY.low.steps);
+    add();
+    expect(manager.get('id2').uniforms.uOctaves.value).toBe(QUALITY.low.octaves);
+  });
+});

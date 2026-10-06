@@ -1,7 +1,7 @@
 import { Galaxy } from '../galaxy/Galaxy.js';
 import { diffGalaxies } from './diffGalaxies.js';
 import { emphasisTarget } from '../galaxy/emphasis.js';
-import { dustScaleFromSettings } from '../state/store.js';
+import { dustScaleFromSettings, QUALITY } from '../state/store.js';
 
 /**
  * Keeps the Three.js scene in step with the store. The only owner of
@@ -14,6 +14,7 @@ export class GalaxyManager {
   constructor({ scene, store, pixelRatio = 1, GalaxyClass = Galaxy }) {
     this.scene = scene;
     this.dustScale = dustScaleFromSettings(store.getState().settings);
+    this.quality = QUALITY[store.getState().settings.quality];
     this.pixelRatio = pixelRatio;
     this.GalaxyClass = GalaxyClass;
     /** @type {Map<string, Galaxy>} */
@@ -29,6 +30,7 @@ export class GalaxyManager {
       if (s.dust !== prev.settings.dust || s.dustOpacity !== prev.settings.dustOpacity) {
         this.setDustScale(dustScaleFromSettings(s));
       }
+      if (s.quality !== prev.settings.quality) this.setQuality(QUALITY[s.quality]);
     });
   }
 
@@ -41,6 +43,7 @@ export class GalaxyManager {
     for (const entry of diff.added) {
       const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio, dustScale: this.dustScale });
       galaxy.id = entry.id;
+      galaxy.setQuality(this.quality);
       galaxy.setEmphasis(emphasisTarget(entry.id, this.selectedId), true);
       this.galaxies.set(entry.id, galaxy);
       this.scene.add(galaxy.group);
@@ -65,6 +68,11 @@ export class GalaxyManager {
   setDustScale(scale) {
     this.dustScale = scale;
     for (const galaxy of this.galaxies.values()) galaxy.setDustScale(scale);
+  }
+
+  setQuality(quality) {
+    this.quality = quality;
+    for (const galaxy of this.galaxies.values()) galaxy.setQuality(quality);
   }
 
   /** Per-frame: camera position in each galaxy's local space (for dust). */

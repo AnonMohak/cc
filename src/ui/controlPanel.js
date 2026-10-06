@@ -1,7 +1,7 @@
 import GUI from 'lil-gui';
 import { LIMITS, SHAPE_KEYS, MAX_TOTAL_PARTICLES, MAX_GALAXIES } from '../galaxy/params.js';
 import { PRESETS, PRESET_NAMES } from '../galaxy/presets.js';
-import { canAddGalaxy, totalParticles, SETTINGS_LIMITS } from '../state/store.js';
+import { canAddGalaxy, totalParticles, SETTINGS_LIMITS, QUALITY } from '../state/store.js';
 import { debounce } from '../util/debounce.js';
 
 const LABELS = {
@@ -228,6 +228,14 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   const settingsProxy = { ...store.getState().settings };
   const setting = (patch) => dispatch(actions.updateSettings(patch));
   settingsFolder.add(settingsProxy, 'paused').name('Pause').onChange((v) => setting({ paused: v }));
+  settingsFolder
+    .add(settingsProxy, 'quality', Object.fromEntries(Object.entries(QUALITY).map(([k, q]) => [q.label, k])))
+    .name('Quality')
+    .onChange((v) => setting({ quality: v }));
+  settingsFolder
+    .add(settingsProxy, 'exposure', SETTINGS_LIMITS.exposure.min, SETTINGS_LIMITS.exposure.max, SETTINGS_LIMITS.exposure.step)
+    .name('Exposure')
+    .onChange((v) => setting({ exposure: v }));
   settingsFolder
     .add(settingsProxy, 'timeScale', SETTINGS_LIMITS.timeScale.min, SETTINGS_LIMITS.timeScale.max, SETTINGS_LIMITS.timeScale.step)
     .name('Time scale')

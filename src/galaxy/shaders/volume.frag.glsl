@@ -23,8 +23,8 @@ varying vec3 vUnitPos;
 // Emission scales, tuned so a face-on disc reads as a soft glow under the
 // stars and an edge-on disc is a bright band (longer path).
 const float DISC_I = 4.2;
-const float BULGE_I = 9.0;
-const float BAR_I = 2.0;
+const float BULGE_I = 0.3;
+const float BAR_I = 6.0;
 // Dust absorption per unit of (surface density × slab density / zd).
 const float DUST_K = 1.1;
 
@@ -81,7 +81,7 @@ void main() {
 
     // Bulge: flattened Sérsic.
     float rb = length(vec3(p.x, p.y / uBulgeFlatten, p.z));
-    float bulge = BULGE_I * uBulgeFraction * gm_sersic(rb, uBulgeSize, uBulgeSersic);
+    float bulge = BULGE_I * uBulgeFraction * gm_sersicRe(rb, uBulgeSize, uBulgeSersic);
 
     // Disc: exponential × sech², flared, smoothly truncated.
     float z0 = uDiscThickness * (1.0 + 0.6 * R) * 1.4;

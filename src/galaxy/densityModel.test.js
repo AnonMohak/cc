@@ -168,3 +168,13 @@ describe('volumeBounds', () => {
     expect(y).toBeGreaterThanOrEqual(6 * 0.03);
   });
 });
+
+describe('sersicRe', () => {
+  it('is 1 at r_e, capped at the centre, and keeps a wide envelope for n = 4', async () => {
+    const { sersicRe, SERSIC_CAP } = await import('./densityModel.js');
+    expect(sersicRe(0.2, 0.2, 4)).toBeCloseTo(1);
+    expect(sersicRe(0, 0.2, 4)).toBe(SERSIC_CAP);
+    // Elliptical envelope: still visible at 3 r_e (centre-normalised form is ~1e-6 there).
+    expect(sersicRe(0.6, 0.2, 4)).toBeGreaterThan(0.01);
+  });
+});

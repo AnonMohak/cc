@@ -69,6 +69,12 @@ float gm_sersic(float r, float re, float n) {
   return exp(-b * pow(max(r, 0.0) / re, 1.0 / n));
 }
 
+// Sérsic normalised at r_e (standard form), central cusp capped (SERSIC_CAP = 40).
+float gm_sersicRe(float r, float re, float n) {
+  float b = 2.0 * n - 1.0 / 3.0;
+  return min(40.0, exp(-b * (pow(max(r, 0.0) / re, 1.0 / n) - 1.0)));
+}
+
 // Bar turns with the pattern and points at the arm crests at its ends.
 float gm_barAngle(float barLength, float arms, float winding, float phase, float patternSpeed) {
   float m = max(arms, 1.0);

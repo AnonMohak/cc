@@ -3,7 +3,7 @@ import { glsl, CHUNKS } from './glsl.js';
 
 describe('glsl chunks', () => {
   it('model chunk defines every function the JS mirror exports', () => {
-    for (const fn of ['gm_omega', 'gm_orbitAngle', 'gm_eccentricity', 'gm_armPhase', 'gm_crest', 'gm_dustColumn', 'gm_blackbody', 'gm_sersic']) {
+    for (const fn of ['gm_sersicRe', 'gm_barAngle', 'gm_omega', 'gm_orbitAngle', 'gm_eccentricity', 'gm_armPhase', 'gm_crest', 'gm_dustColumn', 'gm_blackbody', 'gm_sersic']) {
       expect(CHUNKS.model).toContain(`${fn}(`);
     }
     expect(CHUNKS.noise).toContain('gn_fbm(');
