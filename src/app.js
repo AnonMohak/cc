@@ -17,6 +17,7 @@ import { attachKeyboard } from './ui/keyboard.js';
 import { debounce } from './util/debounce.js';
 import { PRESETS } from './galaxy/presets.js';
 import { showNotice } from './ui/notice.js';
+import { createFpsMeter } from './ui/fpsMeter.js';
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -86,9 +87,13 @@ export function startApp(container) {
     galaxies.tick(dt, realDt);
     cameraFly.update(realDt);
     controls.update();
-    galaxies.updateCamera(camera.position);
+    galaxies.updateCamera(camera, container.clientWidth, container.clientHeight);
     starfield.update(camera.position);
   });
+  if (new URLSearchParams(window.location.search).has('fps')) {
+    const meter = createFpsMeter(container);
+    loop.onTick(() => meter.update());
+  }
   loop.setRender(() => post.render());
 
   window.addEventListener('resize', () => {

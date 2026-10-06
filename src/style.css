@@ -64,3 +64,15 @@ canvas {
   font: 14px/1.5 system-ui, sans-serif;
   text-align: center;
 }
+
+.fps {
+  position: fixed;
+  left: 16px;
+  top: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(10, 12, 24, 0.75);
+  color: #9fc0ff;
+  font: 12px/1.4 ui-monospace, monospace;
+  pointer-events: none;
+}

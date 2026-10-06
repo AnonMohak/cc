@@ -12,6 +12,7 @@ import {
   applyMotionUniforms,
 } from './galaxyUniforms.js';
 import { approach } from './emphasis.js';
+import { screenFootprint, adaptiveSteps } from './lod.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 // Stars move on orbits up to a·(1 + e) and the halo reaches 1.4; one fixed
@@ -177,8 +178,22 @@ export class Galaxy {
 
   /** Volume raymarch budget (see QUALITY in store.js). */
   setQuality({ steps, octaves }) {
+    this.baseSteps = steps;
     this.uniforms.uSteps.value = steps;
     this.uniforms.uOctaves.value = octaves;
+  }
+
+  /**
+   * Per-frame volume LOD from the on-screen size (see lod.js).
+   * @param {THREE.PerspectiveCamera} camera
+   * @param {number} width viewport px
+   * @param {number} height viewport px
+   */
+  updateLod(camera, width, height) {
+    if (!this.baseSteps) return;
+    const distance = camera.position.distanceTo(this.group.position);
+    const footprint = screenFootprint(this.radius * 1.3, distance, camera.fov, width, height);
+    this.uniforms.uSteps.value = adaptiveSteps(this.baseSteps, footprint);
   }
 
   setPixelRatio(value) {

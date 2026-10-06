@@ -113,7 +113,10 @@ void main() {
 
     // Colour: old warm light inside; arm crests bluer (young stars).
     vec3 discColor = physicalTint(mix(gm_blackbody(5200.0), gm_blackbody(11000.0), c * hasArms * 0.8), R);
-    vec3 emission = bulge * bulgeColor + (disc + bar) * discColor;
+    // Fade to zero at the box faces so a wide envelope never shows the box edge.
+    vec3 q = abs(p) / uBoxHalf;
+    float window = 1.0 - gm_smoothstep(0.7, 1.0, max(max(q.x, q.y), q.z));
+    vec3 emission = (bulge * bulgeColor + (disc + bar) * discColor) * window;
 
     // Dust: thin slab, on the inner arm edges, filamentary.
     float dust = 0.0;

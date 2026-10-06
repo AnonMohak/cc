@@ -131,3 +131,18 @@ describe('GalaxyManager quality', () => {
     expect(manager.get('id2').uniforms.uOctaves.value).toBe(QUALITY.low.octaves);
   });
 });
+
+describe('GalaxyManager LOD', () => {
+  it('lowers volume steps when the camera is inside a galaxy', async () => {
+    const { QUALITY } = await import('../state/store.js');
+    const { manager, add } = setup();
+    add();
+    const camera = new THREE.PerspectiveCamera(55, 1.6);
+    camera.position.set(0, 30, 40);
+    manager.updateCamera(camera, 1280, 800);
+    expect(manager.get('id1').uniforms.uSteps.value).toBe(QUALITY.medium.steps);
+    camera.position.set(0, 0.5, 0);
+    manager.updateCamera(camera, 1280, 800);
+    expect(manager.get('id1').uniforms.uSteps.value).toBeLessThan(QUALITY.medium.steps);
+  });
+});

@@ -75,9 +75,15 @@ export class GalaxyManager {
     for (const galaxy of this.galaxies.values()) galaxy.setQuality(quality);
   }
 
-  /** Per-frame: camera position in each galaxy's local space (for dust). */
-  updateCamera(cameraWorld) {
-    for (const galaxy of this.galaxies.values()) galaxy.updateCamera(cameraWorld);
+  /**
+   * Per-frame: camera position in each galaxy's local space (for dust) and
+   * the volume step budget from each galaxy's on-screen size.
+   */
+  updateCamera(camera, width, height) {
+    for (const galaxy of this.galaxies.values()) {
+      galaxy.updateCamera(camera.position);
+      if (width && height) galaxy.updateLod(camera, width, height);
+    }
   }
 
   pickTargets() {

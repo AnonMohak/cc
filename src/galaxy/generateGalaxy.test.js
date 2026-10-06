@@ -109,3 +109,19 @@ describe('generateGalaxy', () => {
     expect(onArm / offArm).toBeGreaterThan(1.2);
   });
 });
+
+describe('disc edge', () => {
+  it('has no pile-up rim of stars at the outer edge, even with a bar', () => {
+    const g = generateGalaxy({ ...DEFAULT_SHAPE, count: 40000, barLength: 0.3, bulgeFraction: 0, haloFraction: 0 }, 11);
+    let inOuterBand = 0;
+    let inInnerBand = 0;
+    for (let i = 0; i < g.count; i++) {
+      if (g.orbit[i * 4 + 3] !== KIND.DISC) continue;
+      const a = g.orbit[i * 4];
+      if (a > 1.1 && a <= 1.15) inOuterBand++;
+      if (a > 1.0 && a <= 1.05) inInnerBand++;
+    }
+    // Exponential falloff: the last band must not hold more than the one before.
+    expect(inOuterBand).toBeLessThanOrEqual(inInnerBand);
+  });
+});

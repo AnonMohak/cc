@@ -2,7 +2,7 @@
 
 An interactive 3D galaxy sandbox in the browser. Users create, edit, and delete realistic procedural galaxies and fly the camera around them.
 
-> Status: feature-complete (milestones M0–M9). New work: keep tests passing and `npm run build` clean before each commit.
+> Status: feature-complete (M0–M9) plus the visual overhaul (V1–V6: density-wave stars + raymarched volume). New work: keep tests passing and `npm run build` clean before each LOCAL commit (no pushes until GitHub is set up). Ideas backlog: `future-suggestions.md`.
 
 ## Features
 
@@ -16,11 +16,13 @@ Required:
 Additional:
 
 - **Presets**: spiral, barred spiral, elliptical, irregular. A new galaxy starts from a preset.
-- **Selection**: click or tap a galaxy to select it (a faint ring marks it); the control panel edits the selected one. Double-click / double-tap or "Focus" flies the camera to it.
-- **Differential rotation**: inner stars orbit faster than outer stars, so arms wind like a real galaxy.
-- **Bloom**: a glow post-process on the bright core and stars.
-- **Background starfield and dust**: a static far starfield, plus dark dust lanes along the arms.
-- **Global controls**: pause/resume time, global time scale, bloom strength, auto-rotate camera.
+- **Selection**: click or tap a galaxy to select it; the selected galaxy brightens ×1.15 and the others dim to ×0.75 (no overlay). Double-click / double-tap or "Focus" flies the camera to it.
+- **Realistic rendering** (researched against real galaxies): density-wave spiral arms, black-body star colours, young blue stars that light up on arm crests, pink H II nebulae, a Sérsic bulge, an exponential × sech² disc and dust lanes on the inner arm edges (edge-on: a midplane dust lane).
+- **Live structure controls**: arm count, winding, density wave, arm contrast, flocculence, dust, diffuse glow and bulge profile change instantly (shader uniforms).
+- **Bloom**: lifts only bright cores and stars (threshold 0.45).
+- **Background starfield**: a static far starfield.
+- **Global controls**: pause/resume, time scale, quality (volume step budget), exposure, bloom, dust on/off and amount, auto-rotate camera.
+- **FPS readout**: add `?fps` to the URL.
 - **Persistence**: the scene saves to `localStorage` and restores on reload; "Reset scene" clears it.
 - **Screenshot**: export the canvas as PNG.
 - **Keyboard**: Space pause · N add · F focus · Delete remove · Esc deselect · H hide panel · P screenshot (`ui/keyboard.js`).
@@ -68,13 +70,17 @@ src/
 │   └── screenshot.js        # Render one frame → PNG download
 ├── galaxy/
 │   ├── random.js            # Seeded PRNG (mulberry32) + Gaussian helper
-│   ├── generateGalaxy.js    # PURE: shape + seed → { positions, radiusNorm, colorJitter, sizes, dust } in a UNIT disc
-│   ├── Galaxy.js            # Owns Group + star Points + dust Points; setShape, setLook, tick, dispose
-│   ├── galaxyMaterial.js    # Star ShaderMaterial; uniforms: uPhase, uDifferential, uSize, uColorInner/Outer, …
-│   ├── dustMaterial.js      # Dust-lane ShaderMaterial (normal blending, dark)
-│   ├── presets.js           # Preset param objects (spiral, barred, elliptical, irregular)
-│   ├── params.js            # Defaults, LIMITS, SHAPE_KEYS, clamp functions
-│   └── shaders/             # *.glsl, imported with ?raw
+│   ├── densityModel.js      # PURE JS mirror of shaders/chunks/model.glsl: orbits, arms, dust column, black-body, Sérsic, bounds
+│   ├── generateGalaxy.js    # PURE: shape + seed → orbital elements (aOrbit vec4, aStar vec3) + H II population
+│   ├── galaxyUniforms.js    # One uniform set per galaxy, shared BY REFERENCE by all its materials
+│   ├── starMaterials.js     # Star + H II ShaderMaterials (additive points)
+│   ├── volumeMaterial.js    # Raymarched body (back faces, dst = emission + dst·transmittance)
+│   ├── Galaxy.js            # Owns group + volume Mesh + stars Points + H II Points; set{Shape,Structure,Look,Motion}, tick, dispose
+│   ├── emphasis.js          # PURE: selection brightness targets + frame-rate independent ease
+│   ├── lod.js               # PURE: on-screen footprint → volume step count
+│   ├── presets.js           # spiral (M51/M101), barred (NGC 1300), elliptical (M87), irregular (LMC)
+│   ├── params.js            # LIMITS + defaults for shape / structure / look / motion, clamp functions
+│   └── shaders/             # *.glsl via ?raw; chunks/{model,noise,stars}.glsl joined by glsl.js
 ├── scene/
 │   ├── GalaxyManager.js     # Map<id, Galaxy>; applies store diffs to the scene
 │   ├── diffGalaxies.js      # PURE: prev/next galaxy lists → { added, removed, shapeChanged, lookChanged }
@@ -90,6 +96,7 @@ src/
     ├── controlPanel.js      # lil-gui: Scene / Selected galaxy / Settings folders; dispatches store actions
     ├── pointerInput.js      # Tap/click select, double-tap focus (pure createTapDetector)
     ├── keyboard.js          # PURE keyToCommand + attachKeyboard
+    ├── fpsMeter.js          # ?fps readout (own clock; loop dt is capped)
     └── notice.js            # Centred message overlay
 ```
 
@@ -97,12 +104,14 @@ Tests live next to the code: `src/galaxy/generateGalaxy.test.js`, etc.
 
 ### Key design decisions
 
-- **Rotation runs on the GPU, phase on the CPU.** Each galaxy accumulates `phase += dt * speed * timeScale` and sends `uPhase`. The vertex shader rotates each star by `uPhase * ω(r)`. Using `time * speed` would make the galaxy jump when speed changes.
-- **Damped differential rotation.** `ω(r) = mix(1, 1/(r + 0.25), uDifferential)`. Pure ω ∝ 1/r winds the arms into a smear within a minute (the "winding problem").
-- **Rebuild only when shape changes.** `SHAPE_KEYS` (count, arms, spin, randomness, randomnessPower, bulge, barLength, …) and the seed change the geometry. Galaxy radius is `group.scale` (stars are generated in a unit disc); colors are shader uniforms mixed by `aRadiusNorm`; speed, star size and tilt are uniforms or transforms.
+- **Galaxy entry = four groups.** `shape` (star populations → geometry rebuild), `structure` (arms, dust, volume → uniforms), `look` (size, colours, tilt, position → uniforms/transforms), `motion` (speed, differential, pattern speed → uniforms). `diffGalaxies` rebuilds only on `SHAPE_KEYS`/seed changes.
+- **Arms are a density wave, computed on the GPU.** Disc stars store orbital elements, not positions. The vertex shader places each star at r = a·(1 + e·cos ψ), ψ = m(θ − φ(a)), with a log-spiral φ(a) that also turns rigidly at the pattern speed. Orbits crowd along the arms; stars flow through them; the pattern never winds up. Arm count, winding and eccentricity are therefore live uniforms.
+- **Phase on the CPU.** Each galaxy accumulates `phase += dt * speed` and sends `uPhase`; a speed change never makes stars jump.
+- **Hybrid rendering, one model.** Draw order per galaxy: volume (renderOrder 0) → stars (1) → H II (2). The volume and the stars call the same GLSL model chunk (`model.glsl`, mirrored and unit-tested in `densityModel.js`), so arms, bar and dust agree. Stars get analytic dust toward the camera (`gs_dustTau`) instead of depth sorting.
+- **Change the model in two places.** Any formula change goes into `densityModel.js` AND `chunks/model.glsl`; `glsl.test.js` pins shared constants.
 - **Picking uses math, not `Raycaster` on `Points`.** Raycasting a `Points` object loops over every vertex. Intersect the ray with each galaxy's disc plane instead.
 - **Generation is pure and seeded.** `generateGalaxy(params, seed)` uses a seeded PRNG (e.g. mulberry32), never `Math.random`. The same input gives the same galaxy. This makes it testable and lets persistence store params instead of vertices.
-- **Store holds plain data only.** Galaxy entries are JSON-serializable params (`id`, `preset`, `position`, `seed`, shape, color, speed). Three.js objects live only in `GalaxyManager`.
+- **Store holds plain data only.** Galaxy entries are JSON-serializable params (`id`, `name`, `preset`, `seed`, shape, structure, look, motion). Three.js objects live only in `GalaxyManager`. Saved state is v2 (`galaxy-sandbox:v2`); v1 saves migrate once (`migrateV1`).
 - **One loop.** Only `core/loop.js` calls `requestAnimationFrame` / `setAnimationLoop`.
 
 ## Coding conventions
@@ -133,7 +142,10 @@ Tests live next to the code: `src/galaxy/generateGalaxy.test.js`, etc.
 2. Speed slider changes rotation at once, with no stutter or rebuild.
 3. Zoom from very close to very far. No clipping inside the near/far range.
 4. Reload: the scene restores.
-5. Check the frame rate stays smooth with the maximum total particle budget.
+5. Check the frame rate (`?fps`) with the maximum particle budget and with the camera inside a galaxy, at each Quality level.
+6. Look at each preset face-on, at 45° and edge-on; edge-on spirals must show a dark midplane dust lane.
+
+Headless browsers (SwiftShader) render on the CPU at ~1 s per frame with the volume on: use them for correctness and screenshots, never for speed or for wall-clock-sensitive checks.
 
 To check for GPU leaks, watch `renderer.info.memory.geometries` and `.textures`; the counts must return to the baseline after deletes. In dev, `window.__app` exposes `store`, `actions`, `galaxies`, `renderer`, `loop` and `commands` for console checks.
 
@@ -142,13 +154,15 @@ Do not add WebGL or screenshot tests unless asked; they are slow and flaky in CI
 ## Important constraints
 
 - **Performance budget:** max 200 000 particles per galaxy, max 10 galaxies, ~1 000 000 particles total. Target 60 fps on a mid-range laptop GPU. Enforce limits in `params.js` and in the create action.
+- **Volume fill rate:** the raymarch costs (covered pixels × steps). Keep `QUALITY.*.steps` ≤ the shader `MAX_STEPS` (96), keep the box tight (`volumeBounds`), and keep `lod.js` cutting steps for full-screen and tiny galaxies. Fade emission to 0 at the box faces so the box never shows.
+- **Bloom:** threshold 0.45, radius 0.3. A lower threshold floods dust lanes; a wider radius paints a halo far around bright cores.
 - **Pixel ratio:** cap at `Math.min(devicePixelRatio, 2)`. Pass it to the shader (`uPixelRatio`) so point size is the same on all screens.
 - **Dispose GPU resources** on delete and on rebuild. A geometry rebuild must dispose the old `BufferGeometry` first.
 - **No per-frame allocation** in the animation loop (no `new Vector3()` etc. inside `tick`).
 - **Debounce rebuilds** from sliders that change geometry (e.g. on `onFinishChange`, or a ~100 ms debounce) so dragging stays smooth.
-- **Blending:** galaxy points use `AdditiveBlending`, `depthWrite: false`. Do not enable `depthWrite` on points; it causes black squares.
+- **Blending:** star and H II points use `AdditiveBlending`, `depthWrite: false` (depth writes on points draw black squares). The volume uses `CustomBlending` One / SrcAlpha (emission + transmittance) on `BackSide`, `depthWrite: false`.
 - **Camera limits:** set OrbitControls `minDistance` / `maxDistance` and the camera `near` / `far` to match, so zoom never passes through the far plane.
-- **Bundle:** `vite.config.js` puts `three` in its own chunk (~570 kB) and sets `chunkSizeWarningLimit: 600`. App code is ~65 kB.
+- **Bundle:** `vite.config.js` puts `three` in its own chunk (~570 kB) and sets `chunkSizeWarningLimit: 600`. App code is ~85 kB.
 - **Persistence is versioned.** Bump the version key when the stored shape changes, and migrate or reset old data.
 - **Browser only, no backend.** The app is a static site from `vite build`.
 

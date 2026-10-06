@@ -4,7 +4,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
-const BLOOM_RADIUS = 0.45;
+// Tight radius: wide bloom mips paint a faint halo far around bright cores.
+const BLOOM_RADIUS = 0.3;
 // The raymarched volume already carries the soft glow; bloom only lifts
 // genuinely bright cores and stars. A low threshold would flood dust lanes.
 const BLOOM_THRESHOLD = 0.45;

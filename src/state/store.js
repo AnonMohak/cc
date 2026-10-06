@@ -33,7 +33,7 @@ export const DEFAULT_SETTINGS = {
   paused: false,
   timeScale: 1,
   autoRotate: false,
-  bloomStrength: 0.6,
+  bloomStrength: 0.45,
   dust: true,
   dustOpacity: 0.6,
   quality: 'medium',

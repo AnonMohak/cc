@@ -99,9 +99,10 @@ export function generateGalaxy(shapeInput, seed) {
         theta0 = Math.atan2(w, x);
         stats.clump++;
       } else {
-        // Truncated exponential disc, starting near the bar ends.
-        const t = truncatedExponential(rng.next(), shape.discScale, DISC_MAX);
-        a = Math.min(DISC_MAX, shape.barLength * 0.8 + t);
+        // Truncated exponential disc, starting near the bar ends. Sample only
+        // the remaining range: clamping would pile stars into a rim at DISC_MAX.
+        const start = shape.barLength * 0.8;
+        a = start + truncatedExponential(rng.next(), shape.discScale, DISC_MAX - start);
         theta0 = rng.range(0, Math.PI * 2);
       }
       // sech² vertical profile, flaring slightly outward.
@@ -155,8 +156,8 @@ function generateHii(rng, shape) {
   const size = new Float32Array(n);
   const positions = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
-    const t = truncatedExponential(rng.next(), shape.discScale * 1.2, DISC_MAX);
-    const a = Math.min(DISC_MAX, shape.barLength * 0.8 + t);
+    const start = shape.barLength * 0.8;
+    const a = start + truncatedExponential(rng.next(), shape.discScale * 1.2, DISC_MAX - start);
     const theta0 = rng.range(0, Math.PI * 2);
     const z = rng.gaussian(0, shape.discThickness * 0.5);
     orbit.set([a, theta0, z, KIND.DISC], i * 4);
