@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createRandom } from '../galaxy/random.js';
 import { LAYERS } from '../core/layers.js';
+import { starDensity } from './skyMap.js';
 
 const vertexShader = /* glsl */ `
   uniform float uPixelRatio;
@@ -44,10 +45,13 @@ export function createStarfield({ count = 8000, radius = 900, seed = 1337, pixel
   const sizes = new Float32Array(count);
 
   for (let i = 0; i < count; i++) {
-    // Uniform direction on a sphere.
-    const u = rng.range(-1, 1);
-    const theta = rng.range(0, Math.PI * 2);
-    const s = Math.sqrt(1 - u * u);
+    // Direction on a sphere, denser along the Milky Way band (rejection sampling).
+    let u, theta, s;
+    do {
+      u = rng.range(-1, 1);
+      theta = rng.range(0, Math.PI * 2);
+      s = Math.sqrt(1 - u * u);
+    } while (rng.next() > starDensity(s * Math.cos(theta), u, s * Math.sin(theta)));
     const r = radius * rng.range(0.9, 1);
     positions[i * 3] = r * s * Math.cos(theta);
     positions[i * 3 + 1] = r * u;

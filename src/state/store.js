@@ -32,6 +32,7 @@ export const DEFAULT_SETTINGS = {
   // 'auto' lets the governor pick a tier; or a fixed tier (core/quality.js).
   quality: 'auto',
   exposure: 1,
+  sky: true, // Milky Way background (scene/sky.js)
   // HUD
   labels: false,
   minimap: true,
@@ -59,7 +60,7 @@ export function canAddGalaxy(state, count) {
 export function clampSettings(settings) {
   const src = settings && typeof settings === 'object' ? settings : {};
   const out = { ...DEFAULT_SETTINGS };
-  for (const key of ['paused', 'autoRotate', 'dust', 'labels', 'minimap', 'scaleBar']) {
+  for (const key of ['paused', 'autoRotate', 'dust', 'sky', 'labels', 'minimap', 'scaleBar']) {
     if (typeof src[key] === 'boolean') out[key] = src[key];
   }
   if (QUALITY_OPTIONS.includes(src.quality)) out.quality = src.quality;

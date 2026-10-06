@@ -21,7 +21,7 @@ Additional:
 - **Realistic rendering** (researched against real galaxies): density-wave spiral arms, black-body star colours, young blue stars that light up on arm crests, pink H II nebulae, a Sérsic bulge, an exponential × sech² disc and dust lanes on the inner arm edges (edge-on: a midplane dust lane).
 - **Live structure controls**: arm count, winding, density wave, arm contrast, flocculence, dust, diffuse glow and bulge profile change instantly (shader uniforms).
 - **Bloom**: lifts only bright cores and stars (threshold 0.45).
-- **Background starfield**: a static far starfield.
+- **Background sky** (`scene/sky.js`, model in `scene/skyMap.js`): a faint Milky Way band (thicker and warmer toward the galactic centre, star clouds, a filamentary dust rift, red/blue nebulae near the plane) baked once into a 1024×512 equirectangular sRGB texture in a Web Worker (`skyWorker.js`; main-thread fallback at 512×256), drawn on a camera-following sphere: one texture fetch per pixel. The static starfield is denser along the band (`starDensity`). Settings → Milky Way sky toggles it. Keep it far below the bloom threshold (`SKY_INTENSITY`).
 - **Global controls**: pause/resume, time scale, quality (Auto or a fixed tier), exposure, bloom, dust on/off and amount, auto-rotate camera.
 - **FPS readout**: add `?fps` to the URL — frame rate, GPU name, active quality tier and GPU ms per pass (`core/gpuTimer.js`).
 - **Persistence**: the scene saves to `localStorage` and restores on reload; "Reset scene" clears it.
@@ -103,7 +103,10 @@ src/
 ├── scene/
 │   ├── GalaxyManager.js     # Map<id, Galaxy>; applies store diffs to the scene
 │   ├── diffGalaxies.js      # PURE: prev/next galaxy lists → { added, removed, shapeChanged, lookChanged }
-│   ├── starfield.js         # Static background stars
+│   ├── starfield.js         # Static background stars (denser along the band)
+│   ├── sky.js               # Milky Way sky sphere; texture from skyWorker.js
+│   ├── skyMap.js            # PURE sky model + equirect bake (no three.js: runs in the worker)
+│   ├── skyWorker.js         # Bakes the sky map off the main thread
 │   └── picking.js           # PURE: ray vs galaxy disc planes → galaxy id
 ├── state/
 │   ├── store.js             # Tiny observable store + pure reducer

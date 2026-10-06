@@ -332,6 +332,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .add(settingsProxy, 'dustOpacity', SETTINGS_LIMITS.dustOpacity.min, SETTINGS_LIMITS.dustOpacity.max, SETTINGS_LIMITS.dustOpacity.step)
     .name('Dust amount')
     .onChange((v) => setting({ dustOpacity: v }));
+  settingsFolder.add(settingsProxy, 'sky').name('Milky Way sky').onChange((v) => setting({ sky: v }));
   const hudFolder = settingsFolder.addFolder('HUD');
   hudFolder.add(settingsProxy, 'labels').name('Galaxy labels').onChange((v) => setting({ labels: v }));
   hudFolder.add(settingsProxy, 'scaleBar').name('Scale bar (ly)').onChange((v) => setting({ scaleBar: v }));

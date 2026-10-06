@@ -6,6 +6,7 @@ import { createLoop } from './core/loop.js';
 import { createCameraFly, framingPosition } from './core/cameraFly.js';
 import { captureScreenshot } from './core/screenshot.js';
 import { createStarfield } from './scene/starfield.js';
+import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
 import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
@@ -62,6 +63,9 @@ export function startApp(container, { startScreen } = {}) {
 
   const starfield = createStarfield({ pixelRatio: renderer.getPixelRatio() });
   scene.add(starfield.object);
+  // The sky texture bakes in a worker; redraw once it arrives (even when paused).
+  const sky = createSky({ onReady: () => gate.invalidate() });
+  scene.add(sky.object);
 
   // ── State ──────────────────────────────────────────────────────────────
   const storage = window.localStorage;
@@ -207,6 +211,7 @@ export function startApp(container, { startScreen } = {}) {
     if (cameraMode !== 'tour') controls.autoRotate = settings.autoRotate;
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
+    sky.setVisible(settings.sky);
   }
   applySettings(store.getState().settings);
   applyTier(activeTier(store.getState().settings.quality, governor.tier()));
@@ -230,6 +235,7 @@ export function startApp(container, { startScreen } = {}) {
     else controls.update();
     galaxies.updateCamera(camera, container.clientWidth, container.clientHeight);
     starfield.update(camera.position);
+    sky.update(camera.position);
   });
   if (new URLSearchParams(window.location.search).has('fps')) {
     const gl = renderer.getContext();
