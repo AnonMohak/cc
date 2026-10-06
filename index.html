@@ -6,11 +6,198 @@
     <meta name="description" content="Create, shape and explore procedural 3D galaxies." />
     <meta name="theme-color" content="#02030a" />
     <link rel="icon" href="data:," />
+    <link rel="preload" href="/fonts/jetbrains-mono-latin-400.woff2" as="font" type="font/woff2" crossorigin />
     <title>Galaxy Sandbox</title>
+    <!-- Inline so the first paint is already dark and the start box is styled
+         before the JavaScript (and style.css) arrives. -->
+    <style>
+      @font-face {
+        font-family: 'JetBrains Mono';
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url('/fonts/jetbrains-mono-latin-400.woff2') format('woff2');
+      }
+      @font-face {
+        font-family: 'JetBrains Mono';
+        font-style: normal;
+        font-weight: 600;
+        font-display: swap;
+        src: url('/fonts/jetbrains-mono-latin-600.woff2') format('woff2');
+      }
+      :root {
+        --mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #02030a;
+        color: #dfe6ff;
+      }
+      .start {
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        box-sizing: border-box;
+        background: rgba(2, 3, 10, 0.35);
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
+        font-family: var(--mono);
+        cursor: default;
+        transition: opacity 0.3s ease;
+      }
+      @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+        .start {
+          background: rgba(2, 3, 10, 0.8);
+        }
+      }
+      .start.is-ready {
+        cursor: pointer;
+      }
+      .start.is-closing {
+        opacity: 0;
+      }
+      .start-panel {
+        width: min(400px, 100%);
+        box-sizing: border-box;
+        padding: 24px 24px 20px;
+        border: 1px solid rgba(160, 180, 255, 0.18);
+        border-radius: 14px;
+        background: rgba(12, 15, 32, 0.55);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      }
+      .start-title {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        color: #eef2ff;
+      }
+      .start-sub {
+        margin: 6px 0 18px;
+        font-size: 12px;
+        line-height: 1.5;
+        color: rgba(200, 210, 255, 0.6);
+      }
+      .start-keys {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 7px 16px;
+        margin: 0;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+      .start-keys dt {
+        color: #9fc0ff;
+        white-space: nowrap;
+      }
+      .start-keys dd {
+        margin: 0;
+        color: rgba(220, 228, 255, 0.85);
+      }
+      .start-touch {
+        display: none;
+      }
+      @media (pointer: coarse) {
+        .start-touch {
+          display: grid;
+        }
+        .start-mouse {
+          display: none;
+        }
+      }
+      .start-go {
+        display: block;
+        width: 100%;
+        margin: 20px 0 0;
+        padding: 10px 0 0;
+        border: 0;
+        border-top: 1px solid rgba(160, 180, 255, 0.14);
+        background: none;
+        font: 600 12px/1.4 var(--mono);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(200, 210, 255, 0.5);
+        cursor: inherit;
+      }
+      .start-go:focus-visible {
+        outline: 1px solid rgba(160, 180, 255, 0.5);
+        outline-offset: 4px;
+        border-radius: 4px;
+      }
+      .start-go .go-tap {
+        display: none;
+      }
+      @media (pointer: coarse) {
+        .start-go .go-click {
+          display: none;
+        }
+        .start-go .go-tap {
+          display: inline;
+        }
+      }
+      .start-go .go-ready {
+        display: none;
+      }
+      .is-ready .start-go {
+        color: #cfe0ff;
+        animation: start-pulse 2.4s ease-in-out infinite;
+      }
+      .is-ready .start-go .go-ready {
+        display: inline;
+      }
+      .is-ready .start-go .go-loading {
+        display: none;
+      }
+      @keyframes start-pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .start,
+        .is-ready .start-go {
+          transition: none;
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="app"></div>
-    <p class="hint">Drag to orbit · Scroll or pinch to zoom · Right-drag to pan · Click a galaxy to select · Double-click to focus · Space to pause · H to hide panel</p>
+    <div class="start" id="start" role="dialog" aria-modal="true" aria-labelledby="start-title">
+      <div class="start-panel">
+        <h1 class="start-title" id="start-title">GALAXY SANDBOX</h1>
+        <p class="start-sub">Create, shape and explore procedural galaxies.</p>
+        <dl class="start-keys start-mouse">
+          <dt>Drag</dt><dd>Orbit the camera</dd>
+          <dt>Right-drag</dt><dd>Pan</dd>
+          <dt>Scroll</dt><dd>Zoom</dd>
+          <dt>Click</dt><dd>Select a galaxy</dd>
+          <dt>Double-click</dt><dd>Fly to a galaxy</dd>
+          <dt>Space</dt><dd>Pause / resume</dd>
+          <dt>N · Del</dt><dd>Add / delete a galaxy</dd>
+          <dt>T · G</dt><dd>Tour / free-fly</dd>
+          <dt>H</dt><dd>Hide the panel</dd>
+        </dl>
+        <dl class="start-keys start-touch">
+          <dt>Drag</dt><dd>Orbit the camera</dd>
+          <dt>Two fingers</dt><dd>Pan</dd>
+          <dt>Pinch</dt><dd>Zoom</dd>
+          <dt>Tap</dt><dd>Select a galaxy</dd>
+          <dt>Double-tap</dt><dd>Fly to a galaxy</dd>
+          <dt>Panel</dt><dd>Add, edit and delete galaxies</dd>
+        </dl>
+        <button class="start-go" type="button" disabled>
+          <span class="go-loading">Loading…</span>
+          <span class="go-ready"><span class="go-click">Click</span><span class="go-tap">Tap</span> anywhere to start</span>
+        </button>
+      </div>
+    </div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

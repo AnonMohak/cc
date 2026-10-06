@@ -38,8 +38,9 @@ const SAVE_DEBOUNCE_MS = 500;
 /**
  * Build the scene, state, UI and loop inside `container`.
  * @param {HTMLElement} container
+ * @param {{ startScreen?: { ready(): void, isOpen(): boolean } }} [options]
  */
-export function startApp(container) {
+export function startApp(container, { startScreen } = {}) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#02030a');
 
@@ -287,13 +288,16 @@ export function startApp(container) {
       return;
     }
     // Auto quality: measure only back-to-back rendered frames (real time; the
-    // loop's dt is capped), so idle frames never look "fast".
-    if (lastRender !== null && store.getState().settings.quality === 'auto') {
+    // loop's dt is capped), so idle frames never look "fast". Frames behind
+    // the start box also pay for its CSS blur, so they are not measured.
+    const starting = startScreen?.isOpen() ?? false;
+    if (lastRender !== null && !starting && store.getState().settings.quality === 'auto') {
       const next = governor.sample(now - lastRender);
       if (next) applyTier(next);
     }
-    lastRender = now;
+    lastRender = starting ? null : now;
     post.render();
+    if (starting) startScreen.ready();
     // Copy GIF frames in the same task as the render (drawing buffer still valid).
     gif.afterRender(now);
   });

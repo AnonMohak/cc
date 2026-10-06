@@ -32,6 +32,8 @@ Additional:
 - **Undo / redo** (`state/history.js`): galaxy changes only (not selection or settings); bursts within 400 ms are one step. Ctrl/Cmd+Z, Ctrl+Shift+Z, Ctrl+Y, and panel buttons.
 - **Camera modes** (app.js `setCameraMode`): orbit (default); free-fly (`core/flyControls.js`: WASD, Q/E, Shift, drag to look; OrbitControls disabled, target handed back on exit); guided tour (`core/tour.js` pure state machine: fly to each galaxy, then orbit; any drag/scroll or Esc stops). Focus always returns to orbit.
 - **Keyboard**: Space pause · N add · F focus · Delete remove · Esc leave camera mode / deselect · H hide panel · P screenshot · R record video · T tour · G free-fly · Ctrl+Z / Ctrl+Shift+Z undo/redo (`ui/keyboard.js`).
+- **Start box** (`index.html` + `ui/startScreen.js`): static HTML with inline CSS, so the first paint is dark and styled before the JS loads. It blurs the live scene (`backdrop-filter`), shows touch or mouse controls via `(pointer: coarse)`, and says "Loading…" until the first frame renders, then "Click/Tap anywhere to start". On every load. While open it swallows pointer and key input (window capture listener), so the start click never selects/orbits and Space never pauses; Auto quality skips those frames (the blur costs GPU). Removed from the DOM after a 0.3 s fade.
+- **Look**: UI font JetBrains Mono (`public/fonts/`, Latin woff2 400/600, OFL), `--mono` in `index.html`. The lil-gui panel is translucent glass (`style.css`); on phones it is 220 px wide and its width comes from CSS, not the GUI `width` option (inline wins).
 - **Robustness**: a notice when WebGL 2 is missing; WebGL context loss pauses and restores.
 
 ## Tech stack
@@ -121,7 +123,8 @@ src/
     ├── hud.js / hudMath.js  # Labels, scale bar, minimap (pure layout math in hudMath)
     ├── infoCard.js          # Facts card for catalogue galaxies
     ├── fileIO.js            # Download text / pick a file
-    └── notice.js            # Centred message overlay
+    ├── notice.js            # Centred message overlay
+    └── startScreen.js       # Start box: pure loading → ready → closed state + DOM wiring
 ```
 
 Tests live next to the code: `src/galaxy/generateGalaxy.test.js`, etc.

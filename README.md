@@ -13,6 +13,7 @@ Spiral arms are real **density waves**: stars move on twisted elliptical orbits 
 - **HUD** — galaxy name labels, a light-year scale bar and a clickable minimap.
 - **Share and save** — the scene saves automatically; copy a share link, export/import JSON, undo/redo.
 - **Record** — screenshots, video (WebM/MP4) and 4-second GIFs.
+- **Start screen** — a translucent box over the live, blurred scene lists the controls for your device; click or tap to start. The UI uses JetBrains Mono, and the control panel is translucent glass (narrow on phones).
 - **Runs on ordinary hardware** — Auto quality adapts to your device (laptop integrated GPUs and phones included); or pick Minimal / Low / Medium / High.
 
 ## Quick start
@@ -32,6 +33,8 @@ npm run preview    # serve the build locally
 ```
 
 ## Controls
+
+The site opens with a start box over the blurred scene that lists these controls (touch or mouse/keyboard, to match the device). Click, tap or press Enter to start.
 
 | Action | Mouse / touch | Keyboard |
 | --- | --- | --- |

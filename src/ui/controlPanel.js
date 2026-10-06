@@ -73,8 +73,11 @@ const catalogueOptions = Object.fromEntries(CATALOGUE_IDS.map((id) => [CATALOGUE
  * }} options
  */
 export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport, onTour, onFly, onResetView, onToggleVideo, onRecordGif, onGenerateUniverse }) {
-  const gui = new GUI({ title: 'Galaxy Sandbox', width: 300 });
-  if (window.innerWidth < NARROW_SCREEN) gui.close();
+  const narrow = window.innerWidth < NARROW_SCREEN;
+  // On phones the width comes from style.css (a narrow panel); an inline
+  // width from lil-gui would override it.
+  const gui = new GUI({ title: 'Galaxy Sandbox', width: narrow ? undefined : 300 });
+  if (narrow) gui.close();
 
   const dispatch = (action) => store.dispatch(action);
 
