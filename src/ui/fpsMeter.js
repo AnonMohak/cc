@@ -27,8 +27,9 @@ export function createFpsCounter(windowSeconds = WINDOW_SECONDS) {
  * It keeps its own clock: the loop caps dt at 0.1 s, which would hide slow frames.
  * @param {HTMLElement} container
  * @param {() => number} [now] milliseconds
+ * @param {() => string[]} [details] extra lines (GPU name, quality, pass timings)
  */
-export function createFpsMeter(container, now = () => performance.now()) {
+export function createFpsMeter(container, now = () => performance.now(), details = () => []) {
   const el = document.createElement('div');
   el.className = 'fps';
   el.textContent = '– fps';
@@ -42,7 +43,7 @@ export function createFpsMeter(container, now = () => performance.now()) {
       last = t;
       if (dt <= 0) return;
       const r = counter.tick(dt);
-      if (r) el.textContent = `${r.fps} fps · ${r.ms} ms`;
+      if (r) el.textContent = [`${r.fps} fps · ${r.ms} ms`, ...details().filter(Boolean)].join('\n');
     },
   };
 }

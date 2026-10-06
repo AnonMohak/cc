@@ -66,6 +66,7 @@ canvas {
 }
 
 .fps {
+  white-space: pre;
   position: fixed;
   left: 16px;
   top: 12px;

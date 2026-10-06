@@ -10,6 +10,12 @@ const BLOOM_RADIUS = 0.3;
 // genuinely bright cores and stars. A low threshold would flood dust lanes.
 const BLOOM_THRESHOLD = 0.45;
 
+const PASS_LABELS = new Map([
+  [RenderPass, 'scene'],
+  [UnrealBloomPass, 'bloom'],
+  [OutputPass, 'output'],
+]);
+
 /**
  * RenderPass → UnrealBloomPass → OutputPass (tone mapping + sRGB).
  *
@@ -47,6 +53,10 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8 } 
     },
     setExposure(value) {
       renderer.toneMappingExposure = value;
+    },
+    /** Time each pass with a GPU timer (see gpuTimer.js). */
+    attachTimer(timer) {
+      composer.passes.forEach((pass) => timer.wrapPass(pass, PASS_LABELS.get(pass.constructor) ?? pass.constructor.name));
     },
     dispose() {
       bloom.dispose();

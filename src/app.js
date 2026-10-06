@@ -22,6 +22,7 @@ import { shareUrl, decodeScene, codeFromHash } from './state/shareCodec.js';
 import { downloadText, downloadBlob, fileStamp, pickTextFile } from './ui/fileIO.js';
 import { createVideoRecorder, createGifCapture, formatClock } from './core/recorder.js';
 import { createFpsMeter } from './ui/fpsMeter.js';
+import { createGpuTimer, formatTimings, gpuName } from './core/gpuTimer.js';
 import { createInfoCard } from './ui/infoCard.js';
 import { createHud } from './ui/hud.js';
 import { createTour } from './core/tour.js';
@@ -187,8 +188,19 @@ export function startApp(container) {
     starfield.update(camera.position);
   });
   if (new URLSearchParams(window.location.search).has('fps')) {
-    const meter = createFpsMeter(container);
-    loop.onTick(() => meter.update());
+    const gl = renderer.getContext();
+    const timer = createGpuTimer(gl);
+    post.attachTimer(timer);
+    const gpu = gpuName(gl);
+    const meter = createFpsMeter(container, undefined, () => [
+      gpu,
+      `quality ${store.getState().settings.quality}`,
+      timer.supported ? formatTimings(timer.results()) : 'GPU timings unavailable',
+    ]);
+    loop.onTick(() => {
+      timer.poll();
+      meter.update();
+    });
   }
   // ── Recording: video (MediaRecorder) and short GIFs ──────────────────
   const video = createVideoRecorder(renderer.domElement, {
