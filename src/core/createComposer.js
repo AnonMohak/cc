@@ -5,9 +5,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const BLOOM_RADIUS = 0.45;
-// Low threshold: galaxy cores are made of many dim additive stars, not a
-// few bright pixels, so a high threshold would bloom nothing.
-const BLOOM_THRESHOLD = 0.08;
+// The raymarched volume already carries the soft glow; bloom only lifts
+// genuinely bright cores and stars. A low threshold would flood dust lanes.
+const BLOOM_THRESHOLD = 0.45;
 
 /**
  * RenderPass → UnrealBloomPass → OutputPass (tone mapping + sRGB).

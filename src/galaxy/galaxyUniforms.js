@@ -26,6 +26,8 @@ export function createGalaxyUniforms() {
     uDiscThickness: { value: 0.022 },
     uBulgeSize: { value: 0.09 },
     uBulgeFlatten: { value: 0.7 },
+    uBulgeFraction: { value: 0.16 },
+    uBoxHalf: { value: new THREE.Vector3(1.3, 0.3, 1.3) },
     // Look
     uSize: { value: 1 },
     uScale: { value: 1 },
@@ -50,6 +52,7 @@ export function applyShapeUniforms(u, shape) {
   u.uDiscThickness.value = s.discThickness;
   u.uBulgeSize.value = s.bulgeSize;
   u.uBulgeFlatten.value = s.bulgeFlatten;
+  u.uBulgeFraction.value = s.bulgeFraction;
 }
 
 /** @param {number} dustScale global dust multiplier from settings */

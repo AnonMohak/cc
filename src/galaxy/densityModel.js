@@ -115,3 +115,20 @@ export function barAngle(barLength, arms, winding, phase, patternSpeed) {
   const s = winding < 0 ? -1 : 1;
   return orbitAngle(barLength, winding, phase, patternSpeed) - (s * Math.PI) / (2 * m);
 }
+
+/**
+ * Half-extents of the box the volume shader marches through, fitted to where
+ * the emission is above ~1e-4 of its peak. A tight box means fewer wasted
+ * steps and fewer covered pixels.
+ *
+ * @returns {[number, number, number]} half-size in x, y, z (unit space)
+ */
+export function volumeBounds(shape, structure) {
+  const n = structure.bulgeSersic;
+  const b = 2 * n - 1 / 3;
+  const bulgeR = shape.bulgeSize * Math.pow(Math.log(1e4) / b, n);
+  const discZ = 6 * shape.discThickness * 1.6 * 1.4; // sech² tail at the flared edge
+  const xz = Math.min(1.45, Math.max(1.25, bulgeR));
+  const y = Math.min(1.2, Math.max(0.05, discZ, bulgeR * shape.bulgeFlatten));
+  return [xz, y, xz];
+}

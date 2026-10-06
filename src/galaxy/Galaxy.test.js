@@ -31,6 +31,7 @@ describe('Galaxy layers', () => {
     const g = makeGalaxy();
     expect(g.starMaterial.uniforms).toBe(g.uniforms);
     expect(g.hiiMaterial.uniforms).toBe(g.uniforms);
+    expect(g.volumeMaterial.uniforms).toBe(g.uniforms);
   });
 
   it('has no selection ring or extra line objects', () => {
@@ -40,6 +41,26 @@ describe('Galaxy layers', () => {
       if (o.isLine) lines++;
     });
     expect(lines).toBe(0);
+  });
+});
+
+describe('Galaxy volume', () => {
+  it('draws the volume first, from back faces, with transmittance blending', () => {
+    const g = makeGalaxy();
+    expect(g.volume.renderOrder).toBeLessThan(g.stars.renderOrder);
+    expect(g.stars.renderOrder).toBeLessThan(g.hii.renderOrder);
+    expect(g.volumeMaterial.side).toBe(THREE.BackSide);
+    expect(g.volumeMaterial.blendSrc).toBe(THREE.OneFactor);
+    expect(g.volumeMaterial.blendDst).toBe(THREE.SrcAlphaFactor);
+    expect(g.volumeMaterial.depthWrite).toBe(false);
+  });
+
+  it('fits its box to the shape: an elliptical is taller than a spiral', () => {
+    const spiral = makeGalaxy();
+    const e = PRESETS.elliptical;
+    const elliptical = makeGalaxy({ shape: { ...e.shape, count: 2000 }, structure: e.structure });
+    expect(spiral.volume.scale.y).toBeLessThan(elliptical.volume.scale.y);
+    expect(spiral.uniforms.uBoxHalf.value.y).toBe(spiral.volume.scale.y);
   });
 });
 
@@ -134,7 +155,7 @@ describe('Galaxy updates', () => {
     const g = makeGalaxy();
     const scene = new THREE.Scene();
     scene.add(g.group);
-    const spies = [g.stars.geometry, g.hii.geometry, g.starMaterial, g.hiiMaterial].map((o) => vi.spyOn(o, 'dispose'));
+    const spies = [g.stars.geometry, g.hii.geometry, g.volume.geometry, g.starMaterial, g.hiiMaterial, g.volumeMaterial].map((o) => vi.spyOn(o, 'dispose'));
     g.dispose();
     spies.forEach((s) => expect(s).toHaveBeenCalled());
     expect(scene.children).not.toContain(g.group);

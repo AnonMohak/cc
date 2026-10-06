@@ -149,3 +149,22 @@ describe('log-spiral arms', () => {
     expect(Math.abs(deg(pitch(0.9)) - deg(pitch(0.5)))).toBeLessThan(12);
   });
 });
+
+describe('volumeBounds', () => {
+  it('is a thin slab for a spiral and a tall box for an elliptical', async () => {
+    const { volumeBounds } = await import('./densityModel.js');
+    const { PRESETS } = await import('./presets.js');
+    const [sx, sy] = volumeBounds(PRESETS.spiral.shape, PRESETS.spiral.structure);
+    const [ex, ey] = volumeBounds(PRESETS.elliptical.shape, PRESETS.elliptical.structure);
+    expect(sx).toBeGreaterThanOrEqual(1.25);
+    expect(sy).toBeLessThan(0.4);
+    expect(ey).toBeGreaterThan(sy);
+    expect(ex).toBeGreaterThanOrEqual(sx);
+  });
+
+  it('contains the disc sech² tail', async () => {
+    const { volumeBounds } = await import('./densityModel.js');
+    const [, y] = volumeBounds({ bulgeSize: 0.05, bulgeFlatten: 0.5, discThickness: 0.03 }, { bulgeSersic: 2 });
+    expect(y).toBeGreaterThanOrEqual(6 * 0.03);
+  });
+});

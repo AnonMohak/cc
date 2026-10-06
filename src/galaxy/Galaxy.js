@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { generateGalaxy } from './generateGalaxy.js';
 import { createStarMaterial, createHiiMaterial } from './starMaterials.js';
+import { createVolumeMaterial } from './volumeMaterial.js';
+import { volumeBounds } from './densityModel.js';
+import { clampShape, clampStructure } from './params.js';
 import {
   createGalaxyUniforms,
   applyShapeUniforms,
@@ -21,6 +24,7 @@ const _inverse = new THREE.Matrix4();
  *
  * `group` carries position, tilt and radius (as scale). Everything inside is
  * in a unit disc. Layers share one uniform set (see galaxyUniforms.js):
+ *   volume — raymarched body: diffuse light + dust (renderOrder 0, drawn first)
  *   stars — density-wave star particles (renderOrder 1)
  *   hii   — H II nebulae that glow on the arm crests (renderOrder 2)
  */
@@ -41,7 +45,11 @@ export class Galaxy {
     this.hii = new THREE.Points(new THREE.BufferGeometry(), this.hiiMaterial);
     this.hii.renderOrder = 2;
 
-    this.group.add(this.stars, this.hii);
+    this.volumeMaterial = createVolumeMaterial(this.uniforms);
+    this.volume = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), this.volumeMaterial);
+    this.volume.renderOrder = 0;
+
+    this.group.add(this.volume, this.stars, this.hii);
 
     this.phase = 0;
     this.speed = 0;
@@ -79,13 +87,24 @@ export class Galaxy {
     this.hii.geometry = hii;
     this.count = data.count;
     this.hiiCount = data.hii.count;
+    this.shape = shape;
     applyShapeUniforms(this.uniforms, shape);
+    this.updateVolumeBounds();
+  }
+
+  /** Fit the volume box to the current shape and bulge profile. */
+  updateVolumeBounds() {
+    if (!this.shape || !this.structure) return;
+    const [x, y, z] = volumeBounds(clampShape(this.shape), clampStructure(this.structure));
+    this.uniforms.uBoxHalf.value.set(x, y, z);
+    this.volume.scale.set(x, y, z);
   }
 
   /** Density-wave arms, dust and volume settings: uniforms only. */
   setStructure(structure) {
     this.structure = structure;
     applyStructureUniforms(this.uniforms, structure, this.dustScale);
+    this.updateVolumeBounds();
   }
 
   /** Global dust multiplier from the settings (0 turns dust off). */
@@ -164,7 +183,9 @@ export class Galaxy {
     this.group.removeFromParent();
     this.stars.geometry.dispose();
     this.hii.geometry.dispose();
+    this.volume.geometry.dispose();
     this.starMaterial.dispose();
     this.hiiMaterial.dispose();
+    this.volumeMaterial.dispose();
   }
 }
