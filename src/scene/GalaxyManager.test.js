@@ -84,3 +84,16 @@ describe('GalaxyManager', () => {
     expect(manager.galaxies.size).toBe(0);
   });
 });
+
+describe('GalaxyManager selection', () => {
+  it('highlights only the selected galaxy and returns pick targets', () => {
+    const { store, actions, manager, add } = setup();
+    add();
+    add();
+    expect(manager.get('id2').ring?.parent).toBe(manager.get('id2').group);
+    store.dispatch(actions.selectGalaxy('id1'));
+    expect(manager.get('id1').ring.parent).toBe(manager.get('id1').group);
+    expect(manager.get('id2').ring.parent).toBeNull();
+    expect(manager.pickTargets().map((t) => t.id)).toEqual(['id1', 'id2']);
+  });
+});

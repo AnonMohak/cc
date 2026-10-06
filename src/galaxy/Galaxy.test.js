@@ -79,3 +79,27 @@ describe('Galaxy', () => {
     expect(scene.children).not.toContain(g.group);
   });
 });
+
+describe('Galaxy selection helpers', () => {
+  it('setHighlighted adds and removes a ring that is disposed with the galaxy', () => {
+    const g = makeGalaxy();
+    g.setHighlighted(true);
+    expect(g.group.children).toContain(g.ring);
+    g.setHighlighted(false);
+    expect(g.group.children).not.toContain(g.ring);
+    const spy = vi.spyOn(g.ring.geometry, 'dispose');
+    g.dispose();
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('pickTarget reports world centre, tilted normal and radius', () => {
+    const g = makeGalaxy();
+    g.id = 'x';
+    g.setLook({ radius: 7, position: [1, 2, 3], tiltX: 90 });
+    const t = g.pickTarget();
+    expect(t.id).toBe('x');
+    expect(t.radius).toBe(7);
+    expect(t.center.toArray()).toEqual([1, 2, 3]);
+    expect(t.normal.z).toBeCloseTo(1);
+  });
+});

@@ -3,6 +3,10 @@ import { generateGalaxy } from './generateGalaxy.js';
 import { createGalaxyMaterial } from './galaxyMaterial.js';
 import { clampLook, clampMotion } from './params.js';
 
+const UP = new THREE.Vector3(0, 1, 0);
+const RING_RADIUS = 1.08;
+const RING_SEGMENTS = 128;
+
 /**
  * One galaxy in the scene. Owns its GPU resources; call dispose() on removal.
  *
@@ -23,6 +27,8 @@ export class Galaxy {
     this.phase = 0;
     this.speed = 0;
     this.radius = 1;
+    /** @type {THREE.LineLoop | null} created on first highlight */
+    this.ring = null;
 
     this.setShape(shape, seed);
     this.setLook(look);
@@ -77,6 +83,26 @@ export class Galaxy {
     this.material.uniforms.uPhase.value = this.phase;
   }
 
+  /** Show or hide the selection ring (lives in unit space, so it follows size and tilt). */
+  setHighlighted(on) {
+    if (on && !this.ring) this.ring = createRing();
+    if (this.ring) {
+      if (on) this.group.add(this.ring);
+      else this.ring.removeFromParent();
+    }
+  }
+
+  /** Data for picking: world centre, disc normal and radius. */
+  pickTarget() {
+    this.group.updateMatrixWorld();
+    return {
+      id: this.id,
+      center: this.group.getWorldPosition(new THREE.Vector3()),
+      normal: UP.clone().applyQuaternion(this.group.getWorldQuaternion(new THREE.Quaternion())),
+      radius: this.radius,
+    };
+  }
+
   setPixelRatio(value) {
     this.material.uniforms.uPixelRatio.value = value;
   }
@@ -85,7 +111,28 @@ export class Galaxy {
     this.group.removeFromParent();
     this.points.geometry.dispose();
     this.material.dispose();
+    if (this.ring) {
+      this.ring.geometry.dispose();
+      this.ring.material.dispose();
+    }
   }
+}
+
+function createRing() {
+  const points = [];
+  for (let i = 0; i < RING_SEGMENTS; i++) {
+    const a = (i / RING_SEGMENTS) * Math.PI * 2;
+    points.push(new THREE.Vector3(Math.cos(a) * RING_RADIUS, 0, Math.sin(a) * RING_RADIUS));
+  }
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = new THREE.LineBasicMaterial({
+    color: 0x8fb4ff,
+    transparent: true,
+    opacity: 0.35,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  return new THREE.LineLoop(geometry, material);
 }
 
 function maxLength(positions) {

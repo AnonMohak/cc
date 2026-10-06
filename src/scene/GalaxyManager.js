@@ -16,9 +16,12 @@ export class GalaxyManager {
     /** @type {Map<string, Galaxy>} */
     this.galaxies = new Map();
 
+    this.selectedId = null;
     this.sync(store.getState().galaxies, []);
+    this.setSelected(store.getState().selectedId);
     this.unsubscribe = store.subscribe((next, prev) => {
       if (next.galaxies !== prev.galaxies) this.sync(next.galaxies, prev.galaxies);
+      if (next.selectedId !== prev.selectedId) this.setSelected(next.selectedId);
     });
   }
 
@@ -42,6 +45,16 @@ export class GalaxyManager {
       galaxy?.setLook(entry.look);
       galaxy?.setMotion(entry.motion);
     }
+  }
+
+  setSelected(id) {
+    this.galaxies.get(this.selectedId)?.setHighlighted(false);
+    this.selectedId = id;
+    this.galaxies.get(id)?.setHighlighted(true);
+  }
+
+  pickTargets() {
+    return [...this.galaxies.values()].map((g) => g.pickTarget());
   }
 
   get(id) {
