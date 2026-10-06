@@ -1,17 +1,21 @@
 {
-  "name": "threejs-app",
+  "name": "galaxy",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "lil-gui": "^0.21.0",
     "three": "^0.186.1"
   },
   "devDependencies": {
-    "vite": "^8.3.3"
+    "vite": "^8.3.3",
+    "vitest": "^5.0.3"
   }
 }
