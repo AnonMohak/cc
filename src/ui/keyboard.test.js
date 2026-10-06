@@ -64,3 +64,10 @@ describe('undo/redo shortcuts', () => {
     expect(keyToCommand({ key: 'z', ctrlKey: true, target: { tagName: 'INPUT' } })).toBeNull();
   });
 });
+
+describe('camera mode shortcuts', () => {
+  it('maps T to the tour and G to free-fly', () => {
+    expect(keyToCommand({ key: 't' })).toBe('toggleTour');
+    expect(keyToCommand({ key: 'G' })).toBe('toggleFly');
+  });
+});

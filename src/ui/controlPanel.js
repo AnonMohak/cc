@@ -62,9 +62,12 @@ const catalogueOptions = Object.fromEntries(CATALOGUE_IDS.map((id) => [CATALOGUE
  *   onShare?: () => void,
  *   onExport?: () => void,
  *   onImport?: () => void,
+ *   onTour?: () => void,
+ *   onFly?: () => void,
+ *   onResetView?: () => void,
  * }} options
  */
-export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport }) {
+export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport, onTour, onFly, onResetView }) {
   const gui = new GUI({ title: 'Galaxy Sandbox', width: 300 });
   if (window.innerWidth < NARROW_SCREEN) gui.close();
 
@@ -260,6 +263,15 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     if (onImport) shareFolder.add(s, 'importJson').name('📂 Import scene (JSON)');
   }
 
+  // ── Camera ───────────────────────────────────────────────────────────
+  if (onTour || onFly || onResetView) {
+    const cameraFolder = gui.addFolder('Camera').close();
+    const c = { tour: () => onTour?.(), fly: () => onFly?.(), reset: () => onResetView?.() };
+    if (onTour) cameraFolder.add(c, 'tour').name('▶ Guided tour (T)');
+    if (onFly) cameraFolder.add(c, 'fly').name('✈ Free-fly mode (G)');
+    if (onResetView) cameraFolder.add(c, 'reset').name('⌂ Reset view');
+  }
+
   // ── Settings ─────────────────────────────────────────────────────────
   const settingsFolder = gui.addFolder('Settings');
   const settingsProxy = { ...store.getState().settings };
@@ -298,7 +310,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   if (onScreenshot) settingsFolder.add(sceneActions, 'screenshot').name('📷 Screenshot (P)');
   if (onReset) settingsFolder.add(sceneActions, 'reset').name('↺ Reset scene');
   const help = settingsFolder.addFolder('Keyboard').close();
-  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot', 'Ctrl+Z': 'undo', 'Ctrl+Shift+Z': 'redo' };
+  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot', 'Ctrl+Z': 'undo', 'Ctrl+Shift+Z': 'redo', T: 'guided tour', G: 'free-fly' };
   for (const [key, text] of Object.entries(keys)) help.add({ [key]: text }, key).disable();
 
   // ── Store wiring ─────────────────────────────────────────────────────

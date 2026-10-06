@@ -23,6 +23,8 @@ import { downloadText, pickTextFile } from './ui/fileIO.js';
 import { createFpsMeter } from './ui/fpsMeter.js';
 import { createInfoCard } from './ui/infoCard.js';
 import { createHud } from './ui/hud.js';
+import { createTour } from './core/tour.js';
+import { createFlyControls } from './core/flyControls.js';
 import { catalogueViewDirection } from './galaxy/catalogue.js';
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -83,12 +85,68 @@ export function startApp(container) {
   // ── Loop and camera ────────────────────────────────────────────────────
   const loop = createLoop();
   const cameraFly = createCameraFly(camera, controls);
-  // Any user orbit/zoom takes over from an automatic camera move.
-  controls.addEventListener('start', () => cameraFly.cancel());
+  // Any user orbit/zoom takes over from an automatic camera move or a tour.
+  controls.addEventListener('start', () => {
+    cameraFly.cancel();
+    if (cameraMode === 'tour') setCameraMode('orbit');
+  });
 
-  function focusGalaxy(id) {
+  // ── Camera modes: orbit (default), free-fly, guided tour ─────────────
+  const fly = createFlyControls(camera, renderer.domElement);
+  const tour = createTour(() => store.getState().galaxies.map((g) => g.id));
+  const TOUR_FLY_SECONDS = 3;
+  const TOUR_ORBIT_SPEED = 1.2;
+  const badge = document.createElement('div');
+  badge.className = 'mode-badge';
+  badge.hidden = true;
+  container.appendChild(badge);
+  const BADGE_TEXT = {
+    fly: 'Free-fly · WASD move · Q/E down/up · Shift fast · drag to look · Esc or G to exit',
+    tour: 'Guided tour · drag, scroll or Esc to stop',
+  };
+  let cameraMode = 'orbit';
+
+  function setCameraMode(next) {
+    if (next === cameraMode) return;
+    if (cameraMode === 'fly') {
+      fly.disable();
+      fly.lookTarget(Math.max(camera.position.distanceTo(controls.target), 8), controls.target);
+      controls.enabled = true;
+    }
+    if (cameraMode === 'tour') {
+      tour.stop();
+      controls.autoRotateSpeed = 0.4;
+      controls.autoRotate = store.getState().settings.autoRotate;
+    }
+    cameraMode = next;
+    if (next === 'fly') {
+      cameraFly.cancel();
+      controls.enabled = false;
+      fly.enable();
+    }
+    if (next === 'tour') handleTourEvent(tour.start());
+    badge.hidden = cameraMode === 'orbit';
+    badge.textContent = BADGE_TEXT[cameraMode] ?? '';
+  }
+
+  function handleTourEvent(event) {
+    if (!event) return;
+    if (event.type === 'end') {
+      setCameraMode('orbit');
+    } else if (event.type === 'fly') {
+      controls.autoRotate = false;
+      focusGalaxy(event.id, TOUR_FLY_SECONDS);
+    } else if (event.type === 'dwell') {
+      controls.autoRotateSpeed = TOUR_ORBIT_SPEED;
+      controls.autoRotate = true;
+    }
+  }
+
+  function focusGalaxy(id, seconds = 1.2) {
     const galaxy = galaxies.get(id);
     if (!galaxy) return;
+    // Free-fly owns the camera orientation; focusing hands it back to orbit.
+    if (cameraMode === 'fly') setCameraMode('orbit');
     store.dispatch(actions.selectGalaxy(id));
     const { center, normal, radius } = galaxy.pickTarget();
     const entry = store.getState().galaxies.find((g) => g.id === id);
@@ -102,13 +160,13 @@ export function startApp(container) {
       { min: CAMERA_LIMITS.minDistance, max: CAMERA_LIMITS.maxDistance },
       viewDir,
     );
-    cameraFly.flyTo(center, position);
+    cameraFly.flyTo(center, position, seconds);
   }
 
   function applySettings(settings) {
     loop.setPaused(settings.paused);
     loop.setTimeScale(settings.timeScale);
-    controls.autoRotate = settings.autoRotate;
+    if (cameraMode !== 'tour') controls.autoRotate = settings.autoRotate;
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
   }
@@ -119,8 +177,10 @@ export function startApp(container) {
 
   loop.onTick((dt, _elapsed, realDt) => {
     galaxies.tick(dt, realDt);
+    if (cameraMode === 'tour') handleTourEvent(tour.tick(realDt));
     cameraFly.update(realDt);
-    controls.update();
+    if (cameraMode === 'fly') fly.update(realDt);
+    else controls.update();
     galaxies.updateCamera(camera, container.clientWidth, container.clientHeight);
     starfield.update(camera.position);
   });
@@ -157,7 +217,17 @@ export function startApp(container) {
       const { selectedId } = store.getState();
       if (selectedId) focusGalaxy(selectedId);
     },
-    deselect: () => store.dispatch(actions.selectGalaxy(null)),
+    // Esc leaves a camera mode first, then clears the selection.
+    deselect() {
+      if (cameraMode !== 'orbit') setCameraMode('orbit');
+      else store.dispatch(actions.selectGalaxy(null));
+    },
+    toggleFly: () => setCameraMode(cameraMode === 'fly' ? 'orbit' : 'fly'),
+    toggleTour: () => setCameraMode(cameraMode === 'tour' ? 'orbit' : 'tour'),
+    resetView() {
+      setCameraMode('orbit');
+      cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position);
+    },
     togglePause: () => store.dispatch(actions.updateSettings({ paused: !store.getState().settings.paused })),
     screenshot: () => captureScreenshot({ canvas: renderer.domElement, render: () => post.render() }),
     undo: () => history.undo(),
@@ -202,6 +272,9 @@ export function startApp(container) {
     onShare: commands.copyShareLink,
     onExport: commands.exportJson,
     onImport: commands.importJson,
+    onTour: commands.toggleTour,
+    onFly: commands.toggleFly,
+    onResetView: commands.resetView,
   });
   commands.togglePanel = () => panel.toggle();
   createInfoCard(container, store);
@@ -240,6 +313,6 @@ export function startApp(container) {
   loop.start(renderer);
 
   if (import.meta.env.DEV) {
-    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history };
+    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history, getCameraMode: () => cameraMode };
   }
 }

@@ -11,6 +11,10 @@ const KEY_COMMANDS = {
   H: 'togglePanel',
   p: 'screenshot',
   P: 'screenshot',
+  t: 'toggleTour',
+  T: 'toggleTour',
+  g: 'toggleFly',
+  G: 'toggleFly',
 };
 
 const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);

@@ -29,7 +29,8 @@ Additional:
 - **Sharing** (`state/shareCodec.js`): copy a share link (scene → deflate → base64url in `#scene=`; opened links go through `deserialize` validation, then the hash is removed), export/import the scene as JSON (`ui/fileIO.js`).
 - **HUD** (`ui/hud.js`, math in `ui/hudMath.js`): clickable galaxy name labels, a light-year scale bar (1 world unit = 9,000 ly, `LY_PER_WORLD_UNIT`) and a top-down minimap (click a galaxy to fly to it). Each part toggles in Settings → HUD.
 - **Undo / redo** (`state/history.js`): galaxy changes only (not selection or settings); bursts within 400 ms are one step. Ctrl/Cmd+Z, Ctrl+Shift+Z, Ctrl+Y, and panel buttons.
-- **Keyboard**: Space pause · N add · F focus · Delete remove · Esc deselect · H hide panel · P screenshot (`ui/keyboard.js`).
+- **Camera modes** (app.js `setCameraMode`): orbit (default); free-fly (`core/flyControls.js`: WASD, Q/E, Shift, drag to look; OrbitControls disabled, target handed back on exit); guided tour (`core/tour.js` pure state machine: fly to each galaxy, then orbit; any drag/scroll or Esc stops). Focus always returns to orbit.
+- **Keyboard**: Space pause · N add · F focus · Delete remove · Esc leave camera mode / deselect · H hide panel · P screenshot · T tour · G free-fly · Ctrl+Z / Ctrl+Shift+Z undo/redo (`ui/keyboard.js`).
 - **Robustness**: a notice when WebGL 2 is missing; WebGL context loss pauses and restores.
 
 ## Tech stack
@@ -71,6 +72,8 @@ src/
 │   ├── createComposer.js    # EffectComposer: RenderPass → UnrealBloomPass → OutputPass (ACES)
 │   ├── loop.js              # Single animation loop; owns pause, time scale, dt cap
 │   ├── cameraFly.js         # Eased camera move + framingPosition (no tween lib)
+│   ├── flyControls.js       # Free-fly WASD camera (pure moveDirection / applyLook)
+│   ├── tour.js              # Guided tour state machine
 │   └── screenshot.js        # Render one frame → PNG download
 ├── galaxy/
 │   ├── random.js            # Seeded PRNG (mulberry32) + Gaussian helper
