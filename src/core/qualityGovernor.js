@@ -3,7 +3,8 @@ import { TIER_ORDER } from './quality.js';
 /**
  * Picks a quality tier from measured frame times (Auto quality).
  *
- * - Too slow (mean frame time > target × 1.15 over `windowSeconds`): one tier down.
+ * - Too slow (mean frame time > target × 1.15 over `windowSeconds`): one tier down,
+ *   but never below `minTier` (a start below `minTier` is raised to it).
  * - Comfortably fast (mean < target × 0.6 for `upHoldSeconds`): one tier up,
  *   but never back into a tier that was too slow in the last `failMemorySeconds`
  *   — that is the hysteresis that stops it flipping between two tiers.
@@ -11,20 +12,22 @@ import { TIER_ORDER } from './quality.js';
  *
  * Pure: feed it frame times, it returns the new tier name when it changes.
  *
- * @param {{ start: string, targetMs: number, maxTier?: string, windowSeconds?: number,
+ * @param {{ start: string, targetMs: number, maxTier?: string, minTier?: string, windowSeconds?: number,
  *   upHoldSeconds?: number, cooldownSeconds?: number, failMemorySeconds?: number }} options
  */
 export function createQualityGovernor({
   start,
   targetMs,
   maxTier = 'high',
+  minTier = 'minimal',
   windowSeconds = 1.5,
   upHoldSeconds = 4,
   cooldownSeconds = 2,
   failMemorySeconds = 20,
 }) {
-  let index = TIER_ORDER.indexOf(start);
   const maxIndex = TIER_ORDER.indexOf(maxTier);
+  const minIndex = Math.max(0, TIER_ORDER.indexOf(minTier));
+  let index = Math.max(TIER_ORDER.indexOf(start), minIndex);
   let clock = 0;
   let cooldownUntil = cooldownSeconds;
   let fastSince = null;
@@ -60,7 +63,7 @@ export function createQualityGovernor({
       if (clock < cooldownUntil || windowTime < windowSeconds * 0.9) return null;
 
       const mean = window.reduce((a, b) => a + b, 0) / window.length;
-      if (mean > targetMs * 1.15 && index > 0) {
+      if (mean > targetMs * 1.15 && index > minIndex) {
         failedAt.set(index, clock);
         return change(index - 1);
       }

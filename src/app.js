@@ -47,7 +47,7 @@ export function startApp(container, { startScreen } = {}) {
 
   // ── Quality: a fixed tier, or Auto (the governor picks from frame times) ─
   const mobile = isMobileDevice();
-  const makeGovernor = (start) => createQualityGovernor({ start, targetMs: targetFrameMs(mobile) });
+  const makeGovernor = (start) => createQualityGovernor({ start, targetMs: targetFrameMs(mobile), minTier: mobile ? 'minimal' : 'medium' });
   let governor = makeGovernor(startTier(mobile));
   // Start from the device default; applyTier() below switches to the saved
   // setting (and resizes) as soon as the store exists.

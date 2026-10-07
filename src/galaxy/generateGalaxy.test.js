@@ -27,18 +27,20 @@ describe('generateGalaxy', () => {
 
   it.each(Object.entries(PRESETS))('%s: finite values, valid kinds, temperatures and bounds', (_n, preset) => {
     const g = generateGalaxy({ ...preset.shape, count: 6000 }, 7);
+    const bad = [];
     for (let i = 0; i < g.count; i++) {
       const [a, , z, kind] = g.orbit.subarray(i * 4, i * 4 + 4);
       const [temp, size, youth] = g.star.subarray(i * 3, i * 3 + 3);
-      expect(Number.isFinite(a + z)).toBe(true);
-      expect([0, 1, 2, 3, 4]).toContain(kind);
-      expect(Math.abs(a)).toBeLessThanOrEqual(1.41);
-      expect(Math.abs(z)).toBeLessThanOrEqual(1);
-      expect(temp).toBeGreaterThanOrEqual(3000);
-      expect(temp).toBeLessThanOrEqual(28000);
-      expect(size).toBeGreaterThan(0);
-      expect([0, 1]).toContain(youth);
+      const ok = Number.isFinite(a + z)
+        && [0, 1, 2, 3, 4].includes(kind)
+        && Math.abs(a) <= 1.41
+        && Math.abs(z) <= 1
+        && temp >= 3000 && temp <= 28000
+        && size > 0 
+        && (youth === 0 || youth === 1);
+      if (!ok) bad.push({ i, a, z, kind, temp, size, youth });
     }
+    expect(bad).toEqual([]);
   });
 
   it('population stats add up and follow the fractions', () => {

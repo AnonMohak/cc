@@ -44,6 +44,23 @@ describe('createQualityGovernor', () => {
     expect(run(gov, 400, 20)).toEqual(['low', 'minimal']);
   });
 
+  it('never steps below minTier', () => {
+    const gov = createQualityGovernor({ start: 'high', targetMs: 20, minTier: 'low' });
+    expect(run(gov, 400, 30)).toEqual(['medium', 'low']);
+    expect(gov.tier()).toBe('low');
+  });
+
+  it('raises a start below minTier to minTier', () => {
+    const gov = createQualityGovernor({ start: 'minimal', targetMs: 20, minTier: 'low' });
+    expect(gov.tier()).toBe('low');
+  });
+
+  it('treats an unknown minTier as minimal', ()=>{
+    const gov = createQualityGovernor({ start: 'low', targetMs: 20, minTier: 'nope'});
+    expect(run(gov, 400, 20)).toEqual(['minimal']);
+    expect(gov.tier()).toBe('minimal');
+  })
+
   it('ignores stalls such as a tab switch', () => {
     const gov = createQualityGovernor({ start: 'medium', targetMs: 20 });
     for (let i = 0; i < 20; i++) expect(gov.sample(5000)).toBeNull();
