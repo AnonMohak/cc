@@ -65,7 +65,7 @@ const REBAKE_DELAY_MS = 120;
  *   stars — density-wave star particles (renderOrder 1)
  *   hii   — H II nebulae that glow on the arm crests (renderOrder 2)
  *   supernovae — a few flash points that follow their exploding star (renderOrder 3)
- *   jets  — a standalone black hole's jets along its axis, when its Jets is on (renderOrder 4)
+ *   jets  — a standalone black hole's jets along its axis, when its Jets is on (layer JETS, core/JetPass.js)
  * The black hole's shadow, lensing and accretion disc are drawn by
  * core/BlackHolePass.js from blackHoleInfo().
  *
@@ -126,6 +126,9 @@ export class Galaxy {
     this.jets = new THREE.Mesh(createJetGeometry(), this.jetMaterial);
     this.jets.renderOrder = 4;
     this.jets.visible = false;
+    // Drawn after the black-hole pass (core/JetPass.js), so the lens and its
+    // cleared cavity never dim the jet base.
+    this.jets.layers.set(LAYERS.JETS);
     this.rsUnit = 0;
 
     this.group.add(this.volume, this.stars, this.hii, this.supernovae, this.jets);
@@ -311,6 +314,7 @@ export class Galaxy {
     this.uniforms.uJetRs.value = this.rsUnit;
     // Jets reach well past the disc, out of the star cloud.
     this.uniforms.uJetLength.value = Math.min(2, this.rsUnit * 60);
+    this.uniforms.uJetDiscOuter.value = this.hole.discSize;
     this.updateJets();
   }
 

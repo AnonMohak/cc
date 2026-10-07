@@ -75,6 +75,7 @@ export function createGalaxyUniforms() {
     // Black hole jets (blackHole.js; Galaxy sets them)
     uJetRs: { value: 0 },
     uJetLength: { value: 0.22 },
+    uJetDiscOuter: { value: 18 }, // accretion disc outer radius (Rs), for jet occlusion
     uViewHeight: { value: 800 },
   };
   applyBandUniforms(u, 'visible');

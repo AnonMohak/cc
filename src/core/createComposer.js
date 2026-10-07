@@ -6,6 +6,7 @@ import { GalaxyScenePass } from './GalaxyScenePass.js';
 import { CinematicPass } from './CinematicPass.js';
 import { LensFlarePass } from './LensFlarePass.js';
 import { BlackHolePass } from './BlackHolePass.js';
+import { JetPass } from './JetPass.js';
 import { ExposureMeterPass } from './ExposureMeterPass.js';
 
 // Bloom is blurry by nature: half resolution looks the same and costs 1/4.
@@ -26,6 +27,7 @@ const FLARE_GAIN = 0.5;
 const PASS_LABELS = new Map([
   [UnrealBloomPass, 'bloom'],
   [BlackHolePass, 'blackhole'],
+  [JetPass, 'jets'],
   [LensFlarePass, 'flare'],
   [ExposureMeterPass, 'meter'],
   [OutputPass, 'output'],
@@ -35,7 +37,7 @@ const PASS_LABELS = new Map([
 /**
  * GalaxyScenePass (low-res volumes) → UnrealBloomPass → LensFlarePass (reads the bloom
  * mips; only when bloom runs) → BlackHolePass (lensing + accretion discs; only while a
- * black hole is resolved) → ExposureMeterPass (auto exposure reading; the image
+ * black hole is resolved) → JetPass (black-hole jets; only while one is visible) → ExposureMeterPass (auto exposure reading; the image
  * passes through) → OutputPass (tone mapping + sRGB)
  * → CinematicPass (vignette, grain, aberration; skipped when off).
  *
@@ -66,6 +68,10 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
   // would otherwise flood the shadow.
   const blackHole = new BlackHolePass(camera);
   composer.addPass(blackHole);
+  // After the lens: its cleared cavity would otherwise dim the jet bases.
+  const jets = new JetPass(scene, camera);
+  let jetSource = () => false;
+  composer.addPass(jets);
   // Measures the finished HDR frame, before the exposure it controls.
   const meter = new ExposureMeterPass();
   composer.addPass(meter);
@@ -83,6 +89,7 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       // Skip the bloom passes entirely when bloom is off (by strength or tier).
       bloom.enabled = bloom.strength > 0 && bloomMode !== 'off';
       blackHole.update();
+      jets.enabled = jetSource();
       flare.enabled = bloom.enabled && flareAmount > 0;
       composer.render();
     },
@@ -114,6 +121,10 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
     setBlackHoles(source, allowed) {
       blackHole.source = source;
       blackHole.allowed = allowed;
+    },
+    /** `source()` says whether any jet is visible (JetPass is skipped otherwise). */
+    setJetSource(source) {
+      jetSource = source;
     },
     /** Accretion-disc brightness and colours for the wavelength band (bands.js). */
     setBlackHoleBand(band) {

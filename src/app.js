@@ -191,6 +191,7 @@ export function startApp(container, { startScreen } = {}) {
 
   // Standalone black holes are objects in the scene: they draw on every tier.
   post.setBlackHoles((slots) => galaxies.blackHoleCandidates(slots), true);
+  post.setJetSource(() => galaxies.hasVisibleJets());
 
   function applyCinematic() {
     const settings = store.getState().settings;

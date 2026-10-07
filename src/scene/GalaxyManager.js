@@ -102,6 +102,12 @@ export class GalaxyManager {
     return n;
   }
 
+  /** Whether JetPass has anything to draw this frame. */
+  hasVisibleJets() {
+    for (const galaxy of this.galaxies.values()) if (galaxy.jets.visible) return true;
+    return false;
+  }
+
   setBand(name) {
     this.band = name;
     for (const galaxy of this.galaxies.values()) galaxy.setBand(name);

@@ -4,6 +4,7 @@ import { GalaxyManager } from './GalaxyManager.js';
 import { createStore } from '../state/store.js';
 import { createActions } from '../state/actions.js';
 import { EMPHASIS_SELECTED, EMPHASIS_OTHERS } from '../galaxy/params.js';
+import { LAYERS } from '../core/layers.js';
 
 function setup() {
   let n = 0;
@@ -186,6 +187,7 @@ describe('GalaxyManager black holes', () => {
     const s = slots();
     expect(manager.blackHoleCandidates(s)).toBe(0);
     expect(manager.get('id1').jets.visible).toBe(false);
+    expect(manager.hasVisibleJets()).toBe(false);
     store.dispatch(actions.addBlackHole(store.getState()));
     expect(manager.blackHoleCandidates(s)).toBe(1);
     expect(s[0].discOuter).toBe(18);
@@ -202,6 +204,11 @@ describe('GalaxyManager black holes', () => {
     expect(hole.stars.geometry).toBe(geometry);
     expect(hole.rsUnit).toBe(0.05);
     expect(hole.jets.visible).toBe(true);
+    expect(manager.hasVisibleJets()).toBe(true);
+    // Jets draw after the black-hole pass, on their own layer.
+    expect(hole.jets.layers.isEnabled(LAYERS.JETS)).toBe(true);
+    expect(hole.jets.layers.isEnabled(LAYERS.STARS)).toBe(false);
+    expect(hole.jetMaterial.depthTest).toBe(false);
     const s = slots();
     manager.blackHoleCandidates(s);
     expect(s[0].discOuter).toBe(25);

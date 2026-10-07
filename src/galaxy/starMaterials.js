@@ -9,6 +9,7 @@ import supernovaVert from './shaders/supernova.vert.glsl?raw';
 import supernovaFrag from './shaders/supernova.frag.glsl?raw';
 import jetVert from './shaders/jet.vert.glsl?raw';
 import jetFrag from './shaders/jet.frag.glsl?raw';
+import { SHADOW_B, DISC_INNER } from './blackHole.js';
 
 const additive = {
   blending: THREE.AdditiveBlending,
@@ -53,7 +54,11 @@ export function createJetMaterial(uniforms) {
     vertexShader: jetVert,
     fragmentShader: jetFrag,
     uniforms,
+    defines: { SHADOW_B: SHADOW_B.toFixed(4), DISC_INNER: DISC_INNER.toFixed(4) },
     side: THREE.DoubleSide,
     ...additive,
+    // Drawn by JetPass into the composer buffer, whose depth is stale: the
+    // jet hides behind the hole's shadow in its own shader instead.
+    depthTest: false,
   });
 }

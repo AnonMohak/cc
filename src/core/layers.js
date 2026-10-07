@@ -1,6 +1,7 @@
 /**
  * Render layers. The galaxy scene pass draws them in separate steps:
- * background stars → volumes (low resolution) → stars and nebulae.
+ * background stars → volumes (low resolution) → stars and nebulae. Jets are
+ * drawn later, by JetPass, after the black-hole pass.
  */
 export const LAYERS = {
   /** Galaxy stars and H II regions (three's default layer). */
@@ -9,4 +10,6 @@ export const LAYERS = {
   VOLUME: 1,
   /** Far background starfield. */
   BACKGROUND: 2,
+  /** Black-hole jets (core/JetPass.js), drawn after the black-hole pass. */
+  JETS: 3,
 };

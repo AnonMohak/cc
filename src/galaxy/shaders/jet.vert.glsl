@@ -8,8 +8,13 @@ uniform float uViewHeight; // viewport height, CSS px
 
 attribute float aSide; // +1 north jet, -1 south jet
 
-varying vec2 vJet; // x: across (−1..1), y: along (0 base .. 1 tip)
+varying vec2 vJet; // x: across (−1..1, the core is the middle half), y: along (0 base .. 1 tip)
 varying float vEnergy;
+// For the shadow test in the fragment shader (view space).
+varying vec3 vViewPos;
+varying vec3 vHoleView;
+varying vec3 vHoleAxis;
+varying float vRsWorld;
 
 // Never thinner than this on screen, or a far jet flickers as a broken line.
 const float MIN_WIDTH_PX = 1.5;
@@ -33,7 +38,14 @@ void main() {
   // Looking straight down the axis the strip has no width: fade it out.
   vEnergy *= smoothstep(0.0, 0.15, sideLen / max(length(toCam), 1e-6));
   side = sideLen > 1e-6 ? side / sideLen : vec3(1.0, 0.0, 0.0);
-  vec3 p = axisP + side * position.x * 2.0 * width;
+  // The strip is twice the jet width: the core fills the middle half and a
+  // soft halo the rest (the glow bloom used to add; jets now draw after it).
+  vec3 p = axisP + side * position.x * 4.0 * width;
   vJet = vec2(position.x * 2.0, s);
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  vViewPos = mv.xyz;
+  vHoleView = (modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+  vHoleAxis = normalize((modelViewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+  vRsWorld = uJetRs * scale;
+  gl_Position = projectionMatrix * mv;
 }
