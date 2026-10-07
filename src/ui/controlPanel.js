@@ -327,6 +327,10 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .add(settingsProxy, 'bloomStrength', SETTINGS_LIMITS.bloomStrength.min, SETTINGS_LIMITS.bloomStrength.max, SETTINGS_LIMITS.bloomStrength.step)
     .name('Glow (bloom)')
     .onChange((v) => setting({ bloomStrength: v }));
+  settingsFolder
+    .add(settingsProxy, 'flare', SETTINGS_LIMITS.flare.min, SETTINGS_LIMITS.flare.max, SETTINGS_LIMITS.flare.step)
+    .name('Lens flare (needs glow)')
+    .onChange((v) => setting({ flare: v }));
   settingsFolder.add(settingsProxy, 'dust').name('Dust lanes').onChange((v) => setting({ dust: v }));
   settingsFolder
     .add(settingsProxy, 'dustOpacity', SETTINGS_LIMITS.dustOpacity.min, SETTINGS_LIMITS.dustOpacity.max, SETTINGS_LIMITS.dustOpacity.step)

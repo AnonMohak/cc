@@ -224,6 +224,7 @@ export function startApp(container, { startScreen } = {}) {
     if (cameraMode !== 'tour') controls.autoRotate = settings.autoRotate;
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
+    post.setFlare(settings.flare);
     sky.setVisible(settings.sky);
     if (currentTier) {
       applySpikes();

@@ -161,6 +161,14 @@ describe('reducer: settings and scene', () => {
     expect(clampSettings(null)).toEqual(DEFAULT_SETTINGS);
   });
 
+  it('clamps the post-processing amounts to 0–1 and fills them in for old saves', () => {
+    const s = clampSettings({ flare: 3, vignette: -1, grain: 'x' });
+    expect(s.flare).toBe(1);
+    expect(s.vignette).toBe(0);
+    expect(s.grain).toBe(DEFAULT_SETTINGS.grain);
+    expect(clampSettings({}).aberration).toBe(DEFAULT_SETTINGS.aberration);
+  });
+
   it('reset clears galaxies but keeps settings', () => {
     const { store, actions, add } = setup();
     add();
