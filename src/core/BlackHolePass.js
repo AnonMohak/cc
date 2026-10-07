@@ -14,6 +14,8 @@ import {
   MARCH_STEP_MIN,
   MARCH_STEP_MAX,
   PHOTON_SPHERE,
+  MARCH_SCALE_MIN,
+  marchScaleFor,
   shadowPixels,
   lensFade,
   pickLenses,
@@ -27,8 +29,6 @@ const f = (x) => x.toFixed(4);
 
 /** Ray-march step cap (High tier; QUALITY.*.holeSteps must stay at or below it). */
 export const MAX_HOLE_STEPS = 64;
-/** The march renders at this fraction of the screen resolution. */
-export const MARCH_SCALE = 0.4;
 
 // Disc look shared by the one-bend shader and the ray march: colours, the
 // Shakura–Sunyaev profile and the concentric streak noise. Both shaders set
@@ -81,7 +81,8 @@ const DISC_GLSL = /* glsl */ `
   }
 `;
 
-// Ray march for the largest lens on the High tier, at MARCH_SCALE resolution.
+// Ray march for the largest lens on the High tier, at 0.4–0.7 of the screen
+// resolution (blackHole.js marchScaleFor: more for a smaller hole).
 // Each pixel traces its bent ray (velocity Verlet on the photon-orbit
 // equation, mirrored from blackHole.js traceRay) through a thick, flared disc
 // volume, and writes the disc light (rgb) and the transmittance (a). Captured
@@ -159,10 +160,12 @@ ${DISC_GLSL}
     float Es = 0.0;
     float Qs = 0.0;
     float T = 1.0;
-    // Per-pixel offset of the first step (fixed, so no flicker): the step
-    // pattern turns from visible bands into fine noise that the composite
-    // tent filter hides.
-    float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    // Offset of the first step in a 2×2 ordered pattern (fixed, so no
+    // flicker): it turns the step pattern into a 2×2 texel grain, and each
+    // composite tap (a bilinear 2×2 average) holds all four offsets, so the
+    // grain cancels out there.
+    vec2 cell = mod(floor(gl_FragCoord.xy), 2.0);
+    float jitter = 0.25 + 0.5 * cell.x + 0.25 * cell.y;
 
     for (int i = 0; i < MAX_HOLE_STEPS; i++) {
       if (i >= uSteps) break;
@@ -189,9 +192,10 @@ ${DISC_GLSL}
             // Filter the streaks by the pixel (a little by the step too).
             float foot = max(dist * uPixelAngle, dt * 0.15);
             float lod = log2(max(foot * STREAK_FREQ_R * NOISE_TEXELS, 1.0));
-            float s = textureLod(uNoise, vec2(Rr * STREAK_FREQ_R, turn), lod).r;
+            float s1 = textureLod(uNoise, vec2(Rr * STREAK_FREQ_R, turn), lod).r;
+            float s2 = textureLod(uNoise, vec2(Rr * FINE_FREQ_R + 0.37, turn * 2.0 + 0.5), lod + log2(FINE_FREQ_R / STREAK_FREQ_R)).g;
             float q = discFlux(Rr);
-            float w = T * dens * dt * sqrt(q) * (0.3 + 1.4 * gm_smoothstep(0.35, 0.65, s));
+            float w = T * dens * dt * sqrt(q) * (0.3 + 1.4 * gm_smoothstep(0.32, 0.68, 0.55 * s1 + 0.45 * s2));
             Es += w;
             Qs += w * q;
             T *= exp(-ABSORB * dens * dt);
@@ -200,7 +204,7 @@ ${DISC_GLSL}
         }
       }
 
-      if (i == 0) dt *= 0.5 + 0.5 * jitter;
+      if (i == 0) dt *= jitter;
       p += v * dt + 0.5 * a * dt * dt;
       vec3 a1 = accel(p, h2);
       v += 0.5 * (a + a1) * dt;
@@ -252,7 +256,7 @@ const fragmentShader = glsl(
   uniform float uSkyOn;
   uniform float uStarGain;
   // High tier: the largest lens (index 0) takes its disc from the ray march
-  // (rgb: disc light, a: transmittance), at MARCH_SCALE resolution.
+  // (rgb: disc light, a: transmittance), at a reduced resolution.
   uniform sampler2D tMarch;
   uniform vec2 uMarchTexel;
   uniform float uMarch;
@@ -432,11 +436,11 @@ ${DISC_GLSL}
       vec3 halo = lensCool * HALO_GAIN * lensGain * exp(-(b - SHADOW_B) / HALO_SCALE);
 
       if (i == 0 && uMarch > 0.5) {
-        // Ray-marched thick disc: four bilinear taps one march texel apart
-        // (a soft tent that also hides the step jitter). It already holds the
-        // near disc, the arches and the higher-order images, so no thin disc
-        // or haze here.
-        vec2 o = uMarchTexel;
+        // Ray-marched thick disc: four bilinear taps half a march texel out.
+        // Each tap averages a 2×2 texel block, which cancels the ordered step
+        // jitter. It already holds the near disc, the arches and the
+        // higher-order images, so no thin disc or haze here.
+        vec2 o = uMarchTexel * 0.5;
         vec4 m = 0.25 * (texture2D(tMarch, vUv + vec2(o.x, o.y)) + texture2D(tMarch, vUv + vec2(-o.x, o.y))
           + texture2D(tMarch, vUv + vec2(o.x, -o.y)) + texture2D(tMarch, vUv + vec2(-o.x, -o.y)));
         L = L * m.a + m.rgb;
@@ -557,6 +561,8 @@ export class BlackHolePass extends Pass {
     // High tier ray march (setMarch): its own low-res target and material,
     // sharing the lens uniforms with the main material by reference.
     this.march = false;
+    this.marchScale = MARCH_SCALE_MIN;
+    this.width = 1;
     this.marchTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
     const u = this.material.uniforms;
     this.marchMaterial = new THREE.ShaderMaterial({
@@ -585,10 +591,17 @@ export class BlackHolePass extends Pass {
   }
 
   setSize(width, height) {
+    this.width = width;
     this.height = height;
     this.material.uniforms.uResolution.value.set(width, height);
-    const w = Math.max(1, Math.round(width * MARCH_SCALE));
-    const h = Math.max(1, Math.round(height * MARCH_SCALE));
+    this.setMarchScale(this.marchScale);
+  }
+
+  /** March target at `scale` of the screen resolution (marchScaleFor buckets). */
+  setMarchScale(scale) {
+    this.marchScale = scale;
+    const w = Math.max(1, Math.round(this.width * scale));
+    const h = Math.max(1, Math.round(this.height * scale));
     this.marchTarget.setSize(w, h);
     this.material.uniforms.uMarchTexel.value.set(1 / w, 1 / h);
   }
@@ -668,8 +681,18 @@ export class BlackHolePass extends Pass {
     u.uCount.value = n;
     u.uTanHalfFov.value.set(tanX, tanY);
     u.uPixelAngle.value = (2 * tanY) / this.height;
-    // March pixels are 1 / MARCH_SCALE screen pixels wide.
-    this.marchMaterial.uniforms.uPixelAngle.value = u.uPixelAngle.value / MARCH_SCALE;
+    if (this.march && n > 0) {
+      // March resolution from the screen share of the largest lens's march
+      // sphere (a smaller hole gets more resolution for the same cost).
+      const c = this.picked[0];
+      _view.copy(c.center).applyMatrix4(view);
+      const radiusPx = ((c.discOuter * MARCH_SPHERE_K * c.rsWorld) / Math.max(-_view.z, 1e-6) / tanY) * (this.height / 2);
+      const coverage = Math.min(1, (Math.PI * radiusPx * radiusPx) / (this.width * this.height));
+      const scale = marchScaleFor(coverage);
+      if (scale !== this.marchScale) this.setMarchScale(scale);
+    }
+    // March pixels are 1 / marchScale screen pixels wide.
+    this.marchMaterial.uniforms.uPixelAngle.value = u.uPixelAngle.value / this.marchScale;
     u.uViewToWorld.value.setFromMatrix4(camera.matrixWorld);
     u.uMarch.value = this.march && n > 0 ? 1 : 0;
     this.enabled = n > 0;

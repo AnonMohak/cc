@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deflection, traceRay, shadowPixels, lensFade, pickLenses, SHADOW_B, MAX_DEFLECTION, DISC_OUTER, MARCH_SPHERE_K } from './blackHole.js';
+import { deflection, traceRay, marchScaleFor, MARCH_SCALE_MIN, MARCH_SCALE_MAX, shadowPixels, lensFade, pickLenses, SHADOW_B, MAX_DEFLECTION, DISC_OUTER, MARCH_SPHERE_K } from './blackHole.js';
 
 describe('deflection', () => {
   it('matches the weak-field limit 2Rs/b far away', () => {
@@ -84,6 +84,21 @@ describe('traceRay', () => {
       const r = traceRay([-Math.sqrt(R * R - b * b), b, 0], [1, 0, 0], { maxSteps: 64, escapeRadius: R });
       expect(r.escaped).toBe(true);
       expect(r.steps).toBeLessThan(64);
+    }
+  });
+});
+
+describe('marchScaleFor', () => {
+  it('gives small holes more resolution, in 0.1 steps', () => {
+    expect(marchScaleFor(1)).toBe(MARCH_SCALE_MIN);
+    expect(marchScaleFor(0.5)).toBe(0.5);
+    expect(marchScaleFor(0.3)).toBe(0.7);
+    expect(marchScaleFor(0.01)).toBe(MARCH_SCALE_MAX);
+    for (let c = 0.02; c <= 1; c += 0.07) {
+      const s = marchScaleFor(c);
+      expect(Math.round(s * 10) / 10).toBe(s);
+      // Same budget or less: covered march pixels never exceed a full screen at the minimum scale.
+      expect(c * s * s).toBeLessThanOrEqual(MARCH_SCALE_MIN * MARCH_SCALE_MIN + 1e-9);
     }
   });
 });

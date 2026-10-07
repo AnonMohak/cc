@@ -42,6 +42,25 @@ export const MARCH_STEP_MAX = 2;
 /** Photon sphere radius: inside it, a ray moving inward always falls in. */
 export const PHOTON_SPHERE = 1.5;
 
+/** Ray-march resolution range (fraction of the screen) and its step. */
+export const MARCH_SCALE_MIN = 0.4;
+export const MARCH_SCALE_MAX = 0.7;
+const MARCH_SCALE_STEP = 0.1;
+
+/**
+ * Ray-march resolution for a hole whose march sphere covers `coverage` of
+ * the screen (0–1). Cost follows the covered march pixels, so a hole that
+ * covers less gets more resolution for the same cost: the budget is a
+ * full-screen hole at MARCH_SCALE_MIN. Bucketed in 0.1 steps, so the render
+ * target is rarely reallocated.
+ * @param {number} coverage
+ */
+export function marchScaleFor(coverage) {
+  const c = Math.min(1, Math.max(1e-3, coverage));
+  const s = Math.min(MARCH_SCALE_MAX, Math.max(MARCH_SCALE_MIN, MARCH_SCALE_MIN / Math.sqrt(c)));
+  return Math.round(Math.floor(s / MARCH_SCALE_STEP + 1e-6) * MARCH_SCALE_STEP * 10) / 10;
+}
+
 /**
  * Trace a light ray past a Schwarzschild black hole (units of Rs, hole at the
  * origin). Photon orbits obey d²p/dλ² = −1.5 h² p / |p|⁵ with h = |p × v|
