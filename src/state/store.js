@@ -15,7 +15,8 @@ import { BAND_OPTIONS } from '../galaxy/bands.js';
 
 // v2: density-wave renderer (structure group, new shape keys, quality/exposure).
 // v3: standalone black holes (entries may have kind 'blackhole' + a hole group).
-export const STATE_VERSION = 3;
+// v4: the animation black hole (a black hole entry may have intro: true).
+export const STATE_VERSION = 4;
 
 export const SETTINGS_LIMITS = {
   timeScale: { min: 0, max: 5, step: 0.05 },
@@ -70,8 +71,22 @@ export function totalParticles(state, exceptId = null) {
   return state.galaxies.reduce((sum, g) => (g.id === exceptId ? sum : sum + g.shape.count), 0);
 }
 
+/**
+ * The galaxy list without the animation black hole (intro: true): the next
+ * add replaces it, so it never blocks the budget or the placement.
+ */
+export function withoutIntro(galaxies) {
+  return galaxies.some((g) => g.intro) ? galaxies.filter((g) => !g.intro) : galaxies;
+}
+
+/** The intro scene: exactly the animation black hole (film shot + intro fall). */
+export function isIntroScene(state) {
+  return state.galaxies.length === 1 && state.galaxies[0].intro === true;
+}
+
 export function canAddGalaxy(state, count) {
-  return state.galaxies.length < MAX_GALAXIES && totalParticles(state) + count <= MAX_TOTAL_PARTICLES;
+  const galaxies = withoutIntro(state.galaxies);
+  return galaxies.length < MAX_GALAXIES && totalParticles({ galaxies }) + count <= MAX_TOTAL_PARTICLES;
 }
 
 export function clampSettings(settings) {
@@ -114,6 +129,8 @@ export function sanitizeGalaxy(entry) {
   if (hole) {
     out.kind = 'blackhole';
     out.hole = clampHole(entry.hole);
+    // The animation black hole of the start scene: the next add replaces it.
+    if (entry.intro === true) out.intro = true;
   }
   return out;
 }
@@ -137,8 +154,10 @@ export function reducer(state, action) {
       const entry = sanitizeGalaxy(action.galaxy);
       if (!entry || state.galaxies.some((g) => g.id === entry.id)) return state;
       if (!canAddGalaxy(state, entry.shape.count)) return state;
-      if (!action.galaxy.name) entry.name = nextName(state.galaxies, entry.kind === 'blackhole' ? BLACK_HOLE_TEMPLATE.label : PRESETS[entry.preset].label);
-      return { ...state, galaxies: [...state.galaxies, entry], selectedId: entry.id };
+      // The first add replaces the animation black hole (one undo step).
+      const kept = withoutIntro(state.galaxies);
+      if (!action.galaxy.name) entry.name = nextName(kept, entry.kind === 'blackhole' ? BLACK_HOLE_TEMPLATE.label : PRESETS[entry.preset].label);
+      return { ...state, galaxies: [...kept, entry], selectedId: entry.id };
     }
 
     case 'galaxy/remove': {

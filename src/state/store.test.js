@@ -7,6 +7,7 @@ import {
   canAddGalaxy,
   clampSettings,
   sanitizeGalaxy,
+  isIntroScene,
   DEFAULT_SETTINGS,
 } from './store.js';
 import { createActions } from './actions.js';
@@ -266,5 +267,72 @@ describe('standalone black holes', () => {
     const [g] = store.getState().galaxies;
     expect('kind' in g).toBe(false);
     expect('hole' in g).toBe(false);
+  });
+});
+
+describe('animation black hole (intro)', () => {
+  const intro = (store, actions) => store.dispatch(actions.addBlackHole(store.getState(), [0, 0, 0], { intro: true }));
+
+  it('the first add replaces it, in one action', () => {
+    const { store, actions, add } = setup();
+    intro(store, actions);
+    expect(isIntroScene(store.getState())).toBe(true);
+    add();
+    const { galaxies, selectedId } = store.getState();
+    expect(galaxies).toHaveLength(1);
+    expect(galaxies[0].kind).toBeUndefined();
+    expect(selectedId).toBe(galaxies[0].id);
+    expect(isIntroScene(store.getState())).toBe(false);
+  });
+
+  it('places the new object at the target, not beside the intro hole', () => {
+    const { store, actions } = setup();
+    intro(store, actions);
+    store.dispatch(actions.addGalaxy(store.getState(), 'spiral', [0, 0, 0]));
+    expect(store.getState().galaxies[0].look.position).toEqual([0, 0, 0]);
+  });
+
+  it('also goes on a black hole add or a real-galaxy add, even after edits', () => {
+    const { store, actions } = setup();
+    intro(store, actions);
+    const id = store.getState().galaxies[0].id;
+    store.dispatch(actions.updateGalaxy(id, { hole: { colorHot: '#ff0000' } }));
+    expect(store.getState().galaxies[0].intro).toBe(true);
+    store.dispatch(actions.addBlackHole(store.getState()));
+    expect(store.getState().galaxies.map((g) => g.id)).not.toContain(id);
+    expect(store.getState().galaxies[0].intro).toBeUndefined();
+
+    const other = setup();
+    intro(other.store, other.actions);
+    other.store.dispatch(other.actions.addCatalogueGalaxy(other.store.getState(), 'm31'));
+    expect(other.store.getState().galaxies.map((g) => g.catalog)).toEqual(['m31']);
+  });
+
+  it('later adds remove nothing, also with a single user black hole', () => {
+    const { store, actions, add } = setup();
+    store.dispatch(actions.addBlackHole(store.getState()));
+    expect(isIntroScene(store.getState())).toBe(false);
+    add();
+    add();
+    expect(store.getState().galaxies).toHaveLength(3);
+  });
+
+  it('does not count toward the budget', () => {
+    const { store, actions } = setup();
+    intro(store, actions);
+    const state = store.getState();
+    expect(canAddGalaxy(state, MAX_TOTAL_PARTICLES)).toBe(true);
+    expect(canAddGalaxy(state, MAX_TOTAL_PARTICLES + 1)).toBe(false);
+  });
+
+  it('sanitize keeps the flag only on black holes and only when true', () => {
+    const { store, actions, add } = setup();
+    intro(store, actions);
+    const hole = store.getState().galaxies[0];
+    expect(sanitizeGalaxy(hole).intro).toBe(true);
+    expect(sanitizeGalaxy({ ...hole, intro: 'yes' }).intro).toBeUndefined();
+    add();
+    const galaxy = store.getState().galaxies[0];
+    expect(sanitizeGalaxy({ ...galaxy, intro: true }).intro).toBeUndefined();
   });
 });

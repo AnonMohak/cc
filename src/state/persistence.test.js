@@ -152,7 +152,7 @@ describe('v1 → v2 migration', () => {
     expect(s.galaxies).toHaveLength(1);
     expect(storage.getItem('galaxy-sandbox:v1')).toBeNull();
     expect(storage.getItem(STORAGE_KEY)).not.toBeNull();
-    expect(STORAGE_KEY).toBe('galaxy-sandbox:v3');
+    expect(STORAGE_KEY).toBe('galaxy-sandbox:v4');
   });
 });
 
@@ -205,5 +205,36 @@ describe('standalone black holes', () => {
     const s = load(storage);
     expect(s.galaxies).toEqual(store.getState().galaxies);
     expect(storage.getItem('galaxy-sandbox:v2')).toBeNull();
+  });
+});
+
+describe('animation black hole (v4)', () => {
+  const v3Of = (store) => ({ ...JSON.parse(serialize(store.getState())), version: 3 });
+
+  it('round-trips the intro flag', () => {
+    const store = createStore();
+    store.dispatch(createActions({ makeId: () => 'bh', makeSeed: () => 3 }).addBlackHole(store.getState(), [0, 0, 0], { intro: true }));
+    expect(deserialize(serialize(store.getState())).galaxies[0].intro).toBe(true);
+  });
+
+  it('a v3 save that is one black hole becomes the intro scene', () => {
+    const store = createStore();
+    store.dispatch(createActions({ makeId: () => 'bh', makeSeed: () => 3 }).addBlackHole(store.getState()));
+    const storage = memoryStorage();
+    storage.setItem('galaxy-sandbox:v3', JSON.stringify(v3Of(store)));
+    const s = load(storage);
+    expect(s.galaxies[0].intro).toBe(true);
+    expect(storage.getItem('galaxy-sandbox:v3')).toBeNull();
+  });
+
+  it('other v3 saves get no flag', () => {
+    let n = 0;
+    const actions = createActions({ makeId: () => `g${++n}`, makeSeed: () => 3 });
+    const store = createStore();
+    store.dispatch(actions.addBlackHole(store.getState()));
+    store.dispatch(actions.addGalaxy(store.getState()));
+    const s = deserialize(JSON.stringify(v3Of(store)));
+    expect(s.galaxies).toHaveLength(2);
+    expect(s.galaxies.some((g) => g.intro)).toBe(false);
   });
 });

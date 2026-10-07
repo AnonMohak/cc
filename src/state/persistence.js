@@ -9,7 +9,7 @@ import { PRESETS } from '../galaxy/presets.js';
 
 // Bump the suffix together with STATE_VERSION when the stored shape changes.
 export const STORAGE_KEY = `galaxy-sandbox:v${STATE_VERSION}`;
-export const LEGACY_KEYS = ['galaxy-sandbox:v2', 'galaxy-sandbox:v1'];
+export const LEGACY_KEYS = ['galaxy-sandbox:v3', 'galaxy-sandbox:v2', 'galaxy-sandbox:v1'];
 
 /** Only params are stored; vertices are regenerated from the seed. */
 export function serialize(state) {
@@ -35,6 +35,7 @@ export function deserialize(json) {
   if (data.version === 1) data = migrateV1(data);
   // v2 → v3 only added optional black-hole fields: v2 data is valid v3.
   if (data.version === 2) data = { ...data, version: 3 };
+  if (data.version === 3) data = migrateV3(data);
   if (data.version !== STATE_VERSION) return null;
 
   const galaxies = [];
@@ -89,6 +90,16 @@ export function migrateV1(data) {
     };
   });
   return { ...data, version: 2, galaxies };
+}
+
+/**
+ * v3 → v4. v3 had no animation-black-hole flag: every scene that was exactly
+ * one black hole played the intro. Such a scene becomes the intro scene.
+ */
+export function migrateV3(data) {
+  const list = Array.isArray(data.galaxies) ? data.galaxies : [];
+  const single = list.length === 1 && list[0]?.kind === 'blackhole';
+  return { ...data, version: 4, galaxies: single ? [{ ...list[0], intro: true }] : list };
 }
 
 /** @param {Storage} storage */

@@ -3,6 +3,7 @@ import { CATALOGUE, catalogueParams } from '../galaxy/catalogue.js';
 import { randomSeed } from '../galaxy/random.js';
 import { findFreePosition } from './placement.js';
 import { generateUniverse } from './universe.js';
+import { withoutIntro } from './store.js';
 
 function defaultId() {
   // randomUUID needs a secure context; plain-HTTP LAN access falls back.
@@ -24,7 +25,7 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
     addGalaxy(state, presetName = 'spiral', target = [0, 0, 0]) {
       const preset = PRESETS[presetName] ?? PRESETS.spiral;
       const look = { ...preset.look };
-      look.position = findFreePosition(state.galaxies, target, look.radius);
+      look.position = findFreePosition(withoutIntro(state.galaxies), target, look.radius);
       return {
         type: 'galaxy/add',
         galaxy: {
@@ -42,10 +43,12 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
      * Add a standalone black hole (in a sparse star cloud) near `target`.
      * @param {object} state current store state (used for placement)
      * @param {number[]} [target]
+     * @param {{ intro?: boolean }} [options] intro: the animation black hole of
+     *   the start scene (the next add replaces it)
      */
-    addBlackHole(state, target = [0, 0, 0]) {
+    addBlackHole(state, target = [0, 0, 0], { intro = false } = {}) {
       const t = BLACK_HOLE_TEMPLATE;
-      const look = { ...t.look, position: findFreePosition(state.galaxies, target, t.look.radius) };
+      const look = { ...t.look, position: findFreePosition(withoutIntro(state.galaxies), target, t.look.radius) };
       return {
         type: 'galaxy/add',
         galaxy: {
@@ -58,6 +61,7 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
           look,
           motion: { ...t.motion },
           hole: { ...t.hole },
+          ...(intro ? { intro: true } : {}),
         },
       };
     },
@@ -68,7 +72,7 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
     addCatalogueGalaxy(state, catalogId, target = [0, 0, 0]) {
       const params = catalogueParams(catalogId);
       if (!params) return { type: 'noop' };
-      const look = { ...params.look, position: findFreePosition(state.galaxies, target, params.look.radius) };
+      const look = { ...params.look, position: findFreePosition(withoutIntro(state.galaxies), target, params.look.radius) };
       return {
         type: 'galaxy/add',
         galaxy: {

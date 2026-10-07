@@ -10,7 +10,7 @@ import { createStarfield } from './scene/starfield.js';
 import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
-import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
+import { createStore, createInitialState, canAddGalaxy, isIntroScene } from './state/store.js';
 import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createRenderGate } from './core/renderGate.js';
@@ -55,11 +55,6 @@ const _fallE2 = new THREE.Vector3();
 const _fallOffset = new THREE.Vector3();
 const _fallLook = new THREE.Vector3();
 
-/** The intro scene: exactly one standalone black hole (film shot + intro fall). */
-function isSingleBlackHole(state) {
-  return state.galaxies.length === 1 && state.galaxies[0].kind === 'blackhole';
-}
-
 /**
  * Build the scene, state, UI and loop inside `container`.
  * @param {HTMLElement} container
@@ -97,8 +92,9 @@ export function startApp(container, { startScreen } = {}) {
   const storage = window.localStorage;
   const actions = createActions();
   const store = createStore(undefined, persistence.load(storage) ?? createInitialState());
-  // A fresh scene starts with one standalone black hole, framed like the film shot.
-  if (store.getState().galaxies.length === 0) store.dispatch(actions.addBlackHole(store.getState()));
+  // A fresh scene starts with the animation black hole, framed like the film
+  // shot. The first add replaces it (store.js withoutIntro).
+  if (store.getState().galaxies.length === 0) store.dispatch(actions.addBlackHole(store.getState(), undefined, { intro: true }));
 
   const save = debounce(() => persistence.save(store.getState(), storage), SAVE_DEBOUNCE_MS);
   store.subscribe(save);
@@ -152,9 +148,9 @@ export function startApp(container, { startScreen } = {}) {
     const dir = side.multiplyScalar(Math.cos(elevation)).addScaledVector(normal, Math.sin(elevation));
     return { center, position: center.clone().addScaledVector(dir, distance) };
   }
-  // The camera is not saved: every load of a single-black-hole scene starts
-  // at the film shot (the home view would be far away).
-  if (isSingleBlackHole(store.getState())) {
+  // The camera is not saved: every load of the intro scene starts at the
+  // film shot (the home view would be far away).
+  if (isIntroScene(store.getState())) {
     const shot = filmShot(store.getState().galaxies[0].id);
     if (shot) {
       controls.target.copy(shot.center);
@@ -303,7 +299,7 @@ export function startApp(container, { startScreen } = {}) {
   }
 
   // ── Intro fall into the black hole (core/blackHoleFall.js) ─────────────
-  // Idle after the start box on a single-black-hole scene: the camera
+  // Idle after the start box on the intro scene (the animation black hole): the camera
   // spirals in with the disc and falls in. A click, tap, wheel or the
   // controls panel ends it and flies back out. Once per page load, for
   // everyone (also with reduced motion: it is the intro, and any click ends it).
@@ -323,14 +319,14 @@ export function startApp(container, { startScreen } = {}) {
   };
   for (const type of unlockEvents) window.addEventListener(type, unlockSound, true);
   // The start box hint ("Stay still…") only fits the intro scene.
-  document.getElementById('start-hint')?.toggleAttribute('hidden', !isSingleBlackHole(store.getState()));
+  document.getElementById('start-hint')?.toggleAttribute('hidden', !isIntroScene(store.getState()));
   /** The running fall: hole, basis and start pose (see beginFall). */
   let fallRun = null;
   let fallU = 0;
   let fovEase = null; // { from, t } while the fov returns to baseFov
 
   function fallEligible() {
-    return isSingleBlackHole(store.getState()) && (cameraMode === 'orbit' || cameraMode === 'fall');
+    return isIntroScene(store.getState()) && (cameraMode === 'orbit' || cameraMode === 'fall');
   }
 
   /** Start from wherever the camera is (after a reload it is at CAMERA_HOME). */
@@ -427,6 +423,17 @@ export function startApp(container, { startScreen } = {}) {
     window.addEventListener('pointerdown', onInput, true);
     window.addEventListener('wheel', onInput, { capture: true, passive: false });
   }
+
+  // An add replaced the animation black hole: end the intro and frame the
+  // new object (the film-shot camera would sit inside a galaxy).
+  store.subscribe((next, prev) => {
+    if (!prev.galaxies.some((g) => g.intro) || next.galaxies.some((g) => g.intro)) return;
+    const added = next.galaxies.filter((g) => !prev.galaxies.some((p) => p.id === g.id));
+    if (added.length !== 1) return;
+    interruptFall(false);
+    setCameraMode('orbit');
+    focusGalaxy(added[0].id);
+  });
 
   let currentBand = null;
   function applyBand(name) {
@@ -721,7 +728,7 @@ export function startApp(container, { startScreen } = {}) {
       interruptFall(false);
       setCameraMode('orbit');
       store.dispatch(actions.resetScene());
-      store.dispatch(actions.addBlackHole(store.getState()));
+      store.dispatch(actions.addBlackHole(store.getState(), undefined, { intro: true }));
       const shot = filmShot(store.getState().selectedId);
       if (shot) cameraFly.flyTo(shot.center, shot.position);
       else cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position);

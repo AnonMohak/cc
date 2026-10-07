@@ -106,3 +106,16 @@ describe('createHistory', () => {
     expect(history.canRedo()).toBe(false);
   });
 });
+
+describe('animation black hole', () => {
+  it('undo after the replacing add restores it', () => {
+    const { store, actions, history, add, ids } = setup();
+    store.dispatch(actions.addBlackHole(store.getState(), [0, 0, 0], { intro: true }));
+    history.clear();
+    add();
+    expect(store.getState().galaxies.some((g) => g.intro)).toBe(false);
+    history.undo();
+    expect(ids()).toHaveLength(1);
+    expect(store.getState().galaxies[0].intro).toBe(true);
+  });
+});
