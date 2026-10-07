@@ -234,3 +234,37 @@ describe('catalogue galaxies', () => {
     expect(store.getState().galaxies[0].catalog).toBeNull();
   });
 });
+
+describe('standalone black holes', () => {
+  it('adds a named black hole with clamped hole params', () => {
+    const { store, actions } = setup();
+    store.dispatch(actions.addBlackHole(store.getState()));
+    const [hole] = store.getState().galaxies;
+    expect(hole.kind).toBe('blackhole');
+    expect(hole.name).toBe('Black hole 1');
+    expect(hole.hole.discSize).toBe(18);
+    expect(store.getState().selectedId).toBe(hole.id);
+  });
+
+  it('updates and clamps the hole group, only on black holes', () => {
+    const { store, actions, add } = setup();
+    store.dispatch(actions.addBlackHole(store.getState()));
+    add();
+    const [hole, galaxy] = store.getState().galaxies;
+    store.dispatch(actions.updateGalaxy(hole.id, { hole: { size: 99, colorHot: 'red', streak: false } }));
+    const next = store.getState().galaxies[0].hole;
+    expect(next.size).toBe(LIMITS.hole.size.max);
+    expect(next.colorHot).toBe(hole.hole.colorHot);
+    expect(next.streak).toBe(false);
+    store.dispatch(actions.updateGalaxy(galaxy.id, { hole: { size: 0.05 } }));
+    expect(store.getState().galaxies[1].hole).toBeUndefined();
+  });
+
+  it('keeps galaxy entries free of black-hole fields', () => {
+    const { store, add } = setup();
+    add();
+    const [g] = store.getState().galaxies;
+    expect('kind' in g).toBe(false);
+    expect('hole' in g).toBe(false);
+  });
+});

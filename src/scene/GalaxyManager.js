@@ -69,6 +69,7 @@ export class GalaxyManager {
       galaxy?.setStructure(entry.structure);
       galaxy?.setLook(entry.look);
       galaxy?.setMotion(entry.motion);
+      if (entry.hole) galaxy?.setHole(entry.hole);
     }
   }
 
@@ -96,13 +97,16 @@ export class GalaxyManager {
 
   /**
    * Fill BlackHolePass candidate slots; returns how many are in use.
+   * Standalone black holes always take part; galaxies' central holes only
+   * when `central` (Settings → Galaxy black holes and the quality tier).
    * @param {object[]} slots
+   * @param {boolean} [central]
    */
-  blackHoleCandidates(slots) {
+  blackHoleCandidates(slots, central = true) {
     let n = 0;
     for (const galaxy of this.galaxies.values()) {
       if (n >= slots.length) break;
-      if (galaxy.blackHoleInfo(slots[n])) n++;
+      if (galaxy.blackHoleInfo(slots[n], central)) n++;
     }
     return n;
   }

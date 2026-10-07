@@ -145,14 +145,14 @@ describe('v1 → v2 migration', () => {
     expect(migrateV1({ version: 1 }).galaxies).toEqual([]);
   });
 
-  it('load() migrates the legacy key once and moves it to the v2 key', () => {
+  it('load() migrates the legacy key once and moves it to the current key', () => {
     const storage = memoryStorage();
     storage.setItem('galaxy-sandbox:v1', JSON.stringify(v1));
     const s = load(storage);
     expect(s.galaxies).toHaveLength(1);
     expect(storage.getItem('galaxy-sandbox:v1')).toBeNull();
     expect(storage.getItem(STORAGE_KEY)).not.toBeNull();
-    expect(STORAGE_KEY).toBe('galaxy-sandbox:v2');
+    expect(STORAGE_KEY).toBe('galaxy-sandbox:v3');
   });
 });
 
@@ -181,5 +181,29 @@ describe('HUD settings', () => {
     const { clampSettings } = await import('./store.js');
     expect(clampSettings({})).toMatchObject({ labels: false, minimap: true, scaleBar: true });
     expect(clampSettings({ minimap: false, labels: 'no' })).toMatchObject({ minimap: false, labels: false });
+  });
+});
+
+describe('standalone black holes', () => {
+  it('round-trip with their hole params', () => {
+    const actions = createActions({ makeId: () => 'bh', makeSeed: () => 3 });
+    const store = createStore();
+    store.dispatch(actions.addBlackHole(store.getState()));
+    store.dispatch(actions.updateGalaxy('bh', { hole: { discSize: 24, jets: true } }));
+    const back = deserialize(serialize(store.getState()));
+    expect(back.galaxies[0].kind).toBe('blackhole');
+    expect(back.galaxies[0].hole).toEqual(store.getState().galaxies[0].hole);
+  });
+
+  it('migrates v2 saves (galaxies only) unchanged', () => {
+    const store = createStore();
+    store.dispatch(createActions({ makeId: () => 'g', makeSeed: () => 1 }).addGalaxy(store.getState()));
+    const v2 = JSON.parse(serialize(store.getState()));
+    v2.version = 2;
+    const storage = memoryStorage();
+    storage.setItem('galaxy-sandbox:v2', JSON.stringify(v2));
+    const s = load(storage);
+    expect(s.galaxies).toEqual(store.getState().galaxies);
+    expect(storage.getItem('galaxy-sandbox:v2')).toBeNull();
   });
 });

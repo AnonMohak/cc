@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { generateGalaxy } from './generateGalaxy.js';
 import { createStarMaterial, createHiiMaterial, createSupernovaMaterial, createJetMaterial } from './starMaterials.js';
-import { blackHoleRadius, discAxis } from './blackHole.js';
+import { blackHoleRadius, DISC_OUTER } from './blackHole.js';
+import { BANDS } from './bands.js';
 import { createSupernovaSchedule, pickSupernovaSite, SUPERNOVA_SLOTS } from './supernovae.js';
 import { createVolumeMaterial } from './volumeMaterial.js';
 import { volumeBounds, marchBounds } from './densityModel.js';
-import { clampShape, clampStructure } from './params.js';
+import { clampShape, clampStructure, clampHole } from './params.js';
 import {
   createGalaxyUniforms,
   applyBandUniforms,
@@ -48,8 +49,9 @@ function createJetGeometry() {
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.setAttribute('aSide', new THREE.Float32BufferAttribute(sides, 1));
   geometry.setIndex(index);
-  // The strips turn to face the camera in the shader: bound the whole axis.
-  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 0.5);
+  // The strips turn to face the camera in the shader: bound the whole axis
+  // (a standalone black hole's jets are longer, see setHole).
+  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 2.5);
   return geometry;
 }
 // Structure sliders fire many updates; the disc map (tens of ms to bake) is
@@ -65,16 +67,25 @@ const REBAKE_DELAY_MS = 120;
  *   stars — density-wave star particles (renderOrder 1)
  *   hii   — H II nebulae that glow on the arm crests (renderOrder 2)
  *   supernovae — a few flash points that follow their exploding star (renderOrder 3)
- *   jets  — AGN jets along the black hole's disc axis, when Settings → Black holes = jets (renderOrder 4)
+ *   jets  — AGN jets along the axis, when Settings → Galaxy black holes = jets or a standalone hole's Jets (renderOrder 4)
  * The black hole's shadow, lensing and accretion disc are drawn by
  * core/BlackHolePass.js from blackHoleInfo().
+ *
+ * A standalone black hole (kind 'blackhole') is the same object: its stars
+ * are a sparse cloud, with no volume and no supernovae, and its hole comes
+ * from the `hole` params (setHole) instead of the bulge.
  */
 export class Galaxy {
   /**
-   * @param {{ shape: object, seed: number, structure?: object, look?: object, motion?: object, pixelRatio?: number, dustScale?: number, supernovae?: boolean }} params
+   * @param {{ shape: object, seed: number, structure?: object, look?: object, motion?: object, kind?: string, hole?: object, pixelRatio?: number, dustScale?: number, supernovae?: boolean }} params
    */
-  constructor({ shape, seed, structure, look, motion, pixelRatio = 1, dustScale = 1, supernovae = true }) {
+  constructor({ shape, seed, structure, look, motion, kind, hole, pixelRatio = 1, dustScale = 1, supernovae = true }) {
     this.group = new THREE.Group();
+    this.standalone = kind === 'blackhole';
+    this.hole = this.standalone ? clampHole(hole) : null;
+    // Disc colours for the lens (linear). Central holes use the visible band's.
+    this.holeHot = new THREE.Color().setRGB(...BANDS.visible.agnHot);
+    this.holeCool = new THREE.Color().setRGB(...BANDS.visible.agnCool);
     this.uniforms = createGalaxyUniforms();
     this.uniforms.uPixelRatio.value = pixelRatio;
 
@@ -91,6 +102,8 @@ export class Galaxy {
     this.volume.renderOrder = 0;
     // Rendered at reduced resolution by GalaxyScenePass.
     this.volume.layers.set(LAYERS.VOLUME);
+    // A black hole's star cloud has no diffuse body.
+    this.volume.visible = !this.standalone;
 
     // Supernovae: SUPERNOVA_SLOTS points, reused oldest-first.
     const snGeometry = new THREE.BufferGeometry();
@@ -102,7 +115,7 @@ export class Galaxy {
     this.supernovaMaterial = createSupernovaMaterial(this.uniforms);
     this.supernovae = new THREE.Points(snGeometry, this.supernovaMaterial);
     this.supernovae.renderOrder = 3;
-    this.supernovae.visible = supernovae;
+    this.supernovae.visible = supernovae && !this.standalone;
     this.snSchedule = createSupernovaSchedule(seed);
     this.snSlot = 0;
     this.snTime = 0;
@@ -113,8 +126,6 @@ export class Galaxy {
     this.jets.visible = false;
     this.blackHoleMode = 'on';
     this.rsUnit = 0;
-    // Accretion-disc and jet axis in the galaxy's frame (seeded, see discAxis).
-    this.bhAxis = new THREE.Vector3(0, 1, 0);
 
     this.group.add(this.volume, this.stars, this.hii, this.supernovae, this.jets);
 
@@ -179,11 +190,12 @@ export class Galaxy {
     this.count = data.count;
     this.hiiCount = data.hii.count;
     this.shape = shape;
-    this.rsUnit = blackHoleRadius(clampShape(shape));
-    this.uniforms.uJetRs.value = this.rsUnit;
-    discAxis(seed, this.bhAxis);
-    this.uniforms.uJetAxis.value.copy(this.bhAxis);
-    this.updateJets();
+    if (this.standalone) this.setHole(this.hole);
+    else {
+      this.rsUnit = blackHoleRadius(clampShape(shape));
+      this.uniforms.uJetRs.value = this.rsUnit;
+      this.updateJets();
+    }
     this.applyStarCap();
     applyShapeUniforms(this.uniforms, shape);
     this.updateVolumeBounds();
@@ -290,28 +302,52 @@ export class Galaxy {
   }
 
   updateJets() {
-    this.jets.visible = this.blackHoleMode === 'jets' && this.rsUnit > 0;
+    const on = this.standalone ? this.hole.jets : this.blackHoleMode === 'jets';
+    this.jets.visible = on && this.rsUnit > 0;
+  }
+
+  /** A standalone black hole's params (params.js LIMITS.hole): uniforms only. */
+  setHole(hole) {
+    if (!this.standalone) return;
+    this.hole = clampHole(hole);
+    this.rsUnit = this.hole.size;
+    this.holeHot.set(this.hole.colorHot);
+    this.holeCool.set(this.hole.colorCool);
+    this.uniforms.uJetRs.value = this.rsUnit;
+    // Jets reach well past the disc, out of the star cloud.
+    this.uniforms.uJetLength.value = Math.min(2, this.rsUnit * 60);
+    this.updateJets();
   }
 
   /**
    * Fill a lens slot for BlackHolePass (world centre, disc normal, Rs in world
-   * units, simulation time). False when there is no black hole to draw.
-   * Allocation-free: called every frame.
+   * units, simulation time, disc look). False when there is no black hole to
+   * draw. `central`: whether galaxies' central holes are drawn (standalone
+   * holes always are). Allocation-free: called every frame.
    */
-  blackHoleInfo(slot) {
-    if (this.rsUnit <= 0 || this.blackHoleMode === 'off') return false;
+  blackHoleInfo(slot, central = true) {
+    if (this.rsUnit <= 0) return false;
+    if (!this.standalone && (!central || this.blackHoleMode === 'off')) return false;
     this.group.updateMatrixWorld();
     this.group.getWorldPosition(slot.center);
     this.group.getWorldQuaternion(_quaternion);
-    slot.normal.copy(this.bhAxis).applyQuaternion(_quaternion);
+    slot.normal.copy(UP).applyQuaternion(_quaternion);
     slot.rsWorld = this.rsUnit * this.radius;
     slot.time = this.snTime;
+    const h = this.hole;
+    slot.discOuter = h ? h.discSize : DISC_OUTER;
+    // A standalone hole is the whole object, so it follows the selection emphasis.
+    slot.gain = h ? h.brightness * this.emphasis : 1;
+    slot.glow = h ? h.glow : 1;
+    slot.streak = !h || h.streak ? 1 : 0;
+    slot.hot.copy(this.holeHot);
+    slot.cool.copy(this.holeCool);
     return true;
   }
 
-  /** Settings → Supernovae. */
+  /** Settings → Supernovae (never in a black hole's star cloud). */
   setSupernovae(on) {
-    this.supernovae.visible = on;
+    this.supernovae.visible = on && !this.standalone;
   }
 
   /**

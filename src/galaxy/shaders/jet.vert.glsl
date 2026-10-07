@@ -1,8 +1,7 @@
-// AGN jets: two strips along the accretion-disc axis (uJetAxis, galaxy-local)
-// that turn about the axis to face the camera. Needs uCameraLocal (stars.glsl uniforms are not
+// AGN jets: two strips along the disc axis (local ±y) that turn about the
+// axis to face the camera. Needs uCameraLocal (stars.glsl uniforms are not
 // included: this shader declares what it uses).
 uniform vec3 uCameraLocal;
-uniform vec3 uJetAxis; // unit
 uniform float uJetLength; // unit-disc units
 uniform float uJetRs; // black-hole Rs, unit-disc units
 uniform float uViewHeight; // viewport height, CSS px
@@ -17,7 +16,7 @@ const float MIN_WIDTH_PX = 1.5;
 
 void main() {
   float s = position.y; // 0..1 along the jet
-  vec3 axisP = uJetAxis * (aSide * (uJetRs * 3.0 + s * uJetLength));
+  vec3 axisP = vec3(0.0, aSide * (uJetRs * 3.0 + s * uJetLength), 0.0);
   // Collimated near the hole, slowly widening (half-width in Rs).
   float width = uJetRs * mix(1.0, 3.0, s);
   vec4 mvAxis = modelViewMatrix * vec4(axisP, 1.0);
@@ -29,7 +28,7 @@ void main() {
   width = max(width, minWidth);
 
   vec3 toCam = uCameraLocal - axisP;
-  vec3 side = cross(uJetAxis, toCam);
+  vec3 side = cross(vec3(0.0, 1.0, 0.0), toCam);
   float sideLen = length(side);
   // Looking straight down the axis the strip has no width: fade it out.
   vEnergy *= smoothstep(0.0, 0.15, sideLen / max(length(toCam), 1e-6));

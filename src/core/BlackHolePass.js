@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { CHUNKS, glsl } from '../galaxy/shaders/glsl.js';
 import { getNoiseTexture, NOISE_SIZE } from '../galaxy/noiseTexture.js';
+import { BANDS } from '../galaxy/bands.js';
 import { SHADOW_B, DISC_INNER, DISC_OUTER, LENS_REACH, MAX_DEFLECTION, shadowPixels, lensFade, pickLenses } from '../galaxy/blackHole.js';
 import { MAX_GALAXIES } from '../galaxy/params.js';
 
@@ -33,9 +34,13 @@ const fragmentShader = glsl(
   uniform int uCount;
   uniform vec4 uLensCenter[MAX_LENSES]; // xyz: centre / Rs (view space), w: fade
   uniform vec4 uLensNormal[MAX_LENSES]; // xyz: disc normal (view space), w: time
-  uniform float uDiscGain;
-  uniform vec3 uAgnHot; // disc colour at the inner edge (bands.js)
-  uniform vec3 uAgnCool; // disc colour at the outer edge
+  uniform vec4 uLensDisc[MAX_LENSES]; // x: disc outer radius (Rs), y: gain, z: glow, w: streak (0/1)
+  uniform vec3 uLensHot[MAX_LENSES]; // disc colour at the inner edge (visible light)
+  uniform vec3 uLensCool[MAX_LENSES]; // disc colour at the outer edge
+  uniform float uDiscGain; // band brightness (bands.js agnGain)
+  // Band tint: band colour / visible colour (bands.js agnHot, agnCool); 1 in visible.
+  uniform vec3 uBandHot;
+  uniform vec3 uBandCool;
   // Background for rays bent off the screen: the Milky Way map (shared with
   // scene/sky.js) and procedural field stars.
   uniform mat3 uViewToWorld;
@@ -48,7 +53,6 @@ const fragmentShader = glsl(
 
   const float SHADOW_B = ${f(SHADOW_B)};
   const float DISC_INNER = ${f(DISC_INNER)};
-  const float DISC_OUTER = ${f(DISC_OUTER)};
   const float LENS_REACH = ${f(LENS_REACH)};
   const float MAX_DEFLECTION = ${f(MAX_DEFLECTION)};
   const float PI = 3.14159265;
@@ -92,6 +96,12 @@ const fragmentShader = glsl(
     float strong = -log(b / SHADOW_B - 1.0) - 0.4;
     return min(MAX_DEFLECTION, max(weak, strong));
   }
+
+  // The lens being drawn (set at the top of each loop pass in main).
+  vec3 lensHot;
+  vec3 lensCool;
+  float discOuter;
+  float lensGain;
 
   float hash12(vec2 p) {
     vec3 q = fract(vec3(p.xyx) * 0.1031);
@@ -149,7 +159,7 @@ const fragmentShader = glsl(
   // Disc colour by the normalised flux q (1 at the inner peak): gold outside,
   // white-hot at the peak.
   vec3 discColour(float q) {
-    vec3 c = mix(uAgnCool, uAgnHot, pow(q, 0.35));
+    vec3 c = mix(lensCool, lensHot, pow(q, 0.35));
     return c + (1.0 - c) * 0.25 * q * q * q;
   }
 
@@ -165,7 +175,7 @@ const fragmentShader = glsl(
   // call would otherwise pick wrong mip levels.
   vec4 discLight(vec3 h, vec3 rd, vec3 n, float time, float dist) {
     float r = length(h);
-    if (r < DISC_INNER || r > DISC_OUTER) return vec4(0.0);
+    if (r < DISC_INNER || r > discOuter) return vec4(0.0);
     vec3 e1 = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
     float phi = atan(dot(h, cross(n, e1)), dot(h, e1));
     // Keplerian shear: inner gas laps the outer, so the streaks wind up.
@@ -180,9 +190,9 @@ const fragmentShader = glsl(
     float s2 = textureLod(uNoise, vec2(r * FINE_FREQ_R + 0.37, turn * 2.0 + 0.5), lod + log2(FINE_FREQ_R / STREAK_FREQ_R)).g;
     float streak = gm_smoothstep(0.3, 0.7, 0.55 * s1 + 0.45 * s2);
     float q = discFlux(r);
-    float edge = gm_smoothstep(DISC_INNER, DISC_INNER * 1.08, r) * (1.0 - gm_smoothstep(DISC_OUTER * 0.45, DISC_OUTER, r));
+    float edge = gm_smoothstep(DISC_INNER, DISC_INNER * 1.08, r) * (1.0 - gm_smoothstep(discOuter * 0.45, discOuter, r));
     vec3 col = discColour(q) * pow(q, 0.55) * (0.35 + 1.3 * streak);
-    return vec4(col * edge * DISC_GAIN * uDiscGain, edge * mix(0.6, 1.0, pow(q, 0.3)));
+    return vec4(col * edge * DISC_GAIN * lensGain, edge * mix(0.6, 1.0, pow(q, 0.3)));
   }
 
   // Soft, flared haze around the thin disc (fake thickness), sampled once at
@@ -193,14 +203,14 @@ const fragmentShader = glsl(
     vec3 inPlane = p - n * h;
     float r = length(inPlane);
     float thick = 0.35 + 0.12 * r;
-    float profile = gm_smoothstep(DISC_INNER * 0.8, DISC_INNER * 1.6, r) * exp(-r / 7.0);
+    float profile = gm_smoothstep(DISC_INNER * 0.8, DISC_INNER * 1.6, r) * exp(-r / (discOuter * 0.39));
     float k = exp(-(h * h) / (thick * thick)) * profile;
     if (k < 1e-3) return vec3(0.0);
     vec3 e1 = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
     float turn = (atan(dot(inPlane, cross(n, e1)), dot(inPlane, e1)) - time * SPIN * 0.3) / (2.0 * PI);
     float lod = log2(max(dist * uPixelAngle * 0.12 * NOISE_TEXELS, 1.0));
     float smoke = textureLod(uNoise, vec2(r * 0.12, turn + h * 0.05), lod).r;
-    return discColour(discFlux(max(r, DISC_INNER * 1.36))) * k * (0.5 + smoke) * HAZE_GAIN * uDiscGain;
+    return discColour(discFlux(max(r, DISC_INNER * 1.36))) * k * (0.5 + smoke) * HAZE_GAIN * lensGain;
   }
 
   void main() {
@@ -211,6 +221,11 @@ const fragmentShader = glsl(
       if (i >= uCount) break;
       vec3 c = uLensCenter[i].xyz;
       float fade = uLensCenter[i].w;
+      vec4 disc = uLensDisc[i];
+      discOuter = disc.x;
+      lensGain = uDiscGain * disc.y;
+      lensHot = uLensHot[i] * uBandHot;
+      lensCool = uLensCool[i] * uBandCool;
       float tc = dot(c, rd);
       if (tc <= 0.0 || c.z >= 0.0) continue;
       vec3 p0 = rd * tc; // closest approach
@@ -220,10 +235,10 @@ const fragmentShader = glsl(
       // Horizontal lens streak through the hole; it reaches past the lens.
       // Faint over the shadow, so the shadow still reads black.
       vec2 dpx = (vUv - ((c.xy / -c.z) / uTanHalfFov * 0.5 + 0.5)) * uResolution;
-      float discPx = DISC_OUTER * 0.5 / (-c.z * uPixelAngle);
+      float discPx = discOuter * 0.5 / (-c.z * uPixelAngle);
       float thick = max(1.2, uResolution.y / 700.0);
       float streak = exp(-abs(dpx.y) / thick - abs(dpx.x) / max(discPx * STREAK_LENGTH, 1.0));
-      streaks += mix(uAgnHot, vec3(1.0), 0.3) * streak * STREAK_GAIN * uDiscGain * fade
+      streaks += mix(lensHot, vec3(1.0), 0.3) * streak * STREAK_GAIN * lensGain * disc.w * fade
         * mix(0.25, 1.0, gm_smoothstep(SHADOW_B * 0.6, SHADOW_B * 1.2, b));
 
       if (b >= LENS_REACH) continue;
@@ -254,11 +269,11 @@ const fragmentShader = glsl(
       float w = max(0.04, 0.6 * length(c) * uPixelAngle);
       float ring = (exp(-pow((b - SHADOW_B * 1.015) / w, 2.0))
         + 0.35 * exp(-pow((b - SHADOW_B * 1.09) / (1.6 * w), 2.0))) * (0.04 / w);
-      L += uAgnHot * ring * RING_GAIN * uDiscGain;
+      L += lensHot * ring * RING_GAIN * lensGain;
       // Haze and glow halo (bloom ran before this pass); both stay out of the shadow.
       float outside = gm_smoothstep(SHADOW_B, SHADOW_B * 1.25, b);
-      vec3 halo = uAgnCool * HALO_GAIN * uDiscGain * exp(-(b - SHADOW_B) / HALO_SCALE);
-      L += (discHaze(bv, n, time, tc) + halo) * outside * reachFade;
+      vec3 halo = lensCool * HALO_GAIN * lensGain * exp(-(b - SHADOW_B) / HALO_SCALE);
+      L += (discHaze(bv, n, time, tc) + halo) * disc.z * outside * reachFade;
       // Near image: the straight ray meets the disc before its closest approach.
       float dn = dot(rd, n);
       if (abs(dn) > 1e-4) {
@@ -301,6 +316,14 @@ export class BlackHolePass extends Pass {
       time: 0,
       shadowPx: 0,
       visible: false,
+      // Disc look (Galaxy.blackHoleInfo): outer radius (Rs), gain, glow,
+      // streak (0/1), inner and outer colours (linear, visible light).
+      discOuter: DISC_OUTER,
+      gain: 1,
+      glow: 1,
+      streak: 1,
+      hot: new THREE.Color(),
+      cool: new THREE.Color(),
     }));
     this.picked = new Array(MAX_LENSES);
     this.material = new THREE.ShaderMaterial({
@@ -314,9 +337,12 @@ export class BlackHolePass extends Pass {
         uCount: { value: 0 },
         uLensCenter: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Vector4()) },
         uLensNormal: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Vector4()) },
+        uLensDisc: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Vector4()) },
+        uLensHot: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Color()) },
+        uLensCool: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Color()) },
         uDiscGain: { value: 1 },
-        uAgnHot: { value: new THREE.Color(1, 0.82, 0.55) },
-        uAgnCool: { value: new THREE.Color(1, 0.38, 0.06) },
+        uBandHot: { value: new THREE.Color(1, 1, 1) },
+        uBandCool: { value: new THREE.Color(1, 1, 1) },
         uViewToWorld: { value: new THREE.Matrix3() },
         // Replaced by the sky's own uniform objects in setSky (shared by reference).
         uSky: { value: null },
@@ -359,12 +385,17 @@ export class BlackHolePass extends Pass {
     this.material.uniforms.uSkyOn.value = visible ? 1 : 0;
   }
 
-  /** Disc brightness and colours, field-star gain for the wavelength band (bands.js). */
+  /**
+   * Disc brightness, disc tint and field-star gain for the wavelength band
+   * (bands.js). The tint is the band colour over the visible one, so a hole
+   * with the default colours gets exactly the band colours.
+   */
   setBand({ agnGain, agnHot, agnCool, fieldGain }) {
     const u = this.material.uniforms;
+    const vis = BANDS.visible;
     u.uDiscGain.value = agnGain;
-    u.uAgnHot.value.setRGB(...agnHot);
-    u.uAgnCool.value.setRGB(...agnCool);
+    u.uBandHot.value.setRGB(...agnHot.map((c, i) => c / vis.agnHot[i]));
+    u.uBandCool.value.setRGB(...agnCool.map((c, i) => c / vis.agnCool[i]));
     u.uStarGain.value = fieldGain;
   }
 
@@ -397,6 +428,9 @@ export class BlackHolePass extends Pass {
       u.uLensCenter.value[i].set(_view.x, _view.y, _view.z, lensFade(c.shadowPx));
       _view.copy(c.normal).transformDirection(view);
       u.uLensNormal.value[i].set(_view.x, _view.y, _view.z, c.time);
+      u.uLensDisc.value[i].set(c.discOuter, c.gain, c.glow, c.streak);
+      u.uLensHot.value[i].copy(c.hot);
+      u.uLensCool.value[i].copy(c.cool);
     }
     u.uCount.value = n;
     u.uTanHalfFov.value.set(tanX, tanY);

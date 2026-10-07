@@ -1,4 +1,4 @@
-import { DEFAULT_SHAPE, DEFAULT_STRUCTURE, DEFAULT_LOOK, DEFAULT_MOTION } from './params.js';
+import { DEFAULT_SHAPE, DEFAULT_STRUCTURE, DEFAULT_LOOK, DEFAULT_MOTION, DEFAULT_HOLE } from './params.js';
 
 /**
  * Starting points for new galaxies. Each preset is complete, so a new galaxy
@@ -61,3 +61,25 @@ export const PRESETS = {
 };
 
 export const PRESET_NAMES = Object.keys(PRESETS);
+
+/**
+ * A standalone black hole: the hole and its disc, in a sparse, round cloud of
+ * old stars (an elliptical's star population with no diffuse glow), so the
+ * lens has something near it to bend. `preset` is the star population.
+ */
+export const BLACK_HOLE_TEMPLATE = {
+  label: 'Black hole',
+  preset: 'elliptical',
+  shape: {
+    ...PRESETS.elliptical.shape,
+    count: 6000,
+    bulgeFraction: 0.85,
+    bulgeSize: 0.45,
+    bulgeFlatten: 1,
+    haloFraction: 0.15,
+  },
+  structure: { ...PRESETS.elliptical.structure, glow: 0, bulgeSersic: 1 },
+  look: { ...PRESETS.elliptical.look, radius: 4 },
+  motion: { ...PRESETS.elliptical.motion, speed: 0.05 },
+  hole: { ...DEFAULT_HOLE },
+};

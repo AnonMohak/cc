@@ -3,18 +3,20 @@ import {
   clampStructure,
   clampLook,
   clampMotion,
+  clampHole,
   MAX_GALAXIES,
   MAX_TOTAL_PARTICLES,
   LIMITS,
 } from '../galaxy/params.js';
-import { PRESETS } from '../galaxy/presets.js';
+import { PRESETS, BLACK_HOLE_TEMPLATE } from '../galaxy/presets.js';
 import { CATALOGUE } from '../galaxy/catalogue.js';
 import { QUALITY_OPTIONS, SPIKE_OPTIONS } from '../core/quality.js';
 import { BAND_OPTIONS } from '../galaxy/bands.js';
 import { BLACK_HOLE_OPTIONS } from '../galaxy/blackHole.js';
 
 // v2: density-wave renderer (structure group, new shape keys, quality/exposure).
-export const STATE_VERSION = 2;
+// v3: standalone black holes (entries may have kind 'blackhole' + a hole group).
+export const STATE_VERSION = 3;
 
 export const SETTINGS_LIMITS = {
   timeScale: { min: 0, max: 5, step: 0.05 },
@@ -97,9 +99,10 @@ export function sanitizeGalaxy(entry) {
   if (!entry || typeof entry !== 'object' || typeof entry.id !== 'string' || !entry.id) return null;
   const preset = PRESETS[entry.preset] ? entry.preset : 'spiral';
   const seed = Number.isFinite(entry.seed) ? entry.seed >>> 0 : 1;
-  return {
+  const hole = entry.kind === 'blackhole';
+  const out = {
     id: entry.id,
-    name: typeof entry.name === 'string' && entry.name ? entry.name.slice(0, 40) : PRESETS[preset].label,
+    name: typeof entry.name === 'string' && entry.name ? entry.name.slice(0, 40) : hole ? BLACK_HOLE_TEMPLATE.label : PRESETS[preset].label,
     preset,
     // Real-galaxy origin (catalogue id) for the info card; null for presets.
     catalog: Object.hasOwn(CATALOGUE, entry.catalog) ? entry.catalog : null,
@@ -109,15 +112,21 @@ export function sanitizeGalaxy(entry) {
     look: clampLook(entry.look),
     motion: clampMotion(entry.motion),
   };
+  // Only standalone black holes carry these, so galaxy entries keep their form.
+  if (hole) {
+    out.kind = 'blackhole';
+    out.hole = clampHole(entry.hole);
+  }
+  return out;
 }
 
-function nextName(galaxies, preset) {
+function nextName(galaxies, label) {
   let max = 0;
   for (const g of galaxies) {
     const m = /(\d+)$/.exec(g.name);
     if (m) max = Math.max(max, Number(m[1]));
   }
-  return `${PRESETS[preset].label} ${max + 1}`;
+  return `${label} ${max + 1}`;
 }
 
 /**
@@ -130,7 +139,7 @@ export function reducer(state, action) {
       const entry = sanitizeGalaxy(action.galaxy);
       if (!entry || state.galaxies.some((g) => g.id === entry.id)) return state;
       if (!canAddGalaxy(state, entry.shape.count)) return state;
-      if (!action.galaxy.name) entry.name = nextName(state.galaxies, entry.preset);
+      if (!action.galaxy.name) entry.name = nextName(state.galaxies, entry.kind === 'blackhole' ? BLACK_HOLE_TEMPLATE.label : PRESETS[entry.preset].label);
       return { ...state, galaxies: [...state.galaxies, entry], selectedId: entry.id };
     }
 
@@ -147,7 +156,7 @@ export function reducer(state, action) {
       const index = state.galaxies.findIndex((g) => g.id === action.id);
       if (index === -1) return state;
       const prev = state.galaxies[index];
-      const { shape, structure, look, motion, name, seed, preset, catalog } = action.patch ?? {};
+      const { shape, structure, look, motion, hole, name, seed, preset, catalog } = action.patch ?? {};
       const next = { ...prev };
       if (shape) {
         next.shape = clampShape({ ...prev.shape, ...shape });
@@ -159,6 +168,7 @@ export function reducer(state, action) {
       if (structure) next.structure = clampStructure({ ...prev.structure, ...structure });
       if (look) next.look = clampLook({ ...prev.look, ...look });
       if (motion) next.motion = clampMotion({ ...prev.motion, ...motion });
+      if (hole && prev.kind === 'blackhole') next.hole = clampHole({ ...prev.hole, ...hole });
       if (typeof name === 'string' && name.trim()) next.name = name.trim().slice(0, 40);
       if (Number.isFinite(seed)) next.seed = seed >>> 0;
       if (PRESETS[preset]) next.preset = preset;

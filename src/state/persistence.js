@@ -9,7 +9,7 @@ import { PRESETS } from '../galaxy/presets.js';
 
 // Bump the suffix together with STATE_VERSION when the stored shape changes.
 export const STORAGE_KEY = `galaxy-sandbox:v${STATE_VERSION}`;
-export const LEGACY_KEYS = ['galaxy-sandbox:v1'];
+export const LEGACY_KEYS = ['galaxy-sandbox:v2', 'galaxy-sandbox:v1'];
 
 /** Only params are stored; vertices are regenerated from the seed. */
 export function serialize(state) {
@@ -33,6 +33,8 @@ export function deserialize(json) {
   }
   if (!data || typeof data !== 'object') return null;
   if (data.version === 1) data = migrateV1(data);
+  // v2 → v3 only added optional black-hole fields: v2 data is valid v3.
+  if (data.version === 2) data = { ...data, version: 3 };
   if (data.version !== STATE_VERSION) return null;
 
   const galaxies = [];

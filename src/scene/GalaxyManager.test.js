@@ -175,3 +175,44 @@ describe('GalaxyManager render-on-demand hooks', () => {
     expect(changed).toBe(1);
   });
 });
+
+describe('GalaxyManager black holes', () => {
+  const slots = () =>
+    Array.from({ length: 10 }, () => ({ center: new THREE.Vector3(), normal: new THREE.Vector3(), hot: new THREE.Color(), cool: new THREE.Color() }));
+
+  it('standalone holes always draw; central holes follow the flag', () => {
+    const { store, actions, manager, add } = setup();
+    add();
+    store.dispatch(actions.addBlackHole(store.getState()));
+    const s = slots();
+    expect(manager.blackHoleCandidates(s, true)).toBe(2);
+    expect(manager.blackHoleCandidates(s, false)).toBe(1);
+    expect(s[0].discOuter).toBe(18);
+    manager.setBlackHoleMode('off');
+    expect(manager.blackHoleCandidates(s, true)).toBe(1);
+  });
+
+  it('a standalone hole has no volume or supernovae, and hole edits are live', () => {
+    const { store, actions, manager } = setup();
+    store.dispatch(actions.addBlackHole(store.getState()));
+    const hole = manager.get('id1');
+    expect(hole.volume.visible).toBe(false);
+    expect(hole.supernovae.visible).toBe(false);
+    const geometry = hole.stars.geometry;
+    store.dispatch(actions.updateGalaxy('id1', { hole: { size: 0.05, jets: true, discSize: 25 } }));
+    expect(hole.stars.geometry).toBe(geometry);
+    expect(hole.rsUnit).toBe(0.05);
+    expect(hole.jets.visible).toBe(true);
+    const s = slots();
+    manager.blackHoleCandidates(s);
+    expect(s[0].discOuter).toBe(25);
+  });
+
+  it('the disc of a galaxy lies in the galaxy plane', () => {
+    const { manager, add } = setup();
+    add();
+    const s = slots();
+    manager.blackHoleCandidates(s);
+    expect(s[0].normal.y).toBeCloseTo(1, 6);
+  });
+});

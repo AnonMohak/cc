@@ -74,7 +74,6 @@ export function createGalaxyUniforms() {
     uBandJetGain: { value: 1 },
     // Black hole jets (blackHole.js; Galaxy sets them)
     uJetRs: { value: 0 },
-    uJetAxis: { value: new THREE.Vector3(0, 1, 0) }, // unit, galaxy-local (blackHole.js discAxis)
     uJetLength: { value: 0.22 },
     uViewHeight: { value: 800 },
   };

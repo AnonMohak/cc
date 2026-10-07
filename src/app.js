@@ -37,6 +37,8 @@ import { bandFor, nextBand } from './galaxy/bands.js';
 import { meterFrame, targetFactor, adapt } from './core/autoExposure.js';
 
 const SAVE_DEBOUNCE_MS = 500;
+// Camera height above a standalone black hole's disc plane for the film shot.
+const FILM_ELEVATION_DEG = 6;
 
 /**
  * Build the scene, state, UI and loop inside `container`.
@@ -73,9 +75,9 @@ export function startApp(container, { startScreen } = {}) {
   const storage = window.localStorage;
   const actions = createActions();
   const store = createStore(undefined, persistence.load(storage) ?? createInitialState());
-  if (store.getState().galaxies.length === 0) {
-    store.dispatch(actions.addGalaxy(store.getState(), 'spiral'));
-  }
+  // A fresh scene starts with one standalone black hole, framed like the film shot.
+  const freshScene = store.getState().galaxies.length === 0;
+  if (freshScene) store.dispatch(actions.addBlackHole(store.getState()));
 
   const save = debounce(() => persistence.save(store.getState(), storage), SAVE_DEBOUNCE_MS);
   store.subscribe(save);
@@ -103,6 +105,40 @@ export function startApp(container, { startScreen } = {}) {
   window.addEventListener('hashchange', loadFromHash);
 
   const galaxies = new GalaxyManager({ scene, store, pixelRatio: renderer.getPixelRatio() });
+
+  /**
+   * Camera for the "Interstellar" view of a standalone black hole: a few
+   * degrees above its disc plane, close enough that the disc fills most of
+   * the width.
+   */
+  function filmShot(id) {
+    const galaxy = galaxies.get(id);
+    if (!galaxy?.standalone) return null;
+    const { center, normal } = galaxy.pickTarget();
+    const outer = galaxy.hole.discSize * galaxy.rsUnit * galaxy.radius;
+    const tanY = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const tanX = tanY * camera.aspect;
+    const distance = THREE.MathUtils.clamp(
+      Math.max(outer / tanY, outer / (0.9 * tanX)),
+      CAMERA_LIMITS.minDistance,
+      CAMERA_LIMITS.maxDistance,
+    );
+    // Toward +z in the disc plane (any in-plane direction if the disc faces z).
+    const side = new THREE.Vector3(0, 0, 1).addScaledVector(normal, -normal.z);
+    if (side.lengthSq() < 1e-6) side.set(1, 0, 0).addScaledVector(normal, -normal.x);
+    side.normalize();
+    const elevation = THREE.MathUtils.degToRad(FILM_ELEVATION_DEG);
+    const dir = side.multiplyScalar(Math.cos(elevation)).addScaledVector(normal, Math.sin(elevation));
+    return { center, position: center.clone().addScaledVector(dir, distance) };
+  }
+  if (freshScene) {
+    const shot = filmShot(store.getState().selectedId);
+    if (shot) {
+      controls.target.copy(shot.center);
+      camera.position.copy(shot.position);
+      controls.update();
+    }
+  }
   const post = createComposer(renderer, scene, camera, {
     bloomStrength: store.getState().settings.bloomStrength,
     volumeScale: QUALITY[initialTier].volumeScale,
@@ -131,11 +167,15 @@ export function startApp(container, { startScreen } = {}) {
     applyBlackHoles();
   }
 
-  const blackHoleSource = (slots) => galaxies.blackHoleCandidates(slots);
+  // Galaxies' central holes follow the setting and the tier; standalone
+  // black holes are objects in the scene and always draw.
+  let centralHoles = true;
+  const blackHoleSource = (slots) => galaxies.blackHoleCandidates(slots, centralHoles);
   function applyBlackHoles() {
     const { blackHoles } = store.getState().settings;
     galaxies.setBlackHoleMode(blackHoles);
-    post.setBlackHoles(blackHoleSource, blackHolesEnabled(blackHoles, currentTier));
+    centralHoles = blackHolesEnabled(blackHoles, currentTier);
+    post.setBlackHoles(blackHoleSource, true);
   }
 
   function applyCinematic() {
@@ -215,6 +255,11 @@ export function startApp(container, { startScreen } = {}) {
     // Free-fly owns the camera orientation; focusing hands it back to orbit.
     if (cameraMode === 'fly') setCameraMode('orbit');
     store.dispatch(actions.selectGalaxy(id));
+    const shot = filmShot(id);
+    if (shot) {
+      cameraFly.flyTo(shot.center, shot.position, seconds);
+      return;
+    }
     const { center, normal, radius } = galaxy.pickTarget();
     const entry = store.getState().galaxies.find((g) => g.id === id);
     // Real galaxies are framed from the direction that shows their true inclination.
@@ -480,10 +525,13 @@ export function startApp(container, { startScreen } = {}) {
       else showToast(container, 'That file is not a valid Galaxy Sandbox scene');
     },
     reset() {
-      if (!window.confirm('Delete all galaxies and start again with one spiral?')) return;
+      if (!window.confirm('Delete everything and start again with one black hole?')) return;
+      setCameraMode('orbit');
       store.dispatch(actions.resetScene());
-      store.dispatch(actions.addGalaxy(store.getState(), 'spiral'));
-      cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position);
+      store.dispatch(actions.addBlackHole(store.getState()));
+      const shot = filmShot(store.getState().selectedId);
+      if (shot) cameraFly.flyTo(shot.center, shot.position);
+      else cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position);
     },
   };
 

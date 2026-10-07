@@ -55,6 +55,16 @@ describe('diffGalaxies', () => {
   });
 });
 
+describe('diffGalaxies hole', () => {
+  it('a hole change is a cheap update, not a rebuild', () => {
+    const a = { id: 'h', seed: 1, shape: { ...DEFAULT_SHAPE }, look: { ...DEFAULT_LOOK }, motion: { ...DEFAULT_MOTION }, kind: 'blackhole', hole: { size: 0.03 } };
+    const b = { ...a, hole: { size: 0.04 } };
+    const d = diffGalaxies([a], [b]);
+    expect(d.lookChanged).toEqual([b]);
+    expect(d.shapeChanged).toEqual([]);
+  });
+});
+
 describe('diffGalaxies structure', () => {
   it('a structure change is a lookChange (uniforms only), not a rebuild', () => {
     const a = { id: 'a', seed: 1, shape: {}, look: {}, motion: {}, structure: { arms: 2 } };

@@ -1,6 +1,6 @@
 import GUI from 'lil-gui';
 import { LIMITS, SHAPE_KEYS, MAX_TOTAL_PARTICLES, MAX_GALAXIES } from '../galaxy/params.js';
-import { PRESETS, PRESET_NAMES } from '../galaxy/presets.js';
+import { PRESETS, PRESET_NAMES, BLACK_HOLE_TEMPLATE } from '../galaxy/presets.js';
 import { CATALOGUE, CATALOGUE_IDS, catalogueParams } from '../galaxy/catalogue.js';
 import { canAddGalaxy, totalParticles, SETTINGS_LIMITS } from '../state/store.js';
 import { QUALITY, QUALITY_OPTIONS } from '../core/quality.js';
@@ -43,6 +43,14 @@ const LABELS = {
   speed: 'Rotation speed',
   differential: 'Differential',
   patternSpeed: 'Pattern speed',
+};
+
+// Standalone black hole (params.js LIMITS.hole).
+const HOLE_LABELS = {
+  size: 'Black hole size',
+  discSize: 'Disc size',
+  brightness: 'Disc brightness',
+  glow: 'Glow (halo + haze)',
 };
 
 const POSITION_RANGE = 150;
@@ -100,6 +108,10 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       const state = store.getState();
       dispatch(actions.addCatalogueGalaxy(state, sceneProxy.real, getTarget()));
     },
+    addHole() {
+      const state = store.getState();
+      dispatch(actions.addBlackHole(state, getTarget()));
+    },
   };
   sceneFolder
     .add(sceneProxy, 'preset', presetOptions)
@@ -111,6 +123,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .name('Real galaxy')
     .onChange(() => refreshSceneFolder(store.getState()));
   const addRealButton = sceneFolder.add(sceneProxy, 'addReal').name('🔭 Add real galaxy');
+  const addHoleButton = sceneFolder.add(sceneProxy, 'addHole').name('🕳️ Add black hole');
   let selectController = null;
   const undoButtons = [];
   if (history) {
@@ -140,7 +153,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       .name('Selected')
       .onChange((id) => dispatch(actions.selectGalaxy(id || null)));
     // Keep the selector directly under the add buttons.
-    addRealButton.domElement.after(selectController.domElement);
+    addHoleButton.domElement.after(selectController.domElement);
   }
 
   function refreshSceneFolder(state) {
@@ -149,6 +162,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     addButton.enable(allowed);
     addButton.name(allowed ? '➕ Add galaxy' : `Limit reached (${MAX_GALAXIES} galaxies / ${formatCount(MAX_TOTAL_PARTICLES)} stars)`);
     addRealButton.enable(canAddGalaxy(state, catalogueParams(sceneProxy.real).shape.count));
+    addHoleButton.enable(canAddGalaxy(state, BLACK_HOLE_TEMPLATE.shape.count));
     sceneProxy.particles = `${formatCount(totalParticles(state))} / ${formatCount(MAX_TOTAL_PARTICLES)}`;
     particlesController.updateDisplay();
   }
@@ -167,6 +181,10 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     if (!entry) return;
 
     const id = entry.id;
+    if (entry.kind === 'blackhole') {
+      buildHoleFolder(entry);
+      return;
+    }
     proxy = {
       name: entry.name,
       preset: entry.preset,
@@ -247,16 +265,72 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     motionFolder.add(proxy, 'reverse').name('⇄ Reverse direction');
   }
 
+  /** The selected standalone black hole: the hole and its star cloud. */
+  function buildHoleFolder(entry) {
+    const id = entry.id;
+    proxy = {
+      name: entry.name,
+      shape: { ...entry.shape },
+      look: { ...entry.look },
+      position: { x: entry.look.position[0], y: entry.look.position[1], z: entry.look.position[2] },
+      hole: { ...entry.hole },
+      focus: () => onFocus?.(id),
+      reseed: () => dispatch(actions.reseedGalaxy(id)),
+      remove: () => dispatch(actions.removeGalaxy(id)),
+    };
+    const folder = gui.addFolder(`Selected: ${entry.name}`);
+    selectedFolder = folder;
+    folder
+      .add(proxy, 'name')
+      .name('Name')
+      .onFinishChange((name) => dispatch(actions.updateGalaxy(id, { name })));
+    if (onFocus) folder.add(proxy, 'focus').name('🎯 Focus camera');
+    folder.add(proxy, 'remove').name('🗑️ Delete black hole');
+
+    const holeFolder = folder.addFolder('Black hole');
+    const hole = (patch) => dispatch(actions.updateGalaxy(id, { hole: patch }));
+    for (const key of Object.keys(LIMITS.hole)) {
+      const l = LIMITS.hole[key];
+      holeFolder.add(proxy.hole, key, l.min, l.max, l.step).name(HOLE_LABELS[key]).onChange((v) => hole({ [key]: v }));
+    }
+    holeFolder.addColor(proxy.hole, 'colorHot').name('Inner (hot) colour').onChange((v) => hole({ colorHot: v }));
+    holeFolder.addColor(proxy.hole, 'colorCool').name('Outer (cool) colour').onChange((v) => hole({ colorCool: v }));
+    holeFolder.add(proxy.hole, 'jets').name('Jets').onChange((v) => hole({ jets: v }));
+    holeFolder.add(proxy.hole, 'streak').name('Lens streak').onChange((v) => hole({ streak: v }));
+
+    const starsFolder = folder.addFolder('Star cloud').close();
+    pendingShape = debounce((patch) => dispatch(actions.updateGalaxy(id, { shape: patch })), SHAPE_DEBOUNCE_MS);
+    const count = LIMITS.shape.count;
+    starsFolder
+      .add(proxy.shape, 'count', count.min, 50_000, count.step)
+      .name(LABELS.count)
+      .onChange((v) => pendingShape({ count: v }))
+      .onFinishChange(() => pendingShape.flush());
+    const look = (patch) => dispatch(actions.updateGalaxy(id, { look: patch }));
+    for (const [key, name] of [['radius', 'Size (whole object)'], ['brightness', 'Star brightness'], ['starSize', LABELS.starSize]]) {
+      const l = LIMITS.look[key];
+      starsFolder.add(proxy.look, key, l.min, l.max, l.step).name(name).onChange((v) => look({ [key]: v }));
+    }
+    starsFolder.add(proxy, 'reseed').name('🎲 New random stars');
+
+    const posFolder = folder.addFolder('Position').close();
+    const setPosition = () => look({ position: [proxy.position.x, proxy.position.y, proxy.position.z] });
+    for (const axis of ['x', 'y', 'z']) {
+      posFolder.add(proxy.position, axis, -POSITION_RANGE, POSITION_RANGE, 0.1).onChange(setPosition);
+    }
+  }
+
   /** Copy changed groups from the store into the proxy and refresh widgets. */
   function refreshSelectedFolder(entry) {
     if (!entry || !proxy) return;
+    if (entry.hole && entry.hole !== lastEntry.hole) Object.assign(proxy.hole, entry.hole);
     if (entry.shape !== lastEntry.shape) Object.assign(proxy.shape, entry.shape);
     if (entry.look !== lastEntry.look) {
       Object.assign(proxy.look, entry.look);
       [proxy.position.x, proxy.position.y, proxy.position.z] = entry.look.position;
     }
-    if (entry.motion !== lastEntry.motion) Object.assign(proxy.motion, entry.motion);
-    if (entry.structure !== lastEntry.structure) Object.assign(proxy.structure, entry.structure);
+    if (proxy.motion && entry.motion !== lastEntry.motion) Object.assign(proxy.motion, entry.motion);
+    if (proxy.structure && entry.structure !== lastEntry.structure) Object.assign(proxy.structure, entry.structure);
     proxy.preset = entry.preset;
     if (entry.name !== lastEntry.name) {
       proxy.name = entry.name;
@@ -352,7 +426,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .onChange((v) => setting({ spikes: v }));
   settingsFolder
     .add(settingsProxy, 'blackHoles', { 'On (zoom into a core)': 'on', 'On + jets': 'jets', Off: 'off' })
-    .name('Black holes')
+    .name('Galaxy black holes')
     .onChange((v) => setting({ blackHoles: v }));
   const cineFolder = settingsFolder.addFolder('Cinematic (Medium/High)').close();
   for (const [key, name] of [['vignette', 'Vignette'], ['grain', 'Film grain'], ['aberration', 'Chromatic aberration']]) {

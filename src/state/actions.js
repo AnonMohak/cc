@@ -1,4 +1,4 @@
-import { PRESETS } from '../galaxy/presets.js';
+import { PRESETS, BLACK_HOLE_TEMPLATE } from '../galaxy/presets.js';
 import { CATALOGUE, catalogueParams } from '../galaxy/catalogue.js';
 import { randomSeed } from '../galaxy/random.js';
 import { findFreePosition } from './placement.js';
@@ -35,6 +35,29 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
           structure: { ...preset.structure },
           look,
           motion: { ...preset.motion },
+        },
+      };
+    },
+    /**
+     * Add a standalone black hole (in a sparse star cloud) near `target`.
+     * @param {object} state current store state (used for placement)
+     * @param {number[]} [target]
+     */
+    addBlackHole(state, target = [0, 0, 0]) {
+      const t = BLACK_HOLE_TEMPLATE;
+      const look = { ...t.look, position: findFreePosition(state.galaxies, target, t.look.radius) };
+      return {
+        type: 'galaxy/add',
+        galaxy: {
+          id: makeId(),
+          kind: 'blackhole',
+          preset: t.preset,
+          seed: makeSeed(),
+          shape: { ...t.shape },
+          structure: { ...t.structure },
+          look,
+          motion: { ...t.motion },
+          hole: { ...t.hole },
         },
       };
     },

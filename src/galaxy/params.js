@@ -8,6 +8,10 @@
  * - look:      size, colour, tilt, position; uniforms and transforms (cheap)
  * - motion:    rotation; uniforms (cheap)
  *
+ * A standalone black hole (kind 'blackhole') is an entry of the same form:
+ * the four groups describe its sparse star cloud, and a fifth group, `hole`,
+ * describes the hole and its accretion disc (uniforms only).
+ *
  * Arms are a density wave computed in the shaders (see densityModel.js), so
  * arm count, winding and eccentricity are live uniforms, not geometry.
  */
@@ -52,6 +56,13 @@ export const LIMITS = {
     speed: { min: -3, max: 3, step: 0.01 },
     differential: { min: 0, max: 1, step: 0.01 },
     patternSpeed: { min: 0, max: 1, step: 0.01 },
+  },
+  // Standalone black hole (core/BlackHolePass.js draws it).
+  hole: {
+    size: { min: 0.005, max: 0.08, step: 0.001 }, // Rs as a fraction of the object radius
+    discSize: { min: 8, max: 30, step: 0.5 }, // disc outer radius, in Rs
+    brightness: { min: 0, max: 3, step: 0.05 },
+    glow: { min: 0, max: 3, step: 0.05 }, // halo + haze
   },
 };
 
@@ -101,6 +112,17 @@ export const DEFAULT_MOTION = {
   patternSpeed: 0.3,
 };
 
+export const DEFAULT_HOLE = {
+  size: 0.03,
+  discSize: 18,
+  brightness: 1,
+  glow: 1,
+  colorHot: '#ffeac4', // inner edge (bands.js visible agnHot, as sRGB)
+  colorCool: '#ffa645', // outer edge (bands.js visible agnCool)
+  jets: false,
+  streak: true, // horizontal lens streak
+};
+
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
 function clampNumber(value, limit, fallback) {
@@ -143,6 +165,17 @@ export function clampLook(look) {
 /** @param {Partial<typeof DEFAULT_MOTION>} [motion] */
 export function clampMotion(motion) {
   return clampGroup(motion, LIMITS.motion, DEFAULT_MOTION);
+}
+
+/** @param {Partial<typeof DEFAULT_HOLE>} [hole] */
+export function clampHole(hole) {
+  const out = clampGroup(hole, LIMITS.hole, DEFAULT_HOLE);
+  const src = hole && typeof hole === 'object' ? hole : {};
+  out.colorHot = HEX_COLOR.test(src.colorHot) ? src.colorHot : DEFAULT_HOLE.colorHot;
+  out.colorCool = HEX_COLOR.test(src.colorCool) ? src.colorCool : DEFAULT_HOLE.colorCool;
+  out.jets = typeof src.jets === 'boolean' ? src.jets : DEFAULT_HOLE.jets;
+  out.streak = typeof src.streak === 'boolean' ? src.streak : DEFAULT_HOLE.streak;
+  return out;
 }
 
 /** Brightness multipliers for selection emphasis (replaces a highlight ring). */

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
+  clampHole,
+  DEFAULT_HOLE,
   clampShape,
   clampLook,
   clampMotion,
@@ -69,5 +71,18 @@ describe('presets', () => {
     expect(clampLook(preset.look)).toEqual(preset.look);
     expect(clampMotion(preset.motion)).toEqual(preset.motion);
     expect(clampStructure(preset.structure)).toEqual(preset.structure);
+  });
+});
+
+describe('clampHole', () => {
+  it('fills defaults and clamps numbers, colours and flags', () => {
+    expect(clampHole(undefined)).toEqual(DEFAULT_HOLE);
+    const h = clampHole({ size: -1, discSize: 1000, glow: NaN, colorCool: '#123456', jets: 'yes', streak: false });
+    expect(h.size).toBe(LIMITS.hole.size.min);
+    expect(h.discSize).toBe(LIMITS.hole.discSize.max);
+    expect(h.glow).toBe(DEFAULT_HOLE.glow);
+    expect(h.colorCool).toBe('#123456');
+    expect(h.jets).toBe(DEFAULT_HOLE.jets);
+    expect(h.streak).toBe(false);
   });
 });
