@@ -21,6 +21,13 @@ export const QUALITY = {
   low: { label: 'Low', volumeScale: 0.35, steps: 14, bloom: 'off', maxPixelRatio: 1, starCap: 60_000, volumeDust: true, maxPointPx: 10, spikes: false, cinematic: false, holeMarch: false },
   medium: { label: 'Medium', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true, cinematic: true, holeMarch: false },
   high: { label: 'High', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true, holeMarch: true, holeSteps: 40 },
+  // The intro scene (only the animation black hole, 6k stars, no volume) on
+  // every device, whatever the setting: the one-bend lens at its best (no ray
+  // march), supersampled (holeSamples rays per pixel inside the lens) with a
+  // finer streak octave. Not in TIER_ORDER / QUALITY_OPTIONS.
+  intro: { label: 'Intro (best)', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true, holeMarch: false, holeSamples: 4 },
+  // Phones: the same look with half the lens rays and fewer pixels.
+  introMobile: { label: 'Intro (best)', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true, cinematic: true, holeMarch: false, holeSamples: 2 },
 };
 
 /** Cheapest first: the governor moves along this list. */
@@ -47,8 +54,15 @@ export function targetFrameMs(mobile) {
   return mobile ? 1000 / 30 : 1000 / 50;
 }
 
-/** The tier actually in use for a settings value. */
-export function activeTier(setting, autoTier) {
+/**
+ * The tier actually in use for a settings value. The intro scene overrides
+ * both Auto and a fixed tier (it is cheap apart from the lens).
+ * @param {string} setting
+ * @param {string} autoTier
+ * @param {{ intro?: boolean, mobile?: boolean }} [scene]
+ */
+export function activeTier(setting, autoTier, { intro = false, mobile = false } = {}) {
+  if (intro) return mobile ? 'introMobile' : 'intro';
   return setting === 'auto' ? autoTier : setting;
 }
 

@@ -126,6 +126,10 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
     setBlackHoleMarch(on, steps) {
       blackHole.setMarch(on, steps);
     },
+    /** Lens rays per pixel (quality.js holeSamples; the intro tier supersamples). */
+    setBlackHoleSamples(n) {
+      blackHole.setSamples(n);
+    },
     /** `source()` says whether any jet is visible (JetPass is skipped otherwise). */
     setJetSource(source) {
       jetSource = source;

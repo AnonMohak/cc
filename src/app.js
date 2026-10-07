@@ -11,7 +11,7 @@ import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
 import { createStore, createInitialState, canAddGalaxy, isIntroScene } from './state/store.js';
-import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled } from './core/quality.js';
+import { QUALITY, TIER_ORDER, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createRenderGate } from './core/renderGate.js';
 import { createActions } from './state/actions.js';
@@ -180,6 +180,7 @@ export function startApp(container, { startScreen } = {}) {
     post.setVolumeScale(tier.volumeScale);
     post.setBloomMode(tier.bloom);
     post.setBlackHoleMarch(Boolean(tier.holeMarch), tier.holeSteps);
+    post.setBlackHoleSamples(tier.holeSamples ?? 1);
     if (setMaxPixelRatio(tier.maxPixelRatio)) resizeAll();
     gate.invalidate();
     onTierChange(name);
@@ -494,15 +495,18 @@ export function startApp(container, { startScreen } = {}) {
       applyCinematic();
     }
   }
+  /** The tier for the state: the intro scene gets the intro tier on every setting. */
+  const tierFor = (state) => activeTier(state.settings.quality, governor.tier(), { intro: isIntroScene(state), mobile });
   applySettings(store.getState().settings);
-  applyTier(activeTier(store.getState().settings.quality, governor.tier()));
+  applyTier(tierFor(store.getState()));
   store.subscribe((next, prev) => {
     if (next.settings !== prev.settings) applySettings(next.settings);
     if (next.settings.quality !== prev.settings.quality) {
-      // Switching to Auto starts measuring from the tier in use now.
-      if (next.settings.quality === 'auto') governor = makeGovernor(currentTier);
-      applyTier(activeTier(next.settings.quality, governor.tier()));
+      // Switching to Auto starts measuring from the tier in use now (a real
+      // tier: the intro tier is not on the governor's list).
+      if (next.settings.quality === 'auto') governor = makeGovernor(TIER_ORDER.includes(currentTier) ? currentTier : governor.tier());
     }
+    applyTier(tierFor(next));
   });
 
   store.subscribe(() => gate.invalidate());
@@ -624,7 +628,9 @@ export function startApp(container, { startScreen } = {}) {
     // loop's dt is capped), so idle frames never look "fast". Frames behind
     // the start box also pay for its CSS blur, so they are not measured.
     const starting = startScreen?.isOpen() ?? false;
-    if (lastRender !== null && !starting && store.getState().settings.quality === 'auto') {
+    // The intro tier is fixed: nothing to measure.
+    const measuring = store.getState().settings.quality === 'auto' && TIER_ORDER.includes(currentTier);
+    if (lastRender !== null && !starting && measuring) {
       const next = governor.sample(now - lastRender);
       if (next) applyTier(next);
     }

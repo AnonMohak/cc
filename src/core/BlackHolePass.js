@@ -266,6 +266,10 @@ const fragmentShader = glsl(
   uniform sampler2D tMarch;
   uniform vec2 uMarchTexel;
   uniform float uMarch;
+  // Lens rays per pixel (1, 2 or 4; quality.js holeSamples) and the finer
+  // streak octave (on with supersampling).
+  uniform int uSamples;
+  uniform float uDetail;
   varying vec2 vUv;
 ${DISC_GLSL}
   const float SHADOW_B = ${f(SHADOW_B)};
@@ -374,7 +378,13 @@ ${DISC_GLSL}
     // tile, so no seam).
     float s1 = textureLod(uNoise, vec2(r * STREAK_FREQ_R, turn), lod).r;
     float s2 = textureLod(uNoise, vec2(r * FINE_FREQ_R + 0.37, turn * 2.0 + 0.5), lod + log2(FINE_FREQ_R / STREAK_FREQ_R)).g;
-    float streak = gm_smoothstep(0.3, 0.7, 0.55 * s1 + 0.45 * s2);
+    float s = 0.55 * s1 + 0.45 * s2;
+    if (uDetail > 0.5) {
+      // Finer streaks for close views (resolved by the supersampling).
+      float s3 = textureLod(uNoise, vec2(r * FINE_FREQ_R * 3.1 + 0.71, turn * 4.0 + 0.25), lod + log2(3.1 * FINE_FREQ_R / STREAK_FREQ_R)).r;
+      s = 0.45 * s1 + 0.35 * s2 + 0.2 * s3;
+    }
+    float streak = gm_smoothstep(0.3, 0.7, s);
     float q = discFlux(r);
     float edge = discEdge(r);
     vec3 col = discColour(q) * pow(q, 0.55) * (0.35 + 1.3 * streak);
@@ -399,9 +409,11 @@ ${DISC_GLSL}
     return discColour(discFlux(max(r, DISC_INNER * 1.36))) * k * (0.5 + smoke) * HAZE_GAIN * lensGain;
   }
 
-  void main() {
-    vec3 col = texture2D(tDiffuse, vUv).rgb;
-    vec3 rd = normalize(vec3((vUv * 2.0 - 1.0) * uTanHalfFov, -1.0));
+  // The pass for one ray through screen point uv (one per pixel, or
+  // uSamples sub-pixel rays inside the lenses; see main).
+  vec3 shade(vec2 uv) {
+    vec3 col = texture2D(tDiffuse, uv).rgb;
+    vec3 rd = normalize(vec3((uv * 2.0 - 1.0) * uTanHalfFov, -1.0));
     vec3 streaks = vec3(0.0);
     for (int i = 0; i < MAX_LENSES; i++) {
       if (i >= uCount) break;
@@ -420,7 +432,7 @@ ${DISC_GLSL}
 
       // Horizontal lens streak through the hole; it reaches past the lens.
       // Faint over the shadow, so the shadow still reads black.
-      vec2 dpx = (vUv - ((c.xy / -c.z) / uTanHalfFov * 0.5 + 0.5)) * uResolution;
+      vec2 dpx = (uv - ((c.xy / -c.z) / uTanHalfFov * 0.5 + 0.5)) * uResolution;
       float discPx = discOuter * 0.5 / (-c.z * uPixelAngle);
       float thick = max(1.2, uResolution.y / 700.0);
       float streak = exp(-abs(dpx.y) / thick - abs(dpx.x) / max(discPx * STREAK_LENGTH, 1.0));
@@ -461,8 +473,8 @@ ${DISC_GLSL}
         // jitter. It already holds the near disc, the arches and the
         // higher-order images, so no thin disc or haze here.
         vec2 o = uMarchTexel * 0.5;
-        vec4 m = 0.25 * (texture2D(tMarch, vUv + vec2(o.x, o.y)) + texture2D(tMarch, vUv + vec2(-o.x, o.y))
-          + texture2D(tMarch, vUv + vec2(o.x, -o.y)) + texture2D(tMarch, vUv + vec2(-o.x, -o.y)));
+        vec4 m = 0.25 * (texture2D(tMarch, uv + vec2(o.x, o.y)) + texture2D(tMarch, uv + vec2(-o.x, o.y))
+          + texture2D(tMarch, uv + vec2(o.x, -o.y)) + texture2D(tMarch, uv + vec2(-o.x, -o.y)));
         L = L * m.a + m.rgb;
         L += lensHot * ring * RING_GAIN * lensGain * m.a;
         L += halo * disc.z * outside * reachFade * m.a;
@@ -497,7 +509,33 @@ ${DISC_GLSL}
       }
       col = mix(col, L, fade);
     }
-    gl_FragColor = vec4(col + streaks, 1.0);
+    return col + streaks;
+  }
+
+  // Inside any lens reach: true when the extra rays can change the pixel.
+  bool inLens(vec2 uv) {
+    vec3 rd = normalize(vec3((uv * 2.0 - 1.0) * uTanHalfFov, -1.0));
+    for (int i = 0; i < MAX_LENSES; i++) {
+      if (i >= uCount) break;
+      vec3 c = uLensCenter[i].xyz;
+      float tc = dot(c, rd);
+      if (tc <= 0.0 || c.z >= 0.0) continue;
+      if (length(rd * tc - c) < LENS_REACH * (1.0 + WARP_REACH * uLensWarp[i])) return true;
+    }
+    return false;
+  }
+
+  void main() {
+    if (uSamples < 2 || !inLens(vUv)) {
+      gl_FragColor = vec4(shade(vUv), 1.0);
+      return;
+    }
+    // Rotated-grid sub-pixel rays (2 or 4): smooth thin rings and fine
+    // streaks close up. The lens streak and the copy outside are unchanged.
+    vec2 px = 1.0 / uResolution;
+    vec3 sum = shade(vUv + vec2(0.125, 0.375) * px) + shade(vUv + vec2(-0.125, -0.375) * px);
+    if (uSamples > 2) sum += shade(vUv + vec2(-0.375, 0.125) * px) + shade(vUv + vec2(0.375, -0.125) * px);
+    gl_FragColor = vec4(sum / float(uSamples), 1.0);
   }
 `,
 );
@@ -567,6 +605,8 @@ export class BlackHolePass extends Pass {
         tMarch: { value: null },
         uMarchTexel: { value: new THREE.Vector2(1, 1) },
         uMarch: { value: 0 },
+        uSamples: { value: 1 },
+        uDetail: { value: 0 },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -635,6 +675,13 @@ export class BlackHolePass extends Pass {
   setMarch(on, steps = 48) {
     this.march = on;
     this.marchMaterial.uniforms.uSteps.value = Math.min(steps, MAX_HOLE_STEPS);
+  }
+
+  /** Lens rays per pixel: 1, 2 or 4 (more adds the finer streak octave). */
+  setSamples(n) {
+    const samples = n >= 4 ? 4 : n >= 2 ? 2 : 1;
+    this.material.uniforms.uSamples.value = samples;
+    this.material.uniforms.uDetail.value = samples > 1 ? 1 : 0;
   }
 
   /**
