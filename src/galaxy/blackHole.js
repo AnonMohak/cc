@@ -127,6 +127,10 @@ export const WARP_BEND = 1.5;
 export const WARP_REACH = 2;
 export const WARP_DEPTH = 3;
 export const WARP_SWIRL = 0.8;
+/** Exact lens: the warp shrinks the impact parameter by up to this share (more bend, a bigger shadow). */
+export const WARP_SHRINK = 0.3;
+/** Exact lens: its swirl (the ray's plane turned about the hole). Weaker than WARP_SWIRL: a strong twist folded the disc's arch. */
+export const WARP_SWIRL_EXACT = 0.24;
 
 /** Lens reach (Rs) for a warp amount: LENS_REACH at 0. */
 export function warpedReach(warp) {

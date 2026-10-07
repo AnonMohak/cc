@@ -21,6 +21,8 @@ import {
   WARP_REACH,
   WARP_DEPTH,
   WARP_SWIRL,
+  WARP_SHRINK,
+  WARP_SWIRL_EXACT,
   warpedReach,
   marchScaleFor,
   shadowPixels,
@@ -99,6 +101,8 @@ const DISC_GLSL = /* glsl */ `
   // Mirror of blackHole.js marchDiscRadius.
   const float MARCH_INNER = ${f(MARCH_INNER)};
   const float MARCH_BLEND = ${f(MARCH_BLEND)};
+  // Exact lens: the inner rim fades in from MARCH_INNER to this × MARCH_INNER.
+  const float EXACT_INNER_SOFT = 1.35;
   float marchDiscRadius(float r) {
     return r + (DISC_INNER - MARCH_INNER) * (1.0 - gm_smoothstep(MARCH_INNER, MARCH_BLEND, r));
   }
@@ -307,6 +311,8 @@ ${DISC_GLSL}
   const float WARP_REACH = ${f(WARP_REACH)};
   const float WARP_DEPTH = ${f(WARP_DEPTH)};
   const float WARP_SWIRL = ${f(WARP_SWIRL)};
+  const float WARP_SHRINK = ${f(WARP_SHRINK)};
+  const float WARP_SWIRL_EXACT = ${f(WARP_SWIRL_EXACT)};
   const float RING_GAIN = 3.0;
   const float RING_TAIL = 0.12;
   const float RING_TAIL_RS = 0.35;
@@ -438,10 +444,18 @@ ${DISC_GLSL}
   }
 
   // Exact lens: the disc at true radius |h|, reaching in to MARCH_INNER.
+  // Opaque (alpha = the edge fade), like the film's thick disc: a
+  // see-through near disc showed the thin higher-order images through it.
   vec4 discLightExact(vec3 h, vec3 rd, vec3 n, float time, float dist) {
     float r = length(h);
     if (r > discOuter || r < MARCH_INNER) return vec4(0.0);
-    return discCore(h, marchDiscRadius(r), rd, n, time, dist, 1.0);
+    float rl = marchDiscRadius(r);
+    // A soft inner edge: the near disc's inner rim crosses the bottom of the
+    // shadow in low views, and a hard rim there read as a notch.
+    float soft = gm_smoothstep(MARCH_INNER, MARCH_INNER * EXACT_INNER_SOFT, r);
+    vec4 d = discCore(h, rl, rd, n, time, dist, 1.0);
+    float edge = discEdge(rl) > 0.0 ? soft * (1.0 - gm_smoothstep(discOuter * 0.45, discOuter, r)) : 0.0;
+    return vec4(d.rgb / max(discEdge(rl), 1e-3) * edge, edge);
   }
 
 
@@ -600,9 +614,17 @@ ${DISC_GLSL}
         float tl = length(tp);
         vec3 e2 = tp / max(tl, 1e-6);
         bool inward = vr < 0.0;
-        bool esc = b > B_CRIT;
-        float row = lutRow(b);
-        float uEnd = esc ? periapsisU(b) : 1.0;
+        // Intro-fall warp, on the disc and the sky alike: a smaller impact
+        // parameter (more bend, a bigger shadow) and the ray's plane turned
+        // about the hole (a swirl).
+        float bw = b * (1.0 - WARP_SHRINK * warp * reachFade);
+        if (warp > 0.0) {
+          float sw = WARP_SWIRL_EXACT * warp * reachFade * min(SHADOW_B / b, 1.0) * PI;
+          e2 = e2 * cos(sw) + cross(e1, e2) * sin(sw);
+        }
+        bool esc = bw > B_CRIT;
+        float row = lutRow(bw);
+        float uEnd = esc ? periapsisU(bw) : 1.0;
         float uc = 1.0 / max(rc, 1.0001);
         vec4 t0 = lutAt(esc ? sqrt(max(0.0, 1.0 - uc / uEnd)) : uc, row);
         float phiC = t0.r;
@@ -641,15 +663,10 @@ ${DISC_GLSL}
         vec3 Lx = vec3(0.0);
         if (escapes && T > 0.01) {
           // Where the ray leaves: the angle of its position at infinity.
-          // The warp exaggerates the bend; the bend fades out by the reach.
+          // The bend fades out by the reach (no seam at its edge).
           float straight = inward ? PI - asin(clamp(tl, 0.0, 1.0)) : asin(clamp(tl, 0.0, 1.0));
-          float sEnd = straight + (sweepEnd - straight) * (1.0 + WARP_BEND * warp) * reachFade;
+          float sEnd = straight + (sweepEnd - straight) * reachFade;
           vec3 rdx = cos(sEnd) * e1 + sin(sEnd) * e2;
-          if (warp > 0.0) {
-            vec3 axis = normalize(c);
-            float sw = WARP_SWIRL * warp * reachFade * min(SHADOW_B / b, 1.0) * PI;
-            rdx = rdx * cos(sw) + cross(axis, rdx) * sin(sw) + axis * dot(axis, rdx) * (1.0 - cos(sw));
-          }
           vec3 srcx = normalize(p0 + rdx * SOURCE_DEPTH * (1.0 + WARP_DEPTH * warp));
           Lx = sampleDir(srcx, rdx) * mix(CAVITY, 1.0, open * open) * gm_smoothstep(SHADOW_B, SHADOW_B * 2.5, length(cross(srcx, c)));
           Lx += (discHaze(bv, n, time, tc) + halo) * disc.z * outside * reachFade;
