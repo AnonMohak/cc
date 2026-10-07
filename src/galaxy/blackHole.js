@@ -8,21 +8,23 @@
  * exaggerated: it shows only when the camera is zoomed into the core.
  */
 
+import { createRandom } from './random.js';
+
 /** Values allowed in settings.blackHoles. */
 export const BLACK_HOLE_OPTIONS = ['on', 'jets', 'off'];
 
 /** Critical impact parameter (√27 / 2): rays closer than this fall in (the shadow). */
 export const SHADOW_B = 2.598;
-/** Accretion disc: inner edge at the ISCO, outer edge (stylised). */
+/** Accretion disc: inner edge at the ISCO, outer edge (stylised: the film disc reaches far). */
 export const DISC_INNER = 3;
-export const DISC_OUTER = 14;
+export const DISC_OUTER = 18;
 /** Rays farther than this from the hole are not bent (deflection fades to 0). */
-export const LENS_REACH = 30;
+export const LENS_REACH = 40;
 /** Bending is capped below π: more would be a loop around the hole. */
 export const MAX_DEFLECTION = 3;
 
 /** Rs for a typical bulge, in unit-disc units (the galaxy radius is 1). */
-const RS_TYPICAL = 0.003;
+const RS_TYPICAL = 0.009;
 const BULGE_TYPICAL = 0.16;
 /** Galaxies with less bulge than this get no black hole (e.g. the LMC). */
 export const MIN_BULGE = 0.03;
@@ -35,7 +37,30 @@ export const MIN_BULGE = 0.03;
 export function blackHoleRadius(shape) {
   const f = shape?.bulgeFraction ?? 0;
   if (!(f >= MIN_BULGE)) return 0;
-  return RS_TYPICAL * Math.min(2.5, Math.max(0.4, f / BULGE_TYPICAL));
+  // Capped low: the disc of a huge bulge would cover a third of the galaxy.
+  return RS_TYPICAL * Math.min(1.5, Math.max(0.4, f / BULGE_TYPICAL));
+}
+
+// Mixed into the galaxy seed, so the axis does not reuse generateGalaxy's stream.
+const AXIS_SALT = 0x9e3779b9;
+
+/**
+ * Accretion-disc (and jet) axis in the galaxy's local frame (+y is the galaxy
+ * normal): a seeded direction, uniform on the sphere. Real AGN discs are not
+ * aligned with their galaxy, and a free tilt lets face-on galaxies show the
+ * edge-on "Interstellar" look too.
+ * @param {number} seed
+ * @param {{ x: number, y: number, z: number }} [out]
+ */
+export function discAxis(seed, out = { x: 0, y: 1, z: 0 }) {
+  const rand = createRandom((seed ^ AXIS_SALT) >>> 0);
+  const y = rand.range(-1, 1);
+  const phi = rand.range(0, 2 * Math.PI);
+  const s = Math.sqrt(1 - y * y);
+  out.x = s * Math.cos(phi);
+  out.y = y;
+  out.z = s * Math.sin(phi);
+  return out;
 }
 
 /**

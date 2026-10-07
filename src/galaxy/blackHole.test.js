@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { blackHoleRadius, deflection, shadowPixels, lensFade, pickLenses, SHADOW_B, MAX_DEFLECTION, MIN_BULGE } from './blackHole.js';
+import { blackHoleRadius, discAxis, deflection, shadowPixels, lensFade, pickLenses, SHADOW_B, MAX_DEFLECTION, MIN_BULGE } from './blackHole.js';
 
 describe('blackHoleRadius', () => {
   it('grows with the bulge and is absent without one', () => {
@@ -10,7 +10,33 @@ describe('blackHoleRadius', () => {
     const big = blackHoleRadius({ bulgeFraction: 0.4 });
     expect(small).toBeGreaterThan(0);
     expect(big).toBeGreaterThan(small);
-    expect(blackHoleRadius({ bulgeFraction: 100 })).toBeLessThan(0.01); // capped
+    expect(blackHoleRadius({ bulgeFraction: 100 })).toBeLessThan(0.02); // capped
+  });
+});
+
+describe('discAxis', () => {
+  const len = (v) => Math.hypot(v.x, v.y, v.z);
+  it('is a unit vector and the same for the same seed', () => {
+    const a = discAxis(1234);
+    expect(len(a)).toBeCloseTo(1, 10);
+    expect(discAxis(1234)).toEqual(a);
+    expect(discAxis(1235)).not.toEqual(a);
+  });
+  it('fills `out` in place', () => {
+    const out = { x: 0, y: 0, z: 0 };
+    expect(discAxis(7, out)).toBe(out);
+    expect(len(out)).toBeCloseTo(1, 10);
+  });
+  it('has no preferred direction', () => {
+    const sum = { x: 0, y: 0, z: 0 };
+    const n = 2000;
+    for (let s = 0; s < n; s++) {
+      const a = discAxis(s * 7919);
+      sum.x += a.x;
+      sum.y += a.y;
+      sum.z += a.z;
+    }
+    expect(len(sum) / n).toBeLessThan(0.06);
   });
 });
 

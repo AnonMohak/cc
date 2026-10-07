@@ -6,8 +6,9 @@ uniform float uBandJetGain;
 varying vec2 vJet;
 varying float vEnergy;
 
-// Synchrotron blue-white; bright near the base so it blooms there.
-const vec3 JET_COLOR = vec3(0.55, 0.72, 1.0);
+// Warm gold to match the Interstellar-style disc; bright near the base so it
+// blooms there.
+const vec3 JET_COLOR = vec3(1.0, 0.72, 0.38);
 const float JET_INTENSITY = 1.4;
 
 void main() {

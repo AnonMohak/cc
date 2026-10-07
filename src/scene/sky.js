@@ -107,6 +107,8 @@ export function createSky({ onReady, radius = 500 } = {}) {
 
   return {
     object: mesh,
+    /** Shared read-only with core/BlackHolePass.js (uSky, uIntensity, uBandTint). */
+    uniforms: material.uniforms,
     /** @param {THREE.Vector3} cameraPosition */
     update(cameraPosition) {
       mesh.position.copy(cameraPosition);

@@ -107,6 +107,8 @@ export function startApp(container, { startScreen } = {}) {
     bloomStrength: store.getState().settings.bloomStrength,
     volumeScale: QUALITY[initialTier].volumeScale,
   });
+  // Rays bent off the screen by a black hole see the same Milky Way.
+  post.setBlackHoleSky(sky.uniforms);
 
   // Render on demand: skip GPU work when nothing moves or changes.
   const gate = createRenderGate();
@@ -234,7 +236,7 @@ export function startApp(container, { startScreen } = {}) {
     currentBand = name;
     const { skyTint, fieldGain } = bandFor(name);
     galaxies.setBand(name);
-    post.setBlackHoleGain(bandFor(name).agnGain);
+    post.setBlackHoleBand(bandFor(name));
     sky.setBandTint(...skyTint);
     starfield.setBandTint(...skyTint.map((c) => c * fieldGain));
   }
@@ -267,6 +269,7 @@ export function startApp(container, { startScreen } = {}) {
     applyAutoExposure(settings.autoExposure);
     post.setFlare(settings.flare);
     sky.setVisible(settings.sky);
+    post.setBlackHoleSkyVisible(settings.sky);
     applyBand(settings.band);
     if (currentTier) {
       applySpikes();

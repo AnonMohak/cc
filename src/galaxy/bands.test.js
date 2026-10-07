@@ -13,7 +13,7 @@ describe('bands', () => {
       expect(Object.keys(b).sort()).toEqual(keys);
       expect(b.starColor).toHaveLength(9);
       expect(b.lightColor).toHaveLength(9);
-      for (const v of [b.hiiColor, b.hiiCore, b.gasColor, b.skyTint]) expect(v).toHaveLength(3);
+      for (const v of [b.hiiColor, b.hiiCore, b.gasColor, b.skyTint, b.agnHot, b.agnCool]) expect(v).toHaveLength(3);
       expect(b.starKeep).toBeGreaterThan(0);
       expect(b.starKeep).toBeLessThanOrEqual(1);
     }

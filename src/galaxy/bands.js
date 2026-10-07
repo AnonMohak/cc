@@ -42,6 +42,7 @@ const SHO_GRADE = [1.25, 0.0, -0.25, 0.5, 0.5, 0.0, -0.6, 0.7, 0.9];
  * - gasHole: radius (unit disc) of the central gas hole, 0 = none.
  * - agnGain / jetGain: accretion disc (BlackHolePass) and jet brightness:
  *   jets shine in radio (synchrotron), discs in X-ray.
+ * - agnHot / agnCool: accretion-disc colour at the inner (hot) and outer edge.
  * - snGain: supernova flash brightness.
  * - skyTint / fieldGain: Milky Way background tint and field-star gain.
  */
@@ -63,6 +64,8 @@ export const BANDS = {
     gasHole: 0,
     agnGain: 1,
     jetGain: 1,
+    agnHot: [1.0, 0.82, 0.55], // Interstellar gold: white-hot inner edge
+    agnCool: [1.0, 0.38, 0.06],
     snGain: 1,
     skyTint: [1, 1, 1],
     fieldGain: 1,
@@ -84,6 +87,8 @@ export const BANDS = {
     gasHole: 0,
     agnGain: 1,
     jetGain: 1,
+    agnHot: [1.0, 0.9, 0.55], // gold inner, teal outer
+    agnCool: [0.25, 0.75, 0.8],
     snGain: 1,
     skyTint: [0.95, 1.0, 0.9],
     fieldGain: 1,
@@ -105,6 +110,8 @@ export const BANDS = {
     gasHole: 0,
     agnGain: 0.5,
     jetGain: 0.4,
+    agnHot: [1.0, 0.55, 0.25], // deep red-orange
+    agnCool: [0.75, 0.15, 0.05],
     snGain: 0.5,
     skyTint: [1.0, 0.6, 0.4],
     fieldGain: 0.5,
@@ -126,6 +133,8 @@ export const BANDS = {
     gasHole: 0.22,
     agnGain: 0.3,
     jetGain: 4,
+    agnHot: [1.0, 0.8, 0.6], // dim warm (agnGain dims it)
+    agnCool: [0.7, 0.35, 0.15],
     snGain: 0.4, // remnants are radio sources too
     skyTint: [0.3, 0.5, 1.0],
     fieldGain: 0.03,
@@ -147,6 +156,8 @@ export const BANDS = {
     gasHole: 0,
     agnGain: 3,
     jetGain: 2,
+    agnHot: [0.85, 0.9, 1.0], // hot blue-white
+    agnCool: [0.45, 0.5, 1.0],
     snGain: 3,
     skyTint: [0.5, 0.4, 1.0],
     fieldGain: 0.08,

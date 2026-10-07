@@ -33,9 +33,9 @@ const PASS_LABELS = new Map([
 ]);
 
 /**
- * GalaxyScenePass (low-res volumes) → UnrealBloomPass → BlackHolePass (lensing +
- * accretion discs; only while a black hole is resolved) → LensFlarePass (reads the bloom
- * mips; only when bloom runs) → ExposureMeterPass (auto exposure reading; the image
+ * GalaxyScenePass (low-res volumes) → UnrealBloomPass → LensFlarePass (reads the bloom
+ * mips; only when bloom runs) → BlackHolePass (lensing + accretion discs; only while a
+ * black hole is resolved) → ExposureMeterPass (auto exposure reading; the image
  * passes through) → OutputPass (tone mapping + sRGB)
  * → CinematicPass (vignette, grain, aberration; skipped when off).
  *
@@ -59,12 +59,13 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
   const scenePass = new GalaxyScenePass(scene, camera, { volumeScale });
   composer.addPass(scenePass);
   composer.addPass(bloom);
-  // After bloom: the bloom of a bright core would otherwise flood the shadow.
-  const blackHole = new BlackHolePass(camera);
-  composer.addPass(blackHole);
   const flare = new LensFlarePass(bloom);
   let flareAmount = 0;
   composer.addPass(flare);
+  // After bloom and flare: the bloom of a bright core and its flare ghosts
+  // would otherwise flood the shadow.
+  const blackHole = new BlackHolePass(camera);
+  composer.addPass(blackHole);
   // Measures the finished HDR frame, before the exposure it controls.
   const meter = new ExposureMeterPass();
   composer.addPass(meter);
@@ -114,9 +115,16 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       blackHole.source = source;
       blackHole.allowed = allowed;
     },
-    /** Accretion-disc brightness for the wavelength band. */
-    setBlackHoleGain(gain) {
-      blackHole.setDiscGain(gain);
+    /** Accretion-disc brightness and colours for the wavelength band (bands.js). */
+    setBlackHoleBand(band) {
+      blackHole.setBand(band);
+    },
+    /** The sky behind black holes: sky.js uniforms, and Settings → Milky Way sky. */
+    setBlackHoleSky(skyUniforms) {
+      blackHole.setSky(skyUniforms);
+    },
+    setBlackHoleSkyVisible(visible) {
+      blackHole.setSkyVisible(visible);
     },
     /** The Exposure slider; auto exposure multiplies it (setAutoExposureFactor). */
     setExposure(value) {

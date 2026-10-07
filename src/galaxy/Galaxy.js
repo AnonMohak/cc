@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { generateGalaxy } from './generateGalaxy.js';
 import { createStarMaterial, createHiiMaterial, createSupernovaMaterial, createJetMaterial } from './starMaterials.js';
-import { blackHoleRadius } from './blackHole.js';
+import { blackHoleRadius, discAxis } from './blackHole.js';
 import { createSupernovaSchedule, pickSupernovaSite, SUPERNOVA_SLOTS } from './supernovae.js';
 import { createVolumeMaterial } from './volumeMaterial.js';
 import { volumeBounds, marchBounds } from './densityModel.js';
@@ -65,7 +65,7 @@ const REBAKE_DELAY_MS = 120;
  *   stars — density-wave star particles (renderOrder 1)
  *   hii   — H II nebulae that glow on the arm crests (renderOrder 2)
  *   supernovae — a few flash points that follow their exploding star (renderOrder 3)
- *   jets  — AGN jets along the axis, when Settings → Black holes = jets (renderOrder 4)
+ *   jets  — AGN jets along the black hole's disc axis, when Settings → Black holes = jets (renderOrder 4)
  * The black hole's shadow, lensing and accretion disc are drawn by
  * core/BlackHolePass.js from blackHoleInfo().
  */
@@ -113,6 +113,8 @@ export class Galaxy {
     this.jets.visible = false;
     this.blackHoleMode = 'on';
     this.rsUnit = 0;
+    // Accretion-disc and jet axis in the galaxy's frame (seeded, see discAxis).
+    this.bhAxis = new THREE.Vector3(0, 1, 0);
 
     this.group.add(this.volume, this.stars, this.hii, this.supernovae, this.jets);
 
@@ -179,6 +181,8 @@ export class Galaxy {
     this.shape = shape;
     this.rsUnit = blackHoleRadius(clampShape(shape));
     this.uniforms.uJetRs.value = this.rsUnit;
+    discAxis(seed, this.bhAxis);
+    this.uniforms.uJetAxis.value.copy(this.bhAxis);
     this.updateJets();
     this.applyStarCap();
     applyShapeUniforms(this.uniforms, shape);
@@ -299,7 +303,7 @@ export class Galaxy {
     this.group.updateMatrixWorld();
     this.group.getWorldPosition(slot.center);
     this.group.getWorldQuaternion(_quaternion);
-    slot.normal.copy(UP).applyQuaternion(_quaternion);
+    slot.normal.copy(this.bhAxis).applyQuaternion(_quaternion);
     slot.rsWorld = this.rsUnit * this.radius;
     slot.time = this.snTime;
     return true;
