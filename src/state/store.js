@@ -19,6 +19,10 @@ export const SETTINGS_LIMITS = {
   bloomStrength: { min: 0, max: 3, step: 0.05 },
   dustOpacity: { min: 0, max: 1, step: 0.01 },
   exposure: { min: 0.3, max: 2.5, step: 0.05 },
+  // Cinematic pass (core/CinematicPass.js), 0–1 each.
+  vignette: { min: 0, max: 1, step: 0.01 },
+  grain: { min: 0, max: 1, step: 0.01 },
+  aberration: { min: 0, max: 1, step: 0.01 },
 };
 
 
@@ -35,6 +39,9 @@ export const DEFAULT_SETTINGS = {
   sky: true, // Milky Way background (scene/sky.js)
   supernovae: true, // flashes in every galaxy (galaxy/supernovae.js)
   spikes: 'jwst', // diffraction spikes: 'jwst' | 'hubble' | 'off'
+  vignette: 0.3,
+  grain: 0.1,
+  aberration: 0.15,
   // HUD
   labels: false,
   minimap: true,

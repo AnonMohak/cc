@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GalaxyScenePass } from './GalaxyScenePass.js';
+import { CinematicPass } from './CinematicPass.js';
 
 // Bloom is blurry by nature: half resolution looks the same and costs 1/4.
 const BLOOM_SCALE = 0.5;
@@ -16,10 +17,12 @@ const BLOOM_THRESHOLD = 0.45;
 const PASS_LABELS = new Map([
   [UnrealBloomPass, 'bloom'],
   [OutputPass, 'output'],
+  [CinematicPass, 'cinematic'],
 ]);
 
 /**
- * GalaxyScenePass (low-res volumes) → UnrealBloomPass → OutputPass (tone mapping + sRGB).
+ * GalaxyScenePass (low-res volumes) → UnrealBloomPass → OutputPass (tone mapping + sRGB)
+ * → CinematicPass (vignette, grain, aberration; skipped when off).
  *
  * @param {THREE.WebGLRenderer} renderer
  * @param {THREE.Scene} scene
@@ -42,6 +45,10 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
   composer.addPass(scenePass);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  // Last, in display space; EffectComposer sends the last enabled pass to the screen.
+  const cinematic = new CinematicPass();
+  cinematic.enabled = false;
+  composer.addPass(cinematic);
 
   return {
     composer,
@@ -61,6 +68,11 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
     setBloomMode(mode) {
       bloomMode = mode;
     },
+    /** Effect amounts (0–1) and whether the pass runs at all (cinematicEnabled). */
+    setCinematic(amounts, enabled) {
+      cinematic.setAmounts(amounts);
+      cinematic.enabled = enabled;
+    },
     setExposure(value) {
       renderer.toneMappingExposure = value;
     },
@@ -79,6 +91,7 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
     dispose() {
       scenePass.dispose();
       bloom.dispose();
+      cinematic.dispose();
       composer.dispose();
     },
   };

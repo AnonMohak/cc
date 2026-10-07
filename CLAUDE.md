@@ -24,6 +24,7 @@ Additional:
 - **Live structure controls**: arm count, winding, density wave, arm contrast, flocculence, dust, diffuse glow and bulge profile change instantly (shader uniforms).
 - **Bloom**: lifts only bright cores and stars (threshold 0.45).
 - **Diffraction spikes** (`shaders/chunks/spikes.glsl`, Settings → Star spikes: JWST 6+2 / Hubble 4 / Off): drawn inside point sprites, aligned to the screen like real telescope optics. On the 30 brightest background stars (a second sprite layer in `starfield.js`) and on supernova flashes (their sprite grows ×4). `spikeStyle(setting, tier)` in `quality.js` turns them off on Low/Minimal.
+- **Cinematic pass** (`core/CinematicPass.js`, Settings → Cinematic): vignette, film grain and lateral chromatic aberration in one full-screen pass after `OutputPass` (display space). `cinematicEnabled(settings, tier)` in `quality.js` skips the pass when all three are 0 and on Low/Minimal.
 - **Background sky** (`scene/sky.js`, model in `scene/skyMap.js`): a faint Milky Way band (thicker and warmer toward the galactic centre, star clouds, a filamentary dust rift, red/blue nebulae near the plane) baked once into a 1024×512 equirectangular sRGB texture in a Web Worker (`skyWorker.js`; main-thread fallback at 512×256), drawn on a camera-following sphere: one texture fetch per pixel. The static starfield is denser along the band (`starDensity`). Settings → Milky Way sky toggles it. Keep it far below the bloom threshold (`SKY_INTENSITY`).
 - **Global controls**: pause/resume, time scale, quality (Auto or a fixed tier), exposure, bloom, dust on/off and amount, auto-rotate camera.
 - **FPS readout**: add `?fps` to the URL — frame rate, GPU name, active quality tier and GPU ms per pass (`core/gpuTimer.js`).
@@ -75,7 +76,8 @@ src/
 ├── core/
 │   ├── createRenderer.js    # WebGLRenderer, pixel ratio, resize handling
 │   ├── createCamera.js      # PerspectiveCamera + OrbitControls; CAMERA_LIMITS, CAMERA_HOME
-│   ├── createComposer.js    # EffectComposer: RenderPass → UnrealBloomPass → OutputPass (ACES)
+│   ├── createComposer.js    # EffectComposer: scene → UnrealBloomPass → OutputPass (ACES) → CinematicPass
+│   ├── CinematicPass.js     # Vignette, film grain, chromatic aberration (one ShaderPass)
 │   ├── loop.js              # Single animation loop; owns pause, time scale, dt cap
 │   ├── cameraFly.js         # Eased camera move + framingPosition (no tween lib)
 │   ├── flyControls.js       # Free-fly WASD camera (pure moveDirection / applyLook)

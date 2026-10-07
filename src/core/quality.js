@@ -15,10 +15,11 @@ export const QUALITY = {
     volumeDust: false, // stars keep their own analytic dust either way
     maxPointPx: 8,
     spikes: false, // diffraction spikes (extra sprite fill)
+    cinematic: false, // vignette / grain / aberration (one extra full-res pass)
   },
-  low: { label: 'Low', volumeScale: 0.35, steps: 14, bloom: 'off', maxPixelRatio: 1, starCap: 60_000, volumeDust: true, maxPointPx: 10, spikes: false },
-  medium: { label: 'Medium', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true },
-  high: { label: 'High', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true },
+  low: { label: 'Low', volumeScale: 0.35, steps: 14, bloom: 'off', maxPixelRatio: 1, starCap: 60_000, volumeDust: true, maxPointPx: 10, spikes: false, cinematic: false },
+  medium: { label: 'Medium', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true, cinematic: true },
+  high: { label: 'High', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true },
 };
 
 /** Cheapest first: the governor moves along this list. */
@@ -70,4 +71,12 @@ const SPIKE_STYLE = { off: 0, hubble: 1, jwst: 2 };
  */
 export function spikeStyle(setting, tierName) {
   return QUALITY[tierName]?.spikes ? (SPIKE_STYLE[setting] ?? 0) : 0;
+}
+
+/**
+ * Whether the cinematic pass (vignette, grain, chromatic aberration) runs:
+ * at least one effect is above 0 and the tier can afford a full-res pass.
+ */
+export function cinematicEnabled({ vignette, grain, aberration }, tierName) {
+  return Boolean(QUALITY[tierName]?.cinematic) && (vignette > 0 || grain > 0 || aberration > 0);
 }

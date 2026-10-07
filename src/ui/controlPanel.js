@@ -338,6 +338,14 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .add(settingsProxy, 'spikes', { 'JWST (6)': 'jwst', 'Hubble (4)': 'hubble', Off: 'off' })
     .name('Star spikes')
     .onChange((v) => setting({ spikes: v }));
+  const cineFolder = settingsFolder.addFolder('Cinematic (Medium/High)').close();
+  for (const [key, name] of [['vignette', 'Vignette'], ['grain', 'Film grain'], ['aberration', 'Chromatic aberration']]) {
+    const limit = SETTINGS_LIMITS[key];
+    cineFolder
+      .add(settingsProxy, key, limit.min, limit.max, limit.step)
+      .name(name)
+      .onChange((v) => setting({ [key]: v }));
+  }
   const hudFolder = settingsFolder.addFolder('HUD');
   hudFolder.add(settingsProxy, 'labels').name('Galaxy labels').onChange((v) => setting({ labels: v }));
   hudFolder.add(settingsProxy, 'scaleBar').name('Scale bar (ly)').onChange((v) => setting({ scaleBar: v }));

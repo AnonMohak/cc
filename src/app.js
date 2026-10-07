@@ -10,7 +10,7 @@ import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
 import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
-import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle } from './core/quality.js';
+import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createRenderGate } from './core/renderGate.js';
 import { createActions } from './state/actions.js';
@@ -123,6 +123,12 @@ export function startApp(container, { startScreen } = {}) {
     gate.invalidate();
     onTierChange(name);
     applySpikes();
+    applyCinematic();
+  }
+
+  function applyCinematic() {
+    const settings = store.getState().settings;
+    post.setCinematic(settings, cinematicEnabled(settings, currentTier));
   }
 
   function applySpikes() {
@@ -219,7 +225,10 @@ export function startApp(container, { startScreen } = {}) {
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
     sky.setVisible(settings.sky);
-    if (currentTier) applySpikes();
+    if (currentTier) {
+      applySpikes();
+      applyCinematic();
+    }
   }
   applySettings(store.getState().settings);
   applyTier(activeTier(store.getState().settings.quality, governor.tier()));

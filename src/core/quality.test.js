@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { spikeStyle } from './quality.js';
+import { spikeStyle, cinematicEnabled } from './quality.js';
 
 describe('spikeStyle', () => {
   it('maps the setting to a shader style, off on cheap tiers', () => {
@@ -9,5 +9,21 @@ describe('spikeStyle', () => {
     expect(spikeStyle('jwst', 'low')).toBe(0);
     expect(spikeStyle('jwst', 'minimal')).toBe(0);
     expect(spikeStyle('bogus', 'high')).toBe(0);
+  });
+});
+
+describe('cinematicEnabled', () => {
+  const on = { vignette: 0.3, grain: 0, aberration: 0 };
+  const off = { vignette: 0, grain: 0, aberration: 0 };
+  it('runs when any effect is above 0 on Medium and High', () => {
+    expect(cinematicEnabled(on, 'medium')).toBe(true);
+    expect(cinematicEnabled({ ...off, grain: 0.1 }, 'high')).toBe(true);
+    expect(cinematicEnabled({ ...off, aberration: 0.1 }, 'high')).toBe(true);
+  });
+  it('is skipped when all effects are 0 or the tier is cheap', () => {
+    expect(cinematicEnabled(off, 'high')).toBe(false);
+    expect(cinematicEnabled(on, 'low')).toBe(false);
+    expect(cinematicEnabled(on, 'minimal')).toBe(false);
+    expect(cinematicEnabled(on, 'bogus')).toBe(false);
   });
 });
