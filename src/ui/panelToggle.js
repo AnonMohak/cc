@@ -27,7 +27,7 @@ export function createPanelToggle(gui, { doc = document } = {}) {
   const hideButton = doc.createElement('button');
   hideButton.type = 'button';
   hideButton.className = 'panel-hide';
-  hideButton.textContent = 'Hide ✕';
+  hideButton.textContent = 'Hide';
   hideButton.setAttribute('aria-label', 'Hide controls');
   // Not inside the title: that is a <button>, and buttons cannot nest.
   panel.appendChild(hideButton);

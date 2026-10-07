@@ -43,6 +43,7 @@ export const DEFAULT_SETTINGS = {
   autoExposure: true, // darken bright scenes (core/autoExposure.js); exposure is then the bias
   sky: true, // Milky Way background (scene/sky.js)
   supernovae: true, // flashes in every galaxy (galaxy/supernovae.js)
+  sound: true, // ambient drone + intro-fall music (audio/soundscape.js)
   spikes: 'jwst', // diffraction spikes: 'jwst' | 'hubble' | 'off'
   vignette: 0.3,
   grain: 0.1,
@@ -76,7 +77,7 @@ export function canAddGalaxy(state, count) {
 export function clampSettings(settings) {
   const src = settings && typeof settings === 'object' ? settings : {};
   const out = { ...DEFAULT_SETTINGS };
-  for (const key of ['paused', 'autoRotate', 'dust', 'sky', 'supernovae', 'labels', 'minimap', 'scaleBar', 'autoExposure']) {
+  for (const key of ['paused', 'autoRotate', 'dust', 'sky', 'supernovae', 'sound', 'labels', 'minimap', 'scaleBar', 'autoExposure']) {
     if (typeof src[key] === 'boolean') out[key] = src[key];
   }
   if (QUALITY_OPTIONS.includes(src.quality)) out.quality = src.quality;

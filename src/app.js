@@ -31,6 +31,7 @@ import { createGpuTimer, formatTimings, gpuName } from './core/gpuTimer.js';
 import { createInfoCard } from './ui/infoCard.js';
 import { createFallOverlay } from './ui/fallOverlay.js';
 import { createWakeLock } from './ui/wakeLock.js';
+import { createSoundscape } from './audio/soundscape.js';
 import { createHud } from './ui/hud.js';
 import { createTour } from './core/tour.js';
 import { createFlyControls } from './core/flyControls.js';
@@ -309,6 +310,16 @@ export function startApp(container, { startScreen } = {}) {
   // Phones would sleep before the minute is over, and the waking tap would
   // end the fall: keep the screen on while it waits and falls.
   const wakeLock = createWakeLock();
+  // Sound: a quiet generated drone, and the fall music during the intro fall.
+  // Browsers allow audio only after a gesture: unlock on the first one (the
+  // start-box click or tap), then stop listening.
+  const soundscape = createSoundscape();
+  const unlockEvents = ['pointerup', 'touchend', 'click', 'keydown'];
+  const unlockSound = () => {
+    if (!soundscape.unlock()) return;
+    for (const type of unlockEvents) window.removeEventListener(type, unlockSound, true);
+  };
+  for (const type of unlockEvents) window.addEventListener(type, unlockSound, true);
   // The start box hint ("Stay still…") only fits the intro scene.
   document.getElementById('start-hint')?.toggleAttribute('hidden', !isSingleBlackHole(store.getState()));
   /** The running fall: hole, basis and start pose (see beginFall). */
@@ -455,6 +466,7 @@ export function startApp(container, { startScreen } = {}) {
     post.setFlare(settings.flare);
     sky.setVisible(settings.sky);
     post.setBlackHoleSkyVisible(settings.sky);
+    soundscape.setEnabled(settings.sound);
     applyBand(settings.band);
     if (currentTier) {
       applySpikes();
@@ -487,6 +499,7 @@ export function startApp(container, { startScreen } = {}) {
       // The scene changed under the fall (e.g. N added a galaxy): leave it.
       if (phase === 'done' && cameraMode === 'fall') escapeFall();
     }
+    soundscape.setMode(cameraMode === 'fall' ? 'fall' : 'ambient');
     // Fallen in (held black) or done: the screen may sleep again.
     const fallPhase = fall.phase();
     wakeLock.set(fallPhase === 'falling' || (fallPhase === 'waiting' && !(startScreen?.isOpen() ?? false)));
@@ -545,8 +558,8 @@ export function startApp(container, { startScreen } = {}) {
     lastBadge = now;
     const progress = gif.progress();
     let text = '';
-    if (video.isRecording()) text = `● REC ${formatClock(video.elapsed())}`;
-    else if (progress) text = `● GIF ${progress.frames}/${progress.total}`;
+    if (video.isRecording()) text = `REC ${formatClock(video.elapsed())}`;
+    else if (progress) text = `GIF ${progress.frames}/${progress.total}`;
     else if (gif.isEncoding()) text = 'Encoding GIF…';
     recBadge.hidden = !text;
     recBadge.textContent = text;
@@ -643,6 +656,11 @@ export function startApp(container, { startScreen } = {}) {
       cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position);
     },
     togglePause: () => store.dispatch(actions.updateSettings({ paused: !store.getState().settings.paused })),
+    toggleSound() {
+      const sound = !store.getState().settings.sound;
+      store.dispatch(actions.updateSettings({ sound }));
+      showToast(container, sound ? 'Sound on' : 'Sound off');
+    },
     screenshot: () => captureScreenshot({ canvas: renderer.domElement, render: () => post.render() }),
     toggleVideo() {
       if (!video.isSupported()) {
@@ -765,6 +783,6 @@ export function startApp(container, { startScreen } = {}) {
   loop.start(renderer);
 
   if (import.meta.env.DEV) {
-    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history, getCameraMode: () => cameraMode };
+    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history, soundscape, getCameraMode: () => cameraMode };
   }
 }

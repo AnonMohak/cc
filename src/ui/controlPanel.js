@@ -117,18 +117,18 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .add(sceneProxy, 'preset', presetOptions)
     .name('New galaxy type')
     .onChange(() => refreshSceneFolder(store.getState()));
-  const addButton = sceneFolder.add(sceneProxy, 'add').name('➕ Add galaxy');
+  const addButton = sceneFolder.add(sceneProxy, 'add').name('Add galaxy');
   sceneFolder
     .add(sceneProxy, 'real', catalogueOptions)
     .name('Real galaxy')
     .onChange(() => refreshSceneFolder(store.getState()));
-  const addRealButton = sceneFolder.add(sceneProxy, 'addReal').name('🔭 Add real galaxy');
-  const addHoleButton = sceneFolder.add(sceneProxy, 'addHole').name('🕳️ Add black hole');
+  const addRealButton = sceneFolder.add(sceneProxy, 'addReal').name('Add real galaxy');
+  const addHoleButton = sceneFolder.add(sceneProxy, 'addHole').name('Add black hole');
   let selectController = null;
   const undoButtons = [];
   if (history) {
     const h = { undo: () => history.undo(), redo: () => history.redo() };
-    undoButtons.push(sceneFolder.add(h, 'undo').name('↶ Undo (Ctrl+Z)'), sceneFolder.add(h, 'redo').name('↷ Redo (Ctrl+Shift+Z)'));
+    undoButtons.push(sceneFolder.add(h, 'undo').name('Undo (Ctrl+Z)'), sceneFolder.add(h, 'redo').name('Redo (Ctrl+Shift+Z)'));
     const refreshUndo = () => {
       undoButtons[0].enable(history.canUndo());
       undoButtons[1].enable(history.canRedo());
@@ -160,7 +160,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     const preset = PRESETS[sceneProxy.preset];
     const allowed = canAddGalaxy(state, preset.shape.count);
     addButton.enable(allowed);
-    addButton.name(allowed ? '➕ Add galaxy' : `Limit reached (${MAX_GALAXIES} galaxies / ${formatCount(MAX_TOTAL_PARTICLES)} stars)`);
+    addButton.name(allowed ? 'Add galaxy' : `Limit reached (${MAX_GALAXIES} galaxies / ${formatCount(MAX_TOTAL_PARTICLES)} stars)`);
     addRealButton.enable(canAddGalaxy(state, catalogueParams(sceneProxy.real).shape.count));
     addHoleButton.enable(canAddGalaxy(state, BLACK_HOLE_TEMPLATE.shape.count));
     sceneProxy.particles = `${formatCount(totalParticles(state))} / ${formatCount(MAX_TOTAL_PARTICLES)}`;
@@ -210,9 +210,9 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       .add(proxy, 'preset', presetOptions)
       .name('Apply preset')
       .onChange((name) => dispatch(actions.applyPreset(store.getState().galaxies.find((g) => g.id === id), name)));
-    if (onFocus) folder.add(proxy, 'focus').name('🎯 Focus camera');
-    folder.add(proxy, 'reseed').name('🎲 New random layout');
-    folder.add(proxy, 'remove').name('🗑️ Delete galaxy');
+    if (onFocus) folder.add(proxy, 'focus').name('Focus camera');
+    folder.add(proxy, 'reseed').name('New random layout');
+    folder.add(proxy, 'remove').name('Delete galaxy');
 
     // Shape changes rebuild geometry, so debounce while dragging.
     pendingShape = debounce((patch) => dispatch(actions.updateGalaxy(id, { shape: patch })), SHAPE_DEBOUNCE_MS);
@@ -262,7 +262,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
         .name(LABELS[key])
         .onChange((v) => dispatch(actions.updateGalaxy(id, { motion: { [key]: v } })));
     }
-    motionFolder.add(proxy, 'reverse').name('⇄ Reverse direction');
+    motionFolder.add(proxy, 'reverse').name('Reverse direction');
   }
 
   /** The selected standalone black hole: the hole and its star cloud. */
@@ -284,8 +284,8 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       .add(proxy, 'name')
       .name('Name')
       .onFinishChange((name) => dispatch(actions.updateGalaxy(id, { name })));
-    if (onFocus) folder.add(proxy, 'focus').name('🎯 Focus camera');
-    folder.add(proxy, 'remove').name('🗑️ Delete black hole');
+    if (onFocus) folder.add(proxy, 'focus').name('Focus camera');
+    folder.add(proxy, 'remove').name('Delete black hole');
 
     const holeFolder = folder.addFolder('Black hole');
     const hole = (patch) => dispatch(actions.updateGalaxy(id, { hole: patch }));
@@ -311,7 +311,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       const l = LIMITS.look[key];
       starsFolder.add(proxy.look, key, l.min, l.max, l.step).name(name).onChange((v) => look({ [key]: v }));
     }
-    starsFolder.add(proxy, 'reseed').name('🎲 New random stars');
+    starsFolder.add(proxy, 'reseed').name('New random stars');
 
     const posFolder = folder.addFolder('Position').close();
     const setPosition = () => look({ position: [proxy.position.x, proxy.position.y, proxy.position.z] });
@@ -350,34 +350,34 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     };
     universeFolder.add(u, 'layout', Object.fromEntries(Object.entries(LAYOUTS).map(([k, l]) => [l.label, k]))).name('Layout');
     universeFolder.add(u, 'count', 2, MAX_GALAXIES, 1).name('Galaxies');
-    universeFolder.add(u, 'generate').name('🌌 Generate universe');
+    universeFolder.add(u, 'generate').name('Generate universe');
   }
 
   // ── Share ────────────────────────────────────────────────────────────
   if (onShare || onExport || onImport) {
     const shareFolder = gui.addFolder('Share').close();
     const s = { share: () => onShare?.(), exportJson: () => onExport?.(), importJson: () => onImport?.() };
-    if (onShare) shareFolder.add(s, 'share').name('🔗 Copy share link');
-    if (onExport) shareFolder.add(s, 'exportJson').name('💾 Export scene (JSON)');
-    if (onImport) shareFolder.add(s, 'importJson').name('📂 Import scene (JSON)');
+    if (onShare) shareFolder.add(s, 'share').name('Copy share link');
+    if (onExport) shareFolder.add(s, 'exportJson').name('Export scene (JSON)');
+    if (onImport) shareFolder.add(s, 'importJson').name('Import scene (JSON)');
   }
 
   // ── Camera ───────────────────────────────────────────────────────────
   if (onTour || onFly || onResetView) {
     const cameraFolder = gui.addFolder('Camera').close();
     const c = { tour: () => onTour?.(), fly: () => onFly?.(), reset: () => onResetView?.() };
-    if (onTour) cameraFolder.add(c, 'tour').name('▶ Guided tour (T)');
-    if (onFly) cameraFolder.add(c, 'fly').name('✈ Free-fly mode (G)');
-    if (onResetView) cameraFolder.add(c, 'reset').name('⌂ Reset view');
+    if (onTour) cameraFolder.add(c, 'tour').name('Guided tour (T)');
+    if (onFly) cameraFolder.add(c, 'fly').name('Free-fly mode (G)');
+    if (onResetView) cameraFolder.add(c, 'reset').name('Reset view');
   }
 
   // ── Record ───────────────────────────────────────────────────────────
   if (onToggleVideo || onRecordGif || onScreenshot) {
     const recordFolder = gui.addFolder('Record').close();
     const r = { video: () => onToggleVideo?.(), gif: () => onRecordGif?.(), shot: () => onScreenshot?.() };
-    if (onToggleVideo) recordFolder.add(r, 'video').name('⏺ Start / stop video (R)');
-    if (onRecordGif) recordFolder.add(r, 'gif').name('🎞 Record 4-second GIF');
-    if (onScreenshot) recordFolder.add(r, 'shot').name('📷 Screenshot (P)');
+    if (onToggleVideo) recordFolder.add(r, 'video').name('Start / stop video (R)');
+    if (onRecordGif) recordFolder.add(r, 'gif').name('Record 4-second GIF');
+    if (onScreenshot) recordFolder.add(r, 'shot').name('Screenshot (P)');
   }
 
   // ── Settings ─────────────────────────────────────────────────────────
@@ -420,6 +420,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .onChange((v) => setting({ dustOpacity: v }));
   settingsFolder.add(settingsProxy, 'sky').name('Milky Way sky').onChange((v) => setting({ sky: v }));
   settingsFolder.add(settingsProxy, 'supernovae').name('Supernovae').onChange((v) => setting({ supernovae: v }));
+  settingsFolder.add(settingsProxy, 'sound').name('Sound (M)').onChange((v) => setting({ sound: v }));
   settingsFolder
     .add(settingsProxy, 'spikes', { 'JWST (6)': 'jwst', 'Hubble (4)': 'hubble', Off: 'off' })
     .name('Star spikes')
@@ -440,9 +441,9 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     screenshot: () => onScreenshot?.(),
     reset: () => onReset?.(),
   };
-  if (onReset) settingsFolder.add(sceneActions, 'reset').name('↺ Reset scene');
+  if (onReset) settingsFolder.add(sceneActions, 'reset').name('Reset scene');
   const help = settingsFolder.addFolder('Keyboard').close();
-  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot', 'Ctrl+Z': 'undo', 'Ctrl+Shift+Z': 'redo', T: 'guided tour', G: 'free-fly', R: 'record video', V: 'next view (wavelength)' };
+  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot', 'Ctrl+Z': 'undo', 'Ctrl+Shift+Z': 'redo', T: 'guided tour', G: 'free-fly', R: 'record video', V: 'next view (wavelength)', M: 'sound on / off' };
   for (const [key, text] of Object.entries(keys)) help.add({ [key]: text }, key).disable();
 
   // ── Store wiring ─────────────────────────────────────────────────────

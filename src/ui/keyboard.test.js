@@ -76,6 +76,8 @@ describe('view mode shortcut', () => {
   it('maps V to the next wavelength band', () => {
     expect(keyToCommand({ key: 'v' })).toBe('nextBand');
     expect(keyToCommand({ key: 'V' })).toBe('nextBand');
+    expect(keyToCommand({ key: 'm' })).toBe('toggleSound');
+    expect(keyToCommand({ key: 'M' })).toBe('toggleSound');
   });
 });
 

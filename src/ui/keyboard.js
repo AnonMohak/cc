@@ -19,6 +19,8 @@ const KEY_COMMANDS = {
   R: 'toggleVideo',
   v: 'nextBand',
   V: 'nextBand',
+  m: 'toggleSound',
+  M: 'toggleSound',
 };
 
 const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
