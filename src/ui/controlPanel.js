@@ -490,6 +490,8 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     toggle() {
       visibility.toggle();
     },
+    /** Whether the panel is shown (the intro fall ends when it opens). */
+    isOpen: () => visibility.isOpen(),
     dispose() {
       unsubscribe();
       visibility.dispose();

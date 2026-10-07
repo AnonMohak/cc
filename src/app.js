@@ -3,7 +3,8 @@ import { createRenderer } from './core/createRenderer.js';
 import { createCamera, CAMERA_LIMITS, CAMERA_HOME } from './core/createCamera.js';
 import { createComposer } from './core/createComposer.js';
 import { createLoop } from './core/loop.js';
-import { createCameraFly, framingPosition } from './core/cameraFly.js';
+import { createCameraFly, framingPosition, easeInOutCubic } from './core/cameraFly.js';
+import { createFall, fallPose, fallDistance, orbitRate, R_END, FALL_ELEVATION_DEG } from './core/blackHoleFall.js';
 import { captureScreenshot } from './core/screenshot.js';
 import { createStarfield } from './scene/starfield.js';
 import { createSky } from './scene/sky.js';
@@ -28,6 +29,7 @@ import { createVideoRecorder, createGifCapture, formatClock } from './core/recor
 import { createFpsMeter } from './ui/fpsMeter.js';
 import { createGpuTimer, formatTimings, gpuName } from './core/gpuTimer.js';
 import { createInfoCard } from './ui/infoCard.js';
+import { createFallOverlay } from './ui/fallOverlay.js';
 import { createHud } from './ui/hud.js';
 import { createTour } from './core/tour.js';
 import { createFlyControls } from './core/flyControls.js';
@@ -37,6 +39,17 @@ import { bandFor, nextBand } from './galaxy/bands.js';
 import { meterFrame, targetFactor, adapt } from './core/autoExposure.js';
 
 const SAVE_DEBOUNCE_MS = 500;
+// Intro fall: seconds for the fly back out, and for the elevation to settle.
+const FALL_ESCAPE_SECONDS = 1.5;
+const FALL_SETTLE_SECONDS = 10;
+
+// Intro fall scratch objects (no per-frame allocation).
+const _fallCenter = new THREE.Vector3();
+const _fallNormal = new THREE.Vector3();
+const _fallE1 = new THREE.Vector3();
+const _fallE2 = new THREE.Vector3();
+const _fallOffset = new THREE.Vector3();
+const _fallLook = new THREE.Vector3();
 // Camera height above a standalone black hole's disc plane for the film shot.
 const FILM_ELEVATION_DEG = 6;
 
@@ -64,6 +77,8 @@ export function startApp(container, { startScreen } = {}) {
     renderer.domElement,
     container.clientWidth / container.clientHeight,
   );
+  // The normal field of view (the intro fall widens it for a while).
+  const baseFov = camera.fov;
 
   const starfield = createStarfield({ pixelRatio: renderer.getPixelRatio() });
   scene.add(starfield.object);
@@ -116,7 +131,7 @@ export function startApp(container, { startScreen } = {}) {
     if (!galaxy?.standalone) return null;
     const { center, normal } = galaxy.pickTarget();
     const outer = galaxy.hole.discSize * galaxy.rsUnit * galaxy.radius;
-    const tanY = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const tanY = Math.tan(THREE.MathUtils.degToRad(baseFov / 2));
     const tanX = tanY * camera.aspect;
     const distance = THREE.MathUtils.clamp(
       Math.max(outer / tanY, outer / (0.9 * tanX)),
@@ -215,6 +230,12 @@ export function startApp(container, { startScreen } = {}) {
 
   function setCameraMode(next) {
     if (next === cameraMode) return;
+    if (cameraMode === 'fall') {
+      controls.enabled = true;
+      controls.autoRotate = store.getState().settings.autoRotate;
+      fallRun?.galaxy.setHoleSpin(1);
+      fallRun = null;
+    }
     if (cameraMode === 'fly') {
       fly.disable();
       fly.lookTarget(Math.max(camera.position.distanceTo(controls.target), 8), controls.target);
@@ -232,7 +253,12 @@ export function startApp(container, { startScreen } = {}) {
       fly.enable();
     }
     if (next === 'tour') handleTourEvent(tour.start());
-    badge.hidden = cameraMode === 'orbit';
+    if (next === 'fall') {
+      cameraFly.cancel();
+      controls.enabled = false;
+      controls.autoRotate = false;
+    }
+    badge.hidden = !BADGE_TEXT[cameraMode];
     badge.textContent = BADGE_TEXT[cameraMode] ?? '';
   }
 
@@ -275,6 +301,119 @@ export function startApp(container, { startScreen } = {}) {
     cameraFly.flyTo(center, position, seconds);
   }
 
+  // ── Intro fall into the black hole (core/blackHoleFall.js) ─────────────
+  // Idle after the start box on a single-black-hole scene: the camera
+  // spirals in with the disc and falls in. A click, tap, wheel or the
+  // controls panel ends it and flies back out. Once per page load; never
+  // with reduced motion.
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  const fall = reducedMotion ? null : createFall();
+  const fallOverlay = createFallOverlay(container);
+  /** The running fall: hole, basis and start pose (see beginFall). */
+  let fallRun = null;
+  let fallU = 0;
+  let fovEase = null; // { from, t } while the fov returns to baseFov
+
+  function fallEligible() {
+    const list = store.getState().galaxies;
+    return list.length === 1 && list[0].kind === 'blackhole' && (cameraMode === 'orbit' || cameraMode === 'fall');
+  }
+
+  /** Start from wherever the camera is (after a reload it is at CAMERA_HOME). */
+  function beginFall() {
+    const id = store.getState().galaxies[0]?.id;
+    const galaxy = galaxies.get(id);
+    if (!galaxy) return;
+    const { center, normal } = galaxy.pickTarget();
+    _fallCenter.copy(center);
+    _fallNormal.copy(normal);
+    // In-plane basis with e2 = n x e1: the angle grows in the disc's spin direction.
+    _fallE1.set(1, 0, 0).addScaledVector(_fallNormal, -_fallNormal.x);
+    if (_fallE1.lengthSq() < 1e-6) _fallE1.set(0, 0, 1).addScaledVector(_fallNormal, -_fallNormal.z);
+    _fallE1.normalize();
+    _fallE2.crossVectors(_fallNormal, _fallE1);
+    _fallOffset.subVectors(camera.position, _fallCenter);
+    const r0 = Math.max(_fallOffset.length(), 1e-3);
+    fallRun = {
+      id,
+      galaxy,
+      r0,
+      rEnd: R_END * galaxy.rsUnit * galaxy.radius,
+      angle: Math.atan2(_fallOffset.dot(_fallE2), _fallOffset.dot(_fallE1)),
+      elevation0: Math.asin(THREE.MathUtils.clamp(_fallOffset.dot(_fallNormal) / r0, -1, 1)),
+      clock: 0,
+    };
+    fovEase = null;
+    setCameraMode('fall');
+    controls.target.copy(_fallCenter);
+  }
+
+  /** Place the camera for fall progress u (loop, real time). */
+  function updateFallCamera(realDt, u) {
+    const run = fallRun;
+    if (!run) return;
+    const pose = fallPose(u);
+    run.clock += realDt;
+    const r = fallDistance(run.r0, run.rEnd, pose.distanceT);
+    run.angle += orbitRate(r, run.r0) * realDt;
+    const settle = easeInOutCubic(Math.min(1, run.clock / FALL_SETTLE_SECONDS));
+    const elevation = THREE.MathUtils.lerp(run.elevation0, THREE.MathUtils.degToRad(FALL_ELEVATION_DEG), settle);
+    const ring = Math.cos(elevation) * r;
+    camera.position
+      .copy(_fallCenter)
+      .addScaledVector(_fallE1, Math.cos(run.angle) * ring)
+      .addScaledVector(_fallE2, Math.sin(run.angle) * ring)
+      .addScaledVector(_fallNormal, Math.sin(elevation) * r);
+    // Tidal shake near the end: the look point wobbles (sums of sines).
+    const k = pose.shake * r * 0.02;
+    const c = run.clock;
+    _fallLook
+      .copy(_fallCenter)
+      .addScaledVector(_fallE1, k * Math.sin(c * 13.1))
+      .addScaledVector(_fallE2, k * Math.sin(c * 17.3 + 1.1))
+      .addScaledVector(_fallNormal, k * Math.sin(c * 11.7 + 2.3));
+    camera.lookAt(_fallLook);
+    const fov = baseFov + pose.fovAdd;
+    if (camera.fov !== fov) {
+      camera.fov = fov;
+      camera.updateProjectionMatrix();
+    }
+    run.galaxy.setHoleSpin(pose.spin);
+    fallOverlay.set(pose.vignette, pose.black);
+  }
+
+  /** Leave the fall: fade in, ease the fov back and (optionally) fly out. */
+  function escapeFall(flyBack = true) {
+    const id = fallRun?.id;
+    setCameraMode('orbit');
+    fallOverlay.fadeOut(0.6);
+    if (camera.fov !== baseFov) fovEase = { from: camera.fov, t: 0 };
+    const shot = flyBack && id ? filmShot(id) : null;
+    if (shot) cameraFly.flyTo(shot.center, shot.position, FALL_ESCAPE_SECONDS);
+  }
+
+  /** A real interaction (or a command that takes the camera) ends the fall for good. */
+  function interruptFall(flyBack = true) {
+    if (!fall || (startScreen?.isOpen() ?? false)) return false;
+    const result = fall.interact();
+    if (result === 'escape') escapeFall(flyBack);
+    return result === 'escape';
+  }
+
+  if (fall) {
+    // Capture phase: an escaping click must not also select or orbit, and an
+    // escaping wheel must not zoom while the camera flies back.
+    const onInput = (event) => {
+      if (fall.phase() === 'done') return;
+      if (interruptFall() && event.target === renderer.domElement) {
+        event.stopPropagation();
+        event.preventDefault();
+      }
+    };
+    window.addEventListener('pointerdown', onInput, true);
+    window.addEventListener('wheel', onInput, { capture: true, passive: false });
+  }
+
   let currentBand = null;
   function applyBand(name) {
     if (name === currentBand) return;
@@ -308,7 +447,7 @@ export function startApp(container, { startScreen } = {}) {
   function applySettings(settings) {
     loop.setPaused(settings.paused);
     loop.setTimeScale(settings.timeScale);
-    if (cameraMode !== 'tour') controls.autoRotate = settings.autoRotate;
+    if (cameraMode !== 'tour' && cameraMode !== 'fall') controls.autoRotate = settings.autoRotate;
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
     applyAutoExposure(settings.autoExposure);
@@ -339,8 +478,24 @@ export function startApp(container, { startScreen } = {}) {
   loop.onTick((dt, _elapsed, realDt) => {
     galaxies.tick(dt, realDt);
     if (cameraMode === 'tour') handleTourEvent(tour.tick(realDt));
+    if (fall && fall.phase() !== 'done' && !(startScreen?.isOpen() ?? false)) {
+      // Opening the controls panel is an interaction too.
+      if (panel.isOpen()) interruptFall();
+      const { phase, u } = fall.tick(realDt, fallEligible());
+      if ((phase === 'falling' || phase === 'fallen') && cameraMode !== 'fall') beginFall();
+      if (cameraMode === 'fall') fallU = u;
+      // The scene changed under the fall (e.g. N added a galaxy): leave it.
+      if (phase === 'done' && cameraMode === 'fall') escapeFall();
+    }
+    if (fovEase) {
+      fovEase.t = Math.min(1, fovEase.t + realDt / FALL_ESCAPE_SECONDS);
+      camera.fov = THREE.MathUtils.lerp(fovEase.from, baseFov, easeInOutCubic(fovEase.t));
+      camera.updateProjectionMatrix();
+      if (fovEase.t >= 1) fovEase = null;
+    }
     cameraFly.update(realDt);
     if (cameraMode === 'fly') fly.update(realDt);
+    else if (cameraMode === 'fall') updateFallCamera(realDt, fallU);
     else controls.update();
     galaxies.updateCamera(camera, container.clientWidth, container.clientHeight);
     starfield.update(camera.position);
@@ -400,12 +555,18 @@ export function startApp(container, { startScreen } = {}) {
       !loop.isPaused() ||
       cameraFly.isFlying() ||
       cameraMode !== 'orbit' ||
+      fovEase !== null ||
       controls.autoRotate ||
       galaxies.isEasing() ||
       autoFactor !== autoTarget ||
       video.isRecording() ||
       gif.isCapturing();
     const now = performance.now();
+    // Fallen in: the screen is held black by the overlay, so draw nothing.
+    if (fall?.phase() === 'fallen') {
+      lastRender = null;
+      return;
+    }
     if (!gate.shouldRender(active)) {
       lastRender = null;
       return;
@@ -451,6 +612,7 @@ export function startApp(container, { startScreen } = {}) {
       if (selectedId) store.dispatch(actions.removeGalaxy(selectedId));
     },
     focusSelected() {
+      interruptFall(false);
       const { selectedId } = store.getState();
       if (selectedId) focusGalaxy(selectedId);
     },
@@ -464,9 +626,16 @@ export function startApp(container, { startScreen } = {}) {
       store.dispatch(actions.updateSettings({ band }));
       showToast(container, `View: ${bandFor(band).label}`);
     },
-    toggleFly: () => setCameraMode(cameraMode === 'fly' ? 'orbit' : 'fly'),
-    toggleTour: () => setCameraMode(cameraMode === 'tour' ? 'orbit' : 'tour'),
+    toggleFly() {
+      interruptFall(false);
+      setCameraMode(cameraMode === 'fly' ? 'orbit' : 'fly');
+    },
+    toggleTour() {
+      interruptFall(false);
+      setCameraMode(cameraMode === 'tour' ? 'orbit' : 'tour');
+    },
     resetView() {
+      interruptFall(false);
       setCameraMode('orbit');
       cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position);
     },
@@ -526,6 +695,7 @@ export function startApp(container, { startScreen } = {}) {
     },
     reset() {
       if (!window.confirm('Delete everything and start again with one black hole?')) return;
+      interruptFall(false);
       setCameraMode('orbit');
       store.dispatch(actions.resetScene());
       store.dispatch(actions.addBlackHole(store.getState()));

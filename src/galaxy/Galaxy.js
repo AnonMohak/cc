@@ -119,6 +119,10 @@ export class Galaxy {
     this.snSchedule = createSupernovaSchedule(seed);
     this.snSlot = 0;
     this.snTime = 0;
+    // Accretion-disc time: simulation time × holeSpin (the intro fall spins
+    // the disc up). Accumulated, so a spin change never makes the streaks jump.
+    this.holeTime = 0;
+    this.holeSpin = 1;
 
     this.jetMaterial = createJetMaterial(this.uniforms);
     this.jets = new THREE.Mesh(createJetGeometry(), this.jetMaterial);
@@ -254,6 +258,7 @@ export class Galaxy {
   tick(dt, realDt = dt) {
     this.phase += dt * this.speed;
     this.uniforms.uPhase.value = this.phase;
+    this.holeTime += dt * this.holeSpin;
     this.tickSupernovae(dt);
     if (this.emphasis !== this.emphasisTarget) {
       this.emphasis = approach(this.emphasis, this.emphasisTarget, realDt);
@@ -306,6 +311,11 @@ export class Galaxy {
     this.jets.visible = on && this.rsUnit > 0;
   }
 
+  /** Disc spin multiplier (core/blackHoleFall.js fallPose spin); 1 = normal. */
+  setHoleSpin(k) {
+    this.holeSpin = k;
+  }
+
   /** A standalone black hole's params (params.js LIMITS.hole): uniforms only. */
   setHole(hole) {
     if (!this.standalone) return;
@@ -333,7 +343,7 @@ export class Galaxy {
     this.group.getWorldQuaternion(_quaternion);
     slot.normal.copy(UP).applyQuaternion(_quaternion);
     slot.rsWorld = this.rsUnit * this.radius;
-    slot.time = this.snTime;
+    slot.time = this.holeTime;
     const h = this.hole;
     slot.discOuter = h ? h.discSize : DISC_OUTER;
     // A standalone hole is the whole object, so it follows the selection emphasis.

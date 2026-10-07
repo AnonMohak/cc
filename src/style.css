@@ -404,3 +404,34 @@ canvas {
 .rec-badge[hidden] {
   display: none;
 }
+
+/* Intro fall into the black hole (ui/fallOverlay.js): above the canvas and
+   HUD (which have no z-index), below the panel and its button (1001). */
+.fall-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.fall-overlay[hidden] {
+  display: none;
+}
+
+.fall-overlay > div {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.fall-overlay.fading > div {
+  transition: opacity var(--fall-fade, 0.6s) ease-out;
+}
+
+.fall-vignette {
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, 0.85) 75%, #000 100%);
+}
+
+.fall-black {
+  background: #000;
+}
