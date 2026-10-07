@@ -293,7 +293,7 @@ const fragmentShader = glsl(
 const _view = new THREE.Vector3();
 
 /**
- * Gravitational lensing, shadow and accretion disc of the central black
+ * Gravitational lensing, shadow and accretion disc of the standalone black
  * holes, as one screen pass after bloom, before tone mapping (HDR). It runs only
  * while a black hole is at least ~1 px on screen; then pixels outside the
  * lens reach just copy the input (plus the thin lens streak).

@@ -1,15 +1,10 @@
 /**
- * Central supermassive black holes. PURE: sizes, light bending and lens
- * selection. Rendering: core/BlackHolePass.js (lensing + accretion disc in a
- * screen pass) and Galaxy.js (jets).
+ * Standalone black holes (scene entries of kind 'blackhole'). PURE: light
+ * bending and lens selection. Rendering: core/BlackHolePass.js (lensing +
+ * accretion disc in a screen pass) and Galaxy.js (star cloud, jets).
  *
  * Lengths below are in Schwarzschild radii (Rs) unless they say otherwise.
- * A real black hole is far too small to see at galaxy scale, so its size is
- * exaggerated: it shows only when the camera is zoomed into the core.
  */
-
-/** Values allowed in settings.blackHoles. */
-export const BLACK_HOLE_OPTIONS = ['on', 'jets', 'off'];
 
 /** Critical impact parameter (√27 / 2): rays closer than this fall in (the shadow). */
 export const SHADOW_B = 2.598;
@@ -20,24 +15,6 @@ export const DISC_OUTER = 18;
 export const LENS_REACH = 40;
 /** Bending is capped below π: more would be a loop around the hole. */
 export const MAX_DEFLECTION = 3;
-
-/** Rs for a typical bulge, in unit-disc units (the galaxy radius is 1). */
-const RS_TYPICAL = 0.009;
-const BULGE_TYPICAL = 0.16;
-/** Galaxies with less bulge than this get no black hole (e.g. the LMC). */
-export const MIN_BULGE = 0.03;
-
-/**
- * Schwarzschild radius in unit-disc units. Black-hole mass follows bulge
- * mass (the M–σ relation), so it scales with the bulge fraction.
- * @param {{ bulgeFraction: number }} shape
- */
-export function blackHoleRadius(shape) {
-  const f = shape?.bulgeFraction ?? 0;
-  if (!(f >= MIN_BULGE)) return 0;
-  // Capped low: the disc of a huge bulge would cover a third of the galaxy.
-  return RS_TYPICAL * Math.min(1.5, Math.max(0.4, f / BULGE_TYPICAL));
-}
 
 /**
  * Bending angle (radians) of a light ray with impact parameter b (in Rs).

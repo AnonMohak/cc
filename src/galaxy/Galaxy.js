@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import { generateGalaxy } from './generateGalaxy.js';
 import { createStarMaterial, createHiiMaterial, createSupernovaMaterial, createJetMaterial } from './starMaterials.js';
-import { blackHoleRadius, DISC_OUTER } from './blackHole.js';
-import { BANDS } from './bands.js';
 import { createSupernovaSchedule, pickSupernovaSite, SUPERNOVA_SLOTS } from './supernovae.js';
 import { createVolumeMaterial } from './volumeMaterial.js';
 import { volumeBounds, marchBounds } from './densityModel.js';
@@ -67,7 +65,7 @@ const REBAKE_DELAY_MS = 120;
  *   stars — density-wave star particles (renderOrder 1)
  *   hii   — H II nebulae that glow on the arm crests (renderOrder 2)
  *   supernovae — a few flash points that follow their exploding star (renderOrder 3)
- *   jets  — AGN jets along the axis, when Settings → Galaxy black holes = jets or a standalone hole's Jets (renderOrder 4)
+ *   jets  — a standalone black hole's jets along its axis, when its Jets is on (renderOrder 4)
  * The black hole's shadow, lensing and accretion disc are drawn by
  * core/BlackHolePass.js from blackHoleInfo().
  *
@@ -83,9 +81,9 @@ export class Galaxy {
     this.group = new THREE.Group();
     this.standalone = kind === 'blackhole';
     this.hole = this.standalone ? clampHole(hole) : null;
-    // Disc colours for the lens (linear). Central holes use the visible band's.
-    this.holeHot = new THREE.Color().setRGB(...BANDS.visible.agnHot);
-    this.holeCool = new THREE.Color().setRGB(...BANDS.visible.agnCool);
+    // Disc colours for the lens (linear; set from the hole params in setHole).
+    this.holeHot = new THREE.Color();
+    this.holeCool = new THREE.Color();
     this.uniforms = createGalaxyUniforms();
     this.uniforms.uPixelRatio.value = pixelRatio;
 
@@ -128,7 +126,6 @@ export class Galaxy {
     this.jets = new THREE.Mesh(createJetGeometry(), this.jetMaterial);
     this.jets.renderOrder = 4;
     this.jets.visible = false;
-    this.blackHoleMode = 'on';
     this.rsUnit = 0;
 
     this.group.add(this.volume, this.stars, this.hii, this.supernovae, this.jets);
@@ -195,11 +192,6 @@ export class Galaxy {
     this.hiiCount = data.hii.count;
     this.shape = shape;
     if (this.standalone) this.setHole(this.hole);
-    else {
-      this.rsUnit = blackHoleRadius(clampShape(shape));
-      this.uniforms.uJetRs.value = this.rsUnit;
-      this.updateJets();
-    }
     this.applyStarCap();
     applyShapeUniforms(this.uniforms, shape);
     this.updateVolumeBounds();
@@ -300,15 +292,8 @@ export class Galaxy {
     applyBandUniforms(this.uniforms, name);
   }
 
-  /** Settings → Black holes: 'on', 'jets' or 'off' (blackHole.js). */
-  setBlackHoleMode(mode) {
-    this.blackHoleMode = mode;
-    this.updateJets();
-  }
-
   updateJets() {
-    const on = this.standalone ? this.hole.jets : this.blackHoleMode === 'jets';
-    this.jets.visible = on && this.rsUnit > 0;
+    this.jets.visible = this.standalone && this.hole.jets && this.rsUnit > 0;
   }
 
   /** Disc spin multiplier (core/blackHoleFall.js fallPose spin); 1 = normal. */
@@ -331,13 +316,11 @@ export class Galaxy {
 
   /**
    * Fill a lens slot for BlackHolePass (world centre, disc normal, Rs in world
-   * units, simulation time, disc look). False when there is no black hole to
-   * draw. `central`: whether galaxies' central holes are drawn (standalone
-   * holes always are). Allocation-free: called every frame.
+   * units, disc time, disc look). False for galaxies: only standalone black
+   * holes are drawn. Allocation-free: called every frame.
    */
-  blackHoleInfo(slot, central = true) {
-    if (this.rsUnit <= 0) return false;
-    if (!this.standalone && (!central || this.blackHoleMode === 'off')) return false;
+  blackHoleInfo(slot) {
+    if (!this.standalone || this.rsUnit <= 0) return false;
     this.group.updateMatrixWorld();
     this.group.getWorldPosition(slot.center);
     this.group.getWorldQuaternion(_quaternion);
@@ -345,11 +328,11 @@ export class Galaxy {
     slot.rsWorld = this.rsUnit * this.radius;
     slot.time = this.holeTime;
     const h = this.hole;
-    slot.discOuter = h ? h.discSize : DISC_OUTER;
-    // A standalone hole is the whole object, so it follows the selection emphasis.
-    slot.gain = h ? h.brightness * this.emphasis : 1;
-    slot.glow = h ? h.glow : 1;
-    slot.streak = !h || h.streak ? 1 : 0;
+    slot.discOuter = h.discSize;
+    // The hole is the whole object, so it follows the selection emphasis.
+    slot.gain = h.brightness * this.emphasis;
+    slot.glow = h.glow;
+    slot.streak = h.streak ? 1 : 0;
     slot.hot.copy(this.holeHot);
     slot.cool.copy(this.holeCool);
     return true;

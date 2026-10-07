@@ -180,16 +180,15 @@ describe('GalaxyManager black holes', () => {
   const slots = () =>
     Array.from({ length: 10 }, () => ({ center: new THREE.Vector3(), normal: new THREE.Vector3(), hot: new THREE.Color(), cool: new THREE.Color() }));
 
-  it('standalone holes always draw; central holes follow the flag', () => {
+  it('only standalone black holes draw (galaxies have no central hole)', () => {
     const { store, actions, manager, add } = setup();
     add();
-    store.dispatch(actions.addBlackHole(store.getState()));
     const s = slots();
-    expect(manager.blackHoleCandidates(s, true)).toBe(2);
-    expect(manager.blackHoleCandidates(s, false)).toBe(1);
+    expect(manager.blackHoleCandidates(s)).toBe(0);
+    expect(manager.get('id1').jets.visible).toBe(false);
+    store.dispatch(actions.addBlackHole(store.getState()));
+    expect(manager.blackHoleCandidates(s)).toBe(1);
     expect(s[0].discOuter).toBe(18);
-    manager.setBlackHoleMode('off');
-    expect(manager.blackHoleCandidates(s, true)).toBe(1);
   });
 
   it('a standalone hole has no volume or supernovae, and hole edits are live', () => {
@@ -208,9 +207,9 @@ describe('GalaxyManager black holes', () => {
     expect(s[0].discOuter).toBe(25);
   });
 
-  it('the disc of a galaxy lies in the galaxy plane', () => {
-    const { manager, add } = setup();
-    add();
+  it('the disc lies in the object plane', () => {
+    const { store, actions, manager } = setup();
+    store.dispatch(actions.addBlackHole(store.getState()));
     const s = slots();
     manager.blackHoleCandidates(s);
     expect(s[0].normal.y).toBeCloseTo(1, 6);

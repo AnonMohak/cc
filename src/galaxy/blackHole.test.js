@@ -1,18 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { blackHoleRadius, deflection, shadowPixels, lensFade, pickLenses, SHADOW_B, MAX_DEFLECTION, MIN_BULGE } from './blackHole.js';
-
-describe('blackHoleRadius', () => {
-  it('grows with the bulge and is absent without one', () => {
-    expect(blackHoleRadius({ bulgeFraction: 0 })).toBe(0);
-    expect(blackHoleRadius({ bulgeFraction: MIN_BULGE / 2 })).toBe(0);
-    expect(blackHoleRadius(null)).toBe(0);
-    const small = blackHoleRadius({ bulgeFraction: 0.08 });
-    const big = blackHoleRadius({ bulgeFraction: 0.4 });
-    expect(small).toBeGreaterThan(0);
-    expect(big).toBeGreaterThan(small);
-    expect(blackHoleRadius({ bulgeFraction: 100 })).toBeLessThan(0.02); // capped
-  });
-});
+import { deflection, shadowPixels, lensFade, pickLenses, SHADOW_B, MAX_DEFLECTION } from './blackHole.js';
 
 describe('deflection', () => {
   it('matches the weak-field limit 2Rs/b far away', () => {

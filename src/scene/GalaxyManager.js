@@ -18,7 +18,6 @@ export class GalaxyManager {
     this.supernovae = store.getState().settings.supernovae ?? true;
     this.spikeStyle = 0; // set by the app (setting × tier)
     this.band = 'visible'; // settings.band (bands.js)
-    this.blackHoleMode = 'on'; // settings.blackHoles (blackHole.js)
     // The app sets the active tier (Auto can change it at any time).
     this.quality = QUALITY.medium;
     this.pixelRatio = pixelRatio;
@@ -56,7 +55,6 @@ export class GalaxyManager {
       galaxy.setQuality(this.quality);
       galaxy.setSpikeStyle(this.spikeStyle);
       galaxy.setBand(this.band);
-      galaxy.setBlackHoleMode(this.blackHoleMode);
       galaxy.setEmphasis(emphasisTarget(entry.id, this.selectedId), true);
       this.galaxies.set(entry.id, galaxy);
       this.scene.add(galaxy.group);
@@ -90,23 +88,16 @@ export class GalaxyManager {
     for (const galaxy of this.galaxies.values()) galaxy.setSpikeStyle(style);
   }
 
-  setBlackHoleMode(mode) {
-    this.blackHoleMode = mode;
-    for (const galaxy of this.galaxies.values()) galaxy.setBlackHoleMode(mode);
-  }
-
   /**
-   * Fill BlackHolePass candidate slots; returns how many are in use.
-   * Standalone black holes always take part; galaxies' central holes only
-   * when `central` (Settings → Galaxy black holes and the quality tier).
+   * Fill BlackHolePass candidate slots with the standalone black holes;
+   * returns how many are in use.
    * @param {object[]} slots
-   * @param {boolean} [central]
    */
-  blackHoleCandidates(slots, central = true) {
+  blackHoleCandidates(slots) {
     let n = 0;
     for (const galaxy of this.galaxies.values()) {
       if (n >= slots.length) break;
-      if (galaxy.blackHoleInfo(slots[n], central)) n++;
+      if (galaxy.blackHoleInfo(slots[n])) n++;
     }
     return n;
   }

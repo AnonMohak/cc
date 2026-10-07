@@ -11,7 +11,7 @@ import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
 import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
-import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled, blackHolesEnabled } from './core/quality.js';
+import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createRenderGate } from './core/renderGate.js';
 import { createActions } from './state/actions.js';
@@ -185,19 +185,10 @@ export function startApp(container, { startScreen } = {}) {
     onTierChange(name);
     applySpikes();
     applyCinematic();
-    applyBlackHoles();
   }
 
-  // Galaxies' central holes follow the setting and the tier; standalone
-  // black holes are objects in the scene and always draw.
-  let centralHoles = true;
-  const blackHoleSource = (slots) => galaxies.blackHoleCandidates(slots, centralHoles);
-  function applyBlackHoles() {
-    const { blackHoles } = store.getState().settings;
-    galaxies.setBlackHoleMode(blackHoles);
-    centralHoles = blackHolesEnabled(blackHoles, currentTier);
-    post.setBlackHoles(blackHoleSource, true);
-  }
+  // Standalone black holes are objects in the scene: they draw on every tier.
+  post.setBlackHoles((slots) => galaxies.blackHoleCandidates(slots), true);
 
   function applyCinematic() {
     const settings = store.getState().settings;
@@ -462,7 +453,6 @@ export function startApp(container, { startScreen } = {}) {
     if (currentTier) {
       applySpikes();
       applyCinematic();
-      applyBlackHoles();
     }
   }
   applySettings(store.getState().settings);
