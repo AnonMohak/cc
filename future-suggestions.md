@@ -18,7 +18,7 @@ Ideas to make Galaxy Sandbox more feature-rich and better looking. None of these
 - **Use a downloaded file for the fall music (do this before 2026-10-11).** Today `FALL_MUSIC_URL` in `src/audio/tracks.js` streams a signed audio.com CDN link that expires on 2026-10-11 at about 17:44 UTC; after that the fall plays the drone only. The owner will share a downloaded MP3. Then:
   1. Save it as `public/audio/interstellar.mp3`.
   2. Set `FALL_MUSIC_URL = '/audio/interstellar.mp3'` and remove the signed-link comment.
-  3. Check `FALL_MUSIC_START` (now 23 s) against the new file: measure the loudness per second and start where the theme becomes audible (the old file went from about -32 dB to -21 dB at 0:23).
+  3. Check `FALL_MUSIC_START` (now 80 s) against the new file: measure the loudness per second and keep the peak (about 2:10-2:20 in the old file, -9 dB, then a drop to -30 dB) 60 s after the start, so the plunge into black lands on it.
   4. Ask whether the MP3 goes into git or into `.gitignore` (the repo is on GitHub).
   
   For future music in general: use a local file in `public/audio/`, not a streaming link.
