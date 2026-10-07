@@ -116,7 +116,7 @@ src/
 │   ├── supernovae.js        # PURE: supernova light curve, Poisson schedule, site choice
 │   ├── bands.js             # PURE: wavelength view modes (gains + colour matrices per band)
 │   ├── blackHole.js         # PURE: light deflection, geodesic traceRay, lens selection
-│   ├── photonLut.js         # PURE: exact Schwarzschild light paths as a lookup table (Binet's equation; plan A, shader not wired yet)
+│   ├── photonLut.js         # PURE: exact Schwarzschild light paths as a lookup table (Binet's equation); BlackHolePass draws with it under ?exact (plan A, in progress)
 │   ├── lod.js               # PURE: on-screen footprint → volume steps + star LOD (fewer, brighter far stars)
 │   ├── presets.js           # spiral (M51/M101), barred (NGC 1300), elliptical (M87), irregular (LMC)
 │   ├── catalogue.js         # Real galaxies: facts + params; tiltForInclination, catalogueViewDirection

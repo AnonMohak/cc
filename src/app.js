@@ -165,6 +165,8 @@ export function startApp(container, { startScreen } = {}) {
   });
   // Rays bent off the screen by a black hole see the same Milky Way.
   post.setBlackHoleSky(sky.uniforms);
+  // Plan A (in progress): ?exact draws black holes with exact light paths.
+  if (new URLSearchParams(window.location.search).has('exact')) post.setBlackHoleExact(true);
 
   // Render on demand: skip GPU work when nothing moves or changes.
   const gate = createRenderGate();
