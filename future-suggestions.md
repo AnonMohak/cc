@@ -4,7 +4,7 @@ Ideas to make Galaxy Sandbox more feature-rich and better looking. None of these
 
 ## Visual
 
-- **Depth of field and auto exposure.** Depth of field on the focused galaxy (needs depth data: stars do not write depth) and auto exposure (needs a luminance reduction pass). Vignette, film grain and chromatic aberration are already done (`core/CinematicPass.js`).
+- **Depth of field** on the focused galaxy (needs depth data: stars do not write depth). Vignette, film grain, chromatic aberration (`core/CinematicPass.js`) and auto exposure (`core/autoExposure.js`) are already done.
 
 ## Features
 

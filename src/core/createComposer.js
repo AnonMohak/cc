@@ -6,6 +6,7 @@ import { GalaxyScenePass } from './GalaxyScenePass.js';
 import { CinematicPass } from './CinematicPass.js';
 import { LensFlarePass } from './LensFlarePass.js';
 import { BlackHolePass } from './BlackHolePass.js';
+import { ExposureMeterPass } from './ExposureMeterPass.js';
 
 // Bloom is blurry by nature: half resolution looks the same and costs 1/4.
 const BLOOM_SCALE = 0.5;
@@ -26,6 +27,7 @@ const PASS_LABELS = new Map([
   [UnrealBloomPass, 'bloom'],
   [BlackHolePass, 'blackhole'],
   [LensFlarePass, 'flare'],
+  [ExposureMeterPass, 'meter'],
   [OutputPass, 'output'],
   [CinematicPass, 'cinematic'],
 ]);
@@ -33,7 +35,8 @@ const PASS_LABELS = new Map([
 /**
  * GalaxyScenePass (low-res volumes) → UnrealBloomPass → BlackHolePass (lensing +
  * accretion discs; only while a black hole is resolved) → LensFlarePass (reads the bloom
- * mips; only when bloom runs) → OutputPass (tone mapping + sRGB)
+ * mips; only when bloom runs) → ExposureMeterPass (auto exposure reading; the image
+ * passes through) → OutputPass (tone mapping + sRGB)
  * → CinematicPass (vignette, grain, aberration; skipped when off).
  *
  * @param {THREE.WebGLRenderer} renderer
@@ -62,6 +65,11 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
   const flare = new LensFlarePass(bloom);
   let flareAmount = 0;
   composer.addPass(flare);
+  // Measures the finished HDR frame, before the exposure it controls.
+  const meter = new ExposureMeterPass();
+  composer.addPass(meter);
+  let exposureBias = 1;
+  let autoFactor = 1;
   composer.addPass(new OutputPass());
   // Last, in display space; EffectComposer sends the last enabled pass to the screen.
   const cinematic = new CinematicPass();
@@ -110,8 +118,27 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
     setBlackHoleGain(gain) {
       blackHole.setDiscGain(gain);
     },
+    /** The Exposure slider; auto exposure multiplies it (setAutoExposureFactor). */
     setExposure(value) {
-      renderer.toneMappingExposure = value;
+      exposureBias = value;
+      meter.setBias(value);
+      renderer.toneMappingExposure = exposureBias * autoFactor;
+    },
+    /**
+     * Auto exposure on/off; `onReading(bytes)` receives each meter result
+     * (autoExposure.js meterFrame), a few frames late.
+     */
+    setAutoExposure(enabled, onReading) {
+      meter.enabled = enabled;
+      meter.onReading = onReading;
+    },
+    /** True when the async readback is unavailable: auto exposure cannot run. */
+    autoExposureFailed() {
+      return meter.failed;
+    },
+    setAutoExposureFactor(factor) {
+      autoFactor = factor;
+      renderer.toneMappingExposure = exposureBias * autoFactor;
     },
     /** Time each pass with a GPU timer (see gpuTimer.js). */
     attachTimer(timer) {
@@ -130,6 +157,7 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       bloom.dispose();
       flare.dispose();
       blackHole.dispose();
+      meter.dispose();
       cinematic.dispose();
       composer.dispose();
     },

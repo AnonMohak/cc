@@ -34,6 +34,7 @@ import { createFlyControls } from './core/flyControls.js';
 import { universeBounds, LAYOUTS } from './state/universe.js';
 import { catalogueViewDirection } from './galaxy/catalogue.js';
 import { bandFor, nextBand } from './galaxy/bands.js';
+import { meterFrame, targetFactor, adapt } from './core/autoExposure.js';
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -238,12 +239,32 @@ export function startApp(container, { startScreen } = {}) {
     starfield.setBandTint(...skyTint.map((c) => c * fieldGain));
   }
 
+  // Auto exposure: the meter sets a target; the loop eases toward it.
+  let autoFactor = 1;
+  let autoTarget = 1;
+  function onExposureReading(bytes) {
+    const { autoExposure, exposure } = store.getState().settings;
+    if (!autoExposure) return;
+    autoTarget = targetFactor(meterFrame(bytes), exposure);
+    // The reading can land after the gate went idle: wake it to adapt.
+    if (autoTarget !== autoFactor) gate.invalidate();
+  }
+  function applyAutoExposure(on) {
+    post.setAutoExposure(on, onExposureReading);
+    if (!on) {
+      // Fully manual again, at once.
+      autoFactor = autoTarget = 1;
+      post.setAutoExposureFactor(1);
+    }
+  }
+
   function applySettings(settings) {
     loop.setPaused(settings.paused);
     loop.setTimeScale(settings.timeScale);
     if (cameraMode !== 'tour') controls.autoRotate = settings.autoRotate;
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
+    applyAutoExposure(settings.autoExposure);
     post.setFlare(settings.flare);
     sky.setVisible(settings.sky);
     applyBand(settings.band);
@@ -276,6 +297,12 @@ export function startApp(container, { startScreen } = {}) {
     galaxies.updateCamera(camera, container.clientWidth, container.clientHeight);
     starfield.update(camera.position);
     sky.update(camera.position);
+    // Real time: it adapts while the simulation is paused, too.
+    if (post.autoExposureFailed()) autoTarget = 1;
+    if (autoFactor !== autoTarget) {
+      autoFactor = adapt(autoFactor, autoTarget, realDt);
+      post.setAutoExposureFactor(autoFactor);
+    }
   });
   if (new URLSearchParams(window.location.search).has('fps')) {
     const gl = renderer.getContext();
@@ -285,6 +312,7 @@ export function startApp(container, { startScreen } = {}) {
     const meter = createFpsMeter(container, undefined, () => [
       gpu,
       `quality ${store.getState().settings.quality} → ${currentTier}`,
+      `exposure ×${autoFactor.toFixed(2)}${post.autoExposureFailed() ? ' (auto unavailable)' : ''}`,
       timer.supported ? formatTimings(timer.results()) : 'GPU timings unavailable',
     ]);
     loop.onTick(() => {
@@ -326,6 +354,7 @@ export function startApp(container, { startScreen } = {}) {
       cameraMode !== 'orbit' ||
       controls.autoRotate ||
       galaxies.isEasing() ||
+      autoFactor !== autoTarget ||
       video.isRecording() ||
       gif.isCapturing();
     const now = performance.now();

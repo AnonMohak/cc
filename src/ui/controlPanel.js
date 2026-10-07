@@ -325,6 +325,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .add(settingsProxy, 'exposure', SETTINGS_LIMITS.exposure.min, SETTINGS_LIMITS.exposure.max, SETTINGS_LIMITS.exposure.step)
     .name('Exposure')
     .onChange((v) => setting({ exposure: v }));
+  settingsFolder.add(settingsProxy, 'autoExposure').name('Auto exposure').onChange((v) => setting({ autoExposure: v }));
   settingsFolder
     .add(settingsProxy, 'timeScale', SETTINGS_LIMITS.timeScale.min, SETTINGS_LIMITS.timeScale.max, SETTINGS_LIMITS.timeScale.step)
     .name('Time scale')

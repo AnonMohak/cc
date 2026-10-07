@@ -39,6 +39,7 @@ export const DEFAULT_SETTINGS = {
   // 'auto' lets the governor pick a tier; or a fixed tier (core/quality.js).
   quality: 'auto',
   exposure: 1,
+  autoExposure: true, // darken bright scenes (core/autoExposure.js); exposure is then the bias
   sky: true, // Milky Way background (scene/sky.js)
   supernovae: true, // flashes in every galaxy (galaxy/supernovae.js)
   spikes: 'jwst', // diffraction spikes: 'jwst' | 'hubble' | 'off'
@@ -75,7 +76,7 @@ export function canAddGalaxy(state, count) {
 export function clampSettings(settings) {
   const src = settings && typeof settings === 'object' ? settings : {};
   const out = { ...DEFAULT_SETTINGS };
-  for (const key of ['paused', 'autoRotate', 'dust', 'sky', 'supernovae', 'labels', 'minimap', 'scaleBar']) {
+  for (const key of ['paused', 'autoRotate', 'dust', 'sky', 'supernovae', 'labels', 'minimap', 'scaleBar', 'autoExposure']) {
     if (typeof src[key] === 'boolean') out[key] = src[key];
   }
   if (QUALITY_OPTIONS.includes(src.quality)) out.quality = src.quality;
