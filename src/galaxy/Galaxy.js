@@ -17,7 +17,6 @@ import { approach } from './emphasis.js';
 import { LAYERS } from '../core/layers.js';
 import { screenFootprint, adaptiveSteps, starLod } from './lod.js';
 import { createDiscMapTexture } from './discMap.js';
-import { createDofProxy } from './dofProxy.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 // Stars move on orbits up to a·(1 + e) and the halo reaches 1.4; one fixed
@@ -132,10 +131,7 @@ export class Galaxy {
     this.jets.layers.set(LAYERS.JETS);
     this.rsUnit = 0;
 
-    // Depth-of-field stand-in (shared geometry and material: nothing to dispose).
-    this.dofProxy = createDofProxy(this.standalone);
-
-    this.group.add(this.volume, this.stars, this.hii, this.supernovae, this.jets, this.dofProxy);
+    this.group.add(this.volume, this.stars, this.hii, this.supernovae, this.jets);
 
     this.phase = 0;
     this.speed = 0;
@@ -319,9 +315,6 @@ export class Galaxy {
     // Jets reach well past the disc, out of the star cloud.
     this.uniforms.uJetLength.value = Math.min(2, this.rsUnit * 60);
     this.uniforms.uJetDiscOuter.value = this.hole.discSize;
-    // Depth-of-field stand-in: just past the disc, so the sparse star cloud
-    // around it does not keep a wide patch of background sharp.
-    this.dofProxy?.scale.setScalar(Math.min(1, this.rsUnit * this.hole.discSize * 1.4));
     this.updateJets();
   }
 

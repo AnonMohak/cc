@@ -11,7 +11,7 @@ import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
 import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
-import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled, dofEnabled } from './core/quality.js';
+import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createRenderGate } from './core/renderGate.js';
 import { createActions } from './state/actions.js';
@@ -30,7 +30,6 @@ import { createFpsMeter } from './ui/fpsMeter.js';
 import { createGpuTimer, formatTimings, gpuName } from './core/gpuTimer.js';
 import { createInfoCard } from './ui/infoCard.js';
 import { createFallOverlay } from './ui/fallOverlay.js';
-import { easeFocus } from './core/dof.js';
 import { createWakeLock } from './ui/wakeLock.js';
 import { createSoundscape } from './audio/soundscape.js';
 import { createHud } from './ui/hud.js';
@@ -55,9 +54,6 @@ const _fallE1 = new THREE.Vector3();
 const _fallE2 = new THREE.Vector3();
 const _fallOffset = new THREE.Vector3();
 const _fallLook = new THREE.Vector3();
-// Depth-of-field focus scratch (no per-frame allocation).
-const _focusForward = new THREE.Vector3();
-const _focusPoint = new THREE.Vector3();
 
 /** The intro scene: exactly one standalone black hole (film shot + intro fall). */
 function isSingleBlackHole(state) {
@@ -198,12 +194,9 @@ export function startApp(container, { startScreen } = {}) {
   post.setBlackHoles((slots) => galaxies.blackHoleCandidates(slots), true);
   post.setJetSource(() => galaxies.hasVisibleJets());
 
-  let dofOn = false;
   function applyCinematic() {
     const settings = store.getState().settings;
     post.setCinematic(settings, cinematicEnabled(settings, currentTier));
-    dofOn = dofEnabled(settings.dof, currentTier);
-    post.setDof(settings.dof, dofOn);
   }
 
   function applySpikes() {
@@ -435,20 +428,6 @@ export function startApp(container, { startScreen } = {}) {
     window.addEventListener('wheel', onInput, { capture: true, passive: false });
   }
 
-  // Depth of field: focus on the selected object (else the orbit target), as
-  // a view depth to match the proxies, with a smooth focus pull.
-  let focus = 0;
-  let focusTarget = 0;
-  function updateFocus(realDt) {
-    const selected = galaxies.get(store.getState().selectedId);
-    if (selected) selected.group.getWorldPosition(_focusPoint);
-    else _focusPoint.copy(controls.target);
-    camera.getWorldDirection(_focusForward);
-    focusTarget = Math.max(_focusPoint.sub(camera.position).dot(_focusForward), CAMERA_LIMITS.near);
-    focus = easeFocus(focus, focusTarget, realDt);
-    post.setDofFocus(focus);
-  }
-
   let currentBand = null;
   function applyBand(name) {
     if (name === currentBand) return;
@@ -537,7 +516,6 @@ export function startApp(container, { startScreen } = {}) {
     else if (cameraMode === 'fall') updateFallCamera(realDt, fallU);
     else controls.update();
     galaxies.updateCamera(camera, container.clientWidth, container.clientHeight);
-    if (dofOn) updateFocus(realDt);
     starfield.update(camera.position);
     sky.update(camera.position);
     // Real time: it adapts while the simulation is paused, too.
@@ -596,7 +574,6 @@ export function startApp(container, { startScreen } = {}) {
       cameraFly.isFlying() ||
       cameraMode !== 'orbit' ||
       fovEase !== null ||
-      (dofOn && focus !== focusTarget) ||
       controls.autoRotate ||
       galaxies.isEasing() ||
       autoFactor !== autoTarget ||
