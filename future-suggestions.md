@@ -21,3 +21,7 @@ Ideas to make Galaxy Sandbox more feature-rich and better looking. None of these
 
 - **WebGPU / TSL renderer** with compute shaders: more stars and faster volumes.
 - **WebXR / VR mode** to stand inside a galaxy.
+
+## Notes
+
+- **Depth of field: small sharp ring around a focused black hole.** The background just around the disc stays sharp, and it is visible against the blurred stars, together with a short sharp piece of the horizontal lens streak. Cause: the black hole's depth stand-in (`galaxy/dofProxy.js`, a sphere just past the disc) gives every pixel inside it the hole's focus distance, including the background seen through it. Possible fixes: give pixels inside the stand-in but outside the disc and rings the background depth (`DOF_FAR`), or blur the lens streak in `BlackHolePass` instead of letting it inherit the hole's depth.
