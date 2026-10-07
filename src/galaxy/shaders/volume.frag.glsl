@@ -26,6 +26,13 @@ uniform float uDiscHalfHeight;
 uniform float uDiscRadius;
 uniform vec3 uBulgeRadii;
 uniform float uStepLength;
+// Wavelength band (bands.js); uBandDustPass is in stars.glsl.
+uniform float uBandDiscGain;
+uniform float uBandDiscFalloff; // > 0: disc light × exp(−R / falloff) (X-ray hot inner gas)
+uniform float uBandBulgeGain;
+uniform mat3 uBandLightColor;
+uniform vec3 uBandGasColor;
+uniform float uBandGasHole;
 
 varying vec3 vUnitPos;
 
@@ -126,14 +133,16 @@ void main() {
   vec3 bbOld = gm_blackbody(5200.0);
   vec3 bbYoung = gm_blackbody(11000.0);
   vec3 lumaW = vec3(0.2126, 0.7152, 0.0722);
-  vec3 bulgeColor = physicalTint(bbBulge, dot(bbBulge, lumaW), 0.0);
+  vec3 bulgeColor = physicalTint(bbBulge, dot(bbBulge, lumaW), 0.0) * uBandBulgeGain;
   float lumaOld = dot(bbOld, lumaW);
   float lumaYoung = dot(bbYoung, lumaW);
   float zd = uDiscThickness * DUST_HEIGHT_RATIO;
-  float dustScale = DUST_K * uDustStrength * uVolumeDust / zd;
+  float dustScale = DUST_K * uDustStrength * uVolumeDust * uBandDustPass / zd;
+  bool gasGlows = dot(uBandGasColor, vec3(1.0)) > 0.0;
 
   vec3 L = vec3(0.0);
   vec3 T = vec3(1.0);
+  float G = 0.0; // light emitted by the dust/gas itself (IR, radio), grey
 
   for (int i = 0; i < MAX_STEPS; i++) {
     if (float(i) >= steps) break;
@@ -146,7 +155,8 @@ void main() {
 
     // Vertical profile: sech², flaring outward.
     float z0 = uDiscThickness * (1.0 + 0.6 * R) * 1.4;
-    float plane = disc.r * sech2(p.y / z0) / z0 * 0.05;
+    float plane = disc.r * sech2(p.y / z0) / z0 * 0.05 * uBandDiscGain;
+    if (uBandDiscFalloff > 0.0) plane *= exp(-R / uBandDiscFalloff);
     plane *= mix(1.0, 0.25 + 1.5 * noise.r, uFlocculence);
 
     // Bulge: flattened Sérsic.
@@ -164,7 +174,13 @@ void main() {
     vec3 emission = (bulge * bulgeColor + plane * discColor) * window;
 
     // Dust: thin slab, filamentary.
-    float dust = dustScale * disc.b * exp(-abs(p.y) / zd) * mix(1.0, gm_smoothstep(0.35, 0.75, noise.g) * 1.8, 0.75);
+    float dustDensity = disc.b * exp(-abs(p.y) / zd) * mix(1.0, gm_smoothstep(0.35, 0.75, noise.g) * 1.8, 0.75);
+    float dust = dustScale * dustDensity;
+    if (gasGlows) {
+      // Gas is densest (and dust warmest) where the arms compress it.
+      float hole = uBandGasHole > 0.0 ? gm_smoothstep(0.4 * uBandGasHole, uBandGasHole, R) : 1.0;
+      G += dot(T, lumaW) * dustDensity * (0.5 + disc.g) * hole * window * dt;
+    }
 
     // Euler step with reddening: blue is absorbed more than red.
     vec3 trans = exp(-dust * dt * vec3(0.75, 1.0, 1.3));
@@ -176,7 +192,8 @@ void main() {
   }
 
   float alpha = dot(T, vec3(0.2126, 0.7152, 0.0722));
-  gl_FragColor = vec4(L * uGlow * uBrightness * uEmphasis, alpha);
+  vec3 light = uBandLightColor * L + uBandGasColor * G;
+  gl_FragColor = vec4(light * uGlow * uBrightness * uEmphasis, alpha);
 
   #include <colorspace_fragment>
 }

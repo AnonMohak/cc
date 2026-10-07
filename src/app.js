@@ -33,6 +33,7 @@ import { createTour } from './core/tour.js';
 import { createFlyControls } from './core/flyControls.js';
 import { universeBounds, LAYOUTS } from './state/universe.js';
 import { catalogueViewDirection } from './galaxy/catalogue.js';
+import { bandFor, nextBand } from './galaxy/bands.js';
 
 const SAVE_DEBOUNCE_MS = 500;
 
@@ -218,6 +219,16 @@ export function startApp(container, { startScreen } = {}) {
     cameraFly.flyTo(center, position, seconds);
   }
 
+  let currentBand = null;
+  function applyBand(name) {
+    if (name === currentBand) return;
+    currentBand = name;
+    const { skyTint, fieldGain } = bandFor(name);
+    galaxies.setBand(name);
+    sky.setBandTint(...skyTint);
+    starfield.setBandTint(...skyTint.map((c) => c * fieldGain));
+  }
+
   function applySettings(settings) {
     loop.setPaused(settings.paused);
     loop.setTimeScale(settings.timeScale);
@@ -226,6 +237,7 @@ export function startApp(container, { startScreen } = {}) {
     post.setExposure(settings.exposure);
     post.setFlare(settings.flare);
     sky.setVisible(settings.sky);
+    applyBand(settings.band);
     if (currentTier) {
       applySpikes();
       applyCinematic();
@@ -359,6 +371,11 @@ export function startApp(container, { startScreen } = {}) {
     deselect() {
       if (cameraMode !== 'orbit') setCameraMode('orbit');
       else store.dispatch(actions.selectGalaxy(null));
+    },
+    nextBand() {
+      const band = nextBand(store.getState().settings.band);
+      store.dispatch(actions.updateSettings({ band }));
+      showToast(container, `View: ${bandFor(band).label}`);
     },
     toggleFly: () => setCameraMode(cameraMode === 'fly' ? 'orbit' : 'fly'),
     toggleTour: () => setCameraMode(cameraMode === 'tour' ? 'orbit' : 'tour'),

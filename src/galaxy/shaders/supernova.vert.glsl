@@ -41,5 +41,5 @@ void main() {
   vSizePx = uSpikeStyle > 0.5 ? vCorePx * 4.0 : vCorePx;
   gl_PointSize = l > 0.0 ? vSizePx : 0.0;
   // Hot blue-white, dimmed and reddened by the galaxy's own dust.
-  vColor = vec3(0.75, 0.85, 1.0) * l * PEAK * uBrightness * uEmphasis * gs_extinction(gs_dustTau(p));
+  vColor = vec3(0.75, 0.85, 1.0) * l * PEAK * uBandSnGain * uBrightness * uEmphasis * gs_extinction(gs_dustTau(p));
 }

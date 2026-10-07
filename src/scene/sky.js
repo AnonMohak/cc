@@ -15,12 +15,13 @@ const vertexShader = /* glsl */ `
 const fragmentShader = /* glsl */ `
   uniform sampler2D uSky;
   uniform float uIntensity;
+  uniform vec3 uBandTint;
   varying vec3 vDir;
   const float PI = 3.14159265;
   void main() {
     vec3 d = normalize(vDir);
     vec2 uv = vec2(atan(d.z, d.x) / (2.0 * PI) + 0.5, 0.5 - asin(clamp(d.y, -1.0, 1.0)) / PI);
-    vec3 c = texture2D(uSky, uv).rgb * uIntensity;
+    vec3 c = texture2D(uSky, uv).rgb * uIntensity * uBandTint;
     // Dither: the faint gradients would band in the 8-bit output.
     float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
     gl_FragColor = vec4(c * (1.0 + (n - 0.5) * 0.12), 1.0);
@@ -44,6 +45,7 @@ export function createSky({ onReady, radius = 500 } = {}) {
     uniforms: {
       uSky: { value: null },
       uIntensity: { value: SKY_INTENSITY * SKY_MAP_SCALE },
+      uBandTint: { value: new THREE.Color(1, 1, 1) },
     },
     side: THREE.BackSide,
     blending: THREE.AdditiveBlending,
@@ -108,6 +110,10 @@ export function createSky({ onReady, radius = 500 } = {}) {
     /** @param {THREE.Vector3} cameraPosition */
     update(cameraPosition) {
       mesh.position.copy(cameraPosition);
+    },
+    /** Tint for the wavelength band (bands.js skyTint). */
+    setBandTint(r, g, b) {
+      material.uniforms.uBandTint.value.setRGB(r, g, b);
     },
     setVisible(visible) {
       wanted = visible;

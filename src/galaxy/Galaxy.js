@@ -7,6 +7,7 @@ import { volumeBounds, marchBounds } from './densityModel.js';
 import { clampShape, clampStructure } from './params.js';
 import {
   createGalaxyUniforms,
+  applyBandUniforms,
   applyShapeUniforms,
   applyStructureUniforms,
   applyLookUniforms,
@@ -229,6 +230,11 @@ export class Galaxy {
   /** Diffraction spike style for the supernova flashes (0 off, 1 Hubble, 2 JWST). */
   setSpikeStyle(style) {
     this.uniforms.uSpikeStyle.value = style;
+  }
+
+  /** Settings → View (wavelength band, see bands.js). */
+  setBand(name) {
+    applyBandUniforms(this.uniforms, name);
   }
 
   /** Settings → Supernovae. */

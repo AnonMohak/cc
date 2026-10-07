@@ -17,12 +17,13 @@ const vertexShader = /* glsl */ `
 `;
 
 const fragmentShader = /* glsl */ `
+  uniform vec3 uBandTint;
   varying vec3 vColor;
   void main() {
     float d = length(gl_PointCoord - 0.5) * 2.0;
     if (d > 1.0) discard;
     float a = pow(1.0 - d, 1.6);
-    gl_FragColor = vec4(vColor * a, 1.0);
+    gl_FragColor = vec4(vColor * uBandTint * a, 1.0);
   }
 `;
 
@@ -44,13 +45,14 @@ const spikeVertexShader = /* glsl */ `
 
 const spikeFragmentShader = /* glsl */ `
   uniform float uSpikeStyle;
+  uniform vec3 uBandTint;
   varying vec3 vColor;
   varying float vSizePx;
   ${spikesChunk}
   void main() {
     float a = gk_spikes(gl_PointCoord, vSizePx, uSpikeStyle);
     if (a <= 0.003) discard;
-    gl_FragColor = vec4(vColor * a * 0.55, 1.0);
+    gl_FragColor = vec4(vColor * uBandTint * a * 0.55, 1.0);
   }
 `;
 
@@ -106,7 +108,7 @@ export function createStarfield({ count = 8000, radius = 900, seed = 1337, pixel
   const material = new THREE.ShaderMaterial({
     vertexShader,
     fragmentShader,
-    uniforms: { uPixelRatio: { value: pixelRatio } },
+    uniforms: { uPixelRatio: { value: pixelRatio }, uBandTint: { value: new THREE.Color(1, 1, 1) } },
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     transparent: true,
@@ -135,7 +137,7 @@ export function createStarfield({ count = 8000, radius = 900, seed = 1337, pixel
   const spikeMaterial = new THREE.ShaderMaterial({
     vertexShader: spikeVertexShader,
     fragmentShader: spikeFragmentShader,
-    uniforms: { uPixelRatio: material.uniforms.uPixelRatio, uSpikeStyle: { value: 0 } },
+    uniforms: { uPixelRatio: material.uniforms.uPixelRatio, uSpikeStyle: { value: 0 }, uBandTint: material.uniforms.uBandTint },
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     transparent: true,
@@ -164,6 +166,10 @@ export function createStarfield({ count = 8000, radius = 900, seed = 1337, pixel
     setSpikeStyle(style) {
       spikeMaterial.uniforms.uSpikeStyle.value = style;
       spikes.visible = style > 0;
+    },
+    /** Field-star colour × gain for the wavelength band (bands.js skyTint × fieldGain). */
+    setBandTint(r, g, b) {
+      material.uniforms.uBandTint.value.setRGB(r, g, b);
     },
     spikes,
     dispose() {

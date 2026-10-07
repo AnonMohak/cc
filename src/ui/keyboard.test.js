@@ -72,6 +72,13 @@ describe('camera mode shortcuts', () => {
   });
 });
 
+describe('view mode shortcut', () => {
+  it('maps V to the next wavelength band', () => {
+    expect(keyToCommand({ key: 'v' })).toBe('nextBand');
+    expect(keyToCommand({ key: 'V' })).toBe('nextBand');
+  });
+});
+
 describe('recording shortcut', () => {
   it('maps R to video recording', () => {
     expect(keyToCommand({ key: 'r' })).toBe('toggleVideo');

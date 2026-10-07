@@ -6,6 +6,7 @@ import { canAddGalaxy, totalParticles, SETTINGS_LIMITS } from '../state/store.js
 import { QUALITY, QUALITY_OPTIONS } from '../core/quality.js';
 import { LAYOUTS } from '../state/universe.js';
 import { debounce } from '../util/debounce.js';
+import { BAND_OPTIONS, BANDS } from '../galaxy/bands.js';
 import { formatCount } from '../util/formatCount.js';
 
 const LABELS = {
@@ -312,6 +313,10 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .add(settingsProxy, 'quality', Object.fromEntries(QUALITY_OPTIONS.map((k) => [k === 'auto' ? 'Auto (adapts to your device)' : QUALITY[k].label, k])))
     .name('Quality')
     .onChange((v) => setting({ quality: v }));
+  settingsFolder
+    .add(settingsProxy, 'band', Object.fromEntries(BAND_OPTIONS.map((k) => [BANDS[k].label, k])))
+    .name('View (V)')
+    .onChange((v) => setting({ band: v }));
   const tierProxy = { active: '' };
   const tierController = settingsFolder.add(tierProxy, 'active').name('Active tier').disable();
   settingsFolder
@@ -360,7 +365,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   };
   if (onReset) settingsFolder.add(sceneActions, 'reset').name('↺ Reset scene');
   const help = settingsFolder.addFolder('Keyboard').close();
-  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot', 'Ctrl+Z': 'undo', 'Ctrl+Shift+Z': 'redo', T: 'guided tour', G: 'free-fly', R: 'record video' };
+  const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot', 'Ctrl+Z': 'undo', 'Ctrl+Shift+Z': 'redo', T: 'guided tour', G: 'free-fly', R: 'record video', V: 'next view (wavelength)' };
   for (const [key, text] of Object.entries(keys)) help.add({ [key]: text }, key).disable();
 
   // ── Store wiring ─────────────────────────────────────────────────────

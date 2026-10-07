@@ -169,6 +169,11 @@ describe('reducer: settings and scene', () => {
     expect(clampSettings({}).aberration).toBe(DEFAULT_SETTINGS.aberration);
   });
 
+  it('keeps a known wavelength band and falls back to visible', () => {
+    expect(clampSettings({ band: 'radio' }).band).toBe('radio');
+    expect(clampSettings({ band: 'gamma' }).band).toBe('visible');
+  });
+
   it('reset clears galaxies but keeps settings', () => {
     const { store, actions, add } = setup();
     add();

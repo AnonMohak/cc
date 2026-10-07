@@ -14,6 +14,13 @@ uniform float uDiscScale;
 uniform float uDiscThickness;
 uniform float uBulgeSize;
 uniform vec3 uCameraLocal;
+// Wavelength band (bands.js); visible = 1 / identity / 0 everywhere.
+uniform float uBandDustPass;
+uniform float uBandStarGain;
+uniform float uBandStarKeep;
+uniform mat3 uBandStarColor;
+uniform float uBandHiiGain;
+uniform float uBandSnGain;
 
 // Kinds, see generateGalaxy.js KIND.
 #define KIND_DISC 0.5
@@ -76,12 +83,12 @@ vec4 gs_discMap(vec2 xz) {
 
 // Optical depth from a point to the camera through the galaxy's dust slab.
 float gs_dustTau(vec3 p) {
-  if (uDustStrength <= 0.0) return 0.0;
+  if (uDustStrength * uBandDustPass <= 0.0) return 0.0;
   vec3 toCam = uCameraLocal - p;
   float side = toCam.y >= 0.0 ? 1.0 : -1.0;
   float col = gm_dustColumn(p.y, side, uDiscThickness * DUST_HEIGHT_RATIO);
   float cosI = abs(toCam.y) / max(length(toCam), 1e-4);
-  return DUST_KAPPA * uDustStrength * gs_discMap(p.xz).b * col / max(cosI, 0.08);
+  return DUST_KAPPA * uDustStrength * uBandDustPass * gs_discMap(p.xz).b * col / max(cosI, 0.08);
 }
 
 // Dust reddens: blue light is absorbed more than red.

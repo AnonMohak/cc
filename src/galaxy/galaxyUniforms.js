@@ -1,13 +1,14 @@
 import * as THREE from 'three';
 import { clampShape, clampStructure, clampLook, clampMotion } from './params.js';
 import { getNoiseTexture } from './noiseTexture.js';
+import { bandFor } from './bands.js';
 
 /**
  * One uniform set per galaxy, shared BY REFERENCE between the star, H II and
  * volume materials, so a single write updates every layer.
  */
 export function createGalaxyUniforms() {
-  return {
+  const u = {
     // Motion
     uPhase: { value: 0 },
     uSnTime: { value: 0 }, // galaxy simulation time, for supernova flashes
@@ -55,7 +56,43 @@ export function createGalaxyUniforms() {
     uSteps: { value: 48 },
     uVolumeDust: { value: 1 },
     uMaxPointPx: { value: 14 },
+    // Wavelength band (bands.js; applyBandUniforms)
+    uBandDustPass: { value: 1 },
+    uBandStarGain: { value: 1 },
+    uBandStarKeep: { value: 1 },
+    uBandStarColor: { value: new THREE.Matrix3() },
+    uBandHiiGain: { value: 1 },
+    uBandHiiColor: { value: new THREE.Color() },
+    uBandHiiCore: { value: new THREE.Color() },
+    uBandSnGain: { value: 1 },
+    uBandDiscGain: { value: 1 },
+    uBandDiscFalloff: { value: 0 },
+    uBandBulgeGain: { value: 1 },
+    uBandLightColor: { value: new THREE.Matrix3() },
+    uBandGasColor: { value: new THREE.Color(0, 0, 0) },
+    uBandGasHole: { value: 0 },
   };
+  applyBandUniforms(u, 'visible');
+  return u;
+}
+
+/** @param {string} name settings.band (unknown → visible) */
+export function applyBandUniforms(u, name) {
+  const b = bandFor(name);
+  u.uBandDustPass.value = b.dustPass;
+  u.uBandStarGain.value = b.starGain;
+  u.uBandStarKeep.value = b.starKeep;
+  u.uBandStarColor.value.set(...b.starColor);
+  u.uBandHiiGain.value = b.hiiGain;
+  u.uBandHiiColor.value.setRGB(...b.hiiColor);
+  u.uBandHiiCore.value.setRGB(...b.hiiCore);
+  u.uBandSnGain.value = b.snGain;
+  u.uBandDiscGain.value = b.discGain;
+  u.uBandDiscFalloff.value = b.discFalloff;
+  u.uBandBulgeGain.value = b.bulgeGain;
+  u.uBandLightColor.value.set(...b.lightColor);
+  u.uBandGasColor.value.setRGB(...b.gasColor);
+  u.uBandGasHole.value = b.gasHole;
 }
 
 export function applyShapeUniforms(u, shape) {

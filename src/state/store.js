@@ -10,6 +10,7 @@ import {
 import { PRESETS } from '../galaxy/presets.js';
 import { CATALOGUE } from '../galaxy/catalogue.js';
 import { QUALITY_OPTIONS, SPIKE_OPTIONS } from '../core/quality.js';
+import { BAND_OPTIONS } from '../galaxy/bands.js';
 
 // v2: density-wave renderer (structure group, new shape keys, quality/exposure).
 export const STATE_VERSION = 2;
@@ -44,6 +45,7 @@ export const DEFAULT_SETTINGS = {
   grain: 0.1,
   aberration: 0.15,
   flare: 0.5,
+  band: 'visible', // wavelength view mode (galaxy/bands.js)
   // HUD
   labels: false,
   minimap: true,
@@ -76,6 +78,7 @@ export function clampSettings(settings) {
   }
   if (QUALITY_OPTIONS.includes(src.quality)) out.quality = src.quality;
   if (SPIKE_OPTIONS.includes(src.spikes)) out.spikes = src.spikes;
+  if (BAND_OPTIONS.includes(src.band)) out.band = src.band;
   for (const [key, limit] of Object.entries(SETTINGS_LIMITS)) {
     const n = Number(src[key]);
     if (src[key] !== null && src[key] !== '' && Number.isFinite(n)) {

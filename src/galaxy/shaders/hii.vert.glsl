@@ -26,6 +26,6 @@ void main() {
 
   float size = aSize * onArm * uSize * uScale * uPixelRatio * POINT_SCALE / max(-mvPosition.z, 0.001);
   gl_PointSize = clamp(size, 0.0, 3.0 * uMaxPointPx * uPixelRatio);
-  vGlow = onArm * uBrightness * uEmphasis * uLodGain * clamp(size, 0.0, 1.0);
+  vGlow = onArm * uBandHiiGain * uBrightness * uEmphasis * uLodGain * clamp(size, 0.0, 1.0);
   vExtinction = gs_extinction(gs_dustTau(p));
 }
