@@ -63,6 +63,120 @@ canvas {
   border-radius: 12px;
 }
 
+/* Root title is a label, not a collapse toggle (ui/panelToggle.js). The
+   doubled class beats lil-gui's own sheet, which loads after this one. */
+.lil-gui.lil-root > .lil-title.lil-title {
+  cursor: default;
+  padding-right: 84px; /* room for the Hide button */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0; /* overflow: hidden would let the flex column squash it */
+}
+
+.lil-gui.lil-root > .lil-title.lil-title::before {
+  content: none;
+}
+
+/* Controls button (panel hidden) and Hide button (in the title bar): the same
+   glass and type as the panel title. */
+.panel-open,
+.lil-gui .panel-hide {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #eef2ff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.panel-open {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  /* lil-gui places the panel at right: 15px, plus its 8px margin. */
+  right: calc(23px + env(safe-area-inset-right, 0px));
+  z-index: 1001;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid rgba(160, 180, 255, 0.16);
+  border-radius: 12px;
+  background: rgba(12, 15, 32, 0.55);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+/* Scoped under .lil-gui: lil-gui's `.lil-gui button` rule would win otherwise. */
+.lil-gui .panel-hide {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: auto; /* lil-gui makes buttons inside the panel full width */
+  height: var(--title-height);
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0 12px 0 8px;
+  background: transparent;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(223, 230, 255, 0.75);
+}
+
+.panel-open:hover,
+.lil-gui .panel-hide:hover {
+  background-color: rgba(160, 180, 255, 0.18);
+  color: #eef2ff;
+}
+
+.panel-open:focus-visible,
+.lil-gui .panel-hide:focus-visible {
+  outline: 2px solid rgba(160, 180, 255, 0.6);
+  outline-offset: -2px;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .panel-open {
+    background: rgba(12, 15, 32, 0.9);
+  }
+}
+
+/* Fade both ways; visibility switches after the fade, so hidden elements
+   take no clicks or focus. */
+.lil-gui.lil-root,
+.panel-open {
+  transition: opacity 150ms ease, visibility 0s linear 0s;
+}
+
+.lil-gui.lil-root.panel-hidden,
+.panel-open.panel-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 150ms ease, visibility 0s linear 150ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lil-gui.lil-root,
+  .panel-open,
+  .lil-gui.lil-root.panel-hidden,
+  .panel-open.panel-hidden {
+    transition: none;
+  }
+}
+
+/* Touch: easy to hit. */
+@media (pointer: coarse) {
+  .panel-open {
+    min-height: 38px;
+    padding: 0 16px;
+  }
+  .lil-gui .panel-hide {
+    padding: 0 14px;
+  }
+}
+
 /* Phones: a narrow panel that leaves most of the scene visible. */
 @media (max-width: 640px) {
   .lil-gui.lil-root {

@@ -14,7 +14,3 @@ Ideas to make Galaxy Sandbox more feature-rich and better looking. None of these
 
 - **WebGPU / TSL renderer** with compute shaders: more stars and faster volumes.
 - **WebXR / VR mode** to stand inside a galaxy.
-
-## Notes
-
-- lil gui button mobile

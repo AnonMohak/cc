@@ -38,8 +38,9 @@ Additional:
 - **HUD** (`ui/hud.js`, math in `ui/hudMath.js`): clickable galaxy name labels, a light-year scale bar (1 world unit = 9,000 ly, `LY_PER_WORLD_UNIT`) and a top-down minimap (click a galaxy to fly to it). Each part toggles in Settings → HUD; labels start off.
 - **Undo / redo** (`state/history.js`): galaxy changes only (not selection or settings); bursts within 400 ms are one step. Ctrl/Cmd+Z, Ctrl+Shift+Z, Ctrl+Y, and panel buttons.
 - **Camera modes** (app.js `setCameraMode`): orbit (default); free-fly (`core/flyControls.js`: WASD, Q/E, Shift, drag to look; OrbitControls disabled, target handed back on exit); guided tour (`core/tour.js` pure state machine: fly to each galaxy, then orbit; any drag/scroll or Esc stops). Focus always returns to orbit.
-- **Keyboard**: Space pause · N add · F focus · Delete remove · Esc leave camera mode / deselect · H hide panel · P screenshot · R record video · T tour · G free-fly · V next view mode · Ctrl+Z / Ctrl+Shift+Z undo/redo (`ui/keyboard.js`).
+- **Keyboard**: Space pause · N add · F focus · Delete remove · Esc leave camera mode / deselect · H show/hide panel · P screenshot · R record video · T tour · G free-fly · V next view mode · Ctrl+Z / Ctrl+Shift+Z undo/redo (`ui/keyboard.js`).
 - **Start box** (`index.html` + `ui/startScreen.js`): static HTML with inline CSS, so the first paint is dark and styled before the JS loads. It blurs the live scene (`backdrop-filter`), shows touch or mouse controls via `(pointer: coarse)`, and says "Loading…" until the first frame renders, then "Click/Tap anywhere to start". On every load. While open it swallows pointer and key input (window capture listener), so the start click never selects/orbits and Space never pauses; Auto quality skips those frames (the blur costs GPU). Removed from the DOM after a 0.3 s fade.
+- **Panel visibility** (`ui/panelToggle.js`): the lil-gui panel starts hidden on every load (desktop and phone) behind a "Controls" button in the top-right corner; "Hide ✕" in the panel title bar (a separate absolutely-positioned button: the title is itself a `<button>`) puts it away. H toggles the same state. The root title no longer collapses (`gui.openAnimated` is a no-op). Both fade with opacity + visibility (150 ms, none with reduced motion); the hidden one is `inert`. UI state only, never saved. Hide-button CSS is scoped under `.lil-gui` because lil-gui's `.lil-gui button` rule loads later and would win.
 - **Look**: UI font JetBrains Mono (`public/fonts/`, Latin woff2 400/600, OFL), `--mono` in `index.html`. The lil-gui panel is translucent glass (`style.css`); on phones it is 220 px wide and its width comes from CSS, not the GUI `width` option (inline wins).
 - **Robustness**: a notice when WebGL 2 is missing; WebGL context loss pauses and restores.
 
@@ -134,6 +135,7 @@ src/
 ├── util/gif.js               # PURE GIF89a encoder (palette, dither, LZW)
 └── ui/
     ├── controlPanel.js      # lil-gui: Scene / Selected galaxy / Settings folders; dispatches store actions
+    ├── panelToggle.js       # Controls / Hide buttons: panel hidden by default
     ├── pointerInput.js      # Tap/click select, double-tap focus (pure createTapDetector)
     ├── keyboard.js          # PURE keyToCommand + attachKeyboard
     ├── fpsMeter.js          # ?fps readout (own clock; loop dt is capped)

@@ -8,6 +8,7 @@ import { LAYOUTS } from '../state/universe.js';
 import { debounce } from '../util/debounce.js';
 import { BAND_OPTIONS, BANDS } from '../galaxy/bands.js';
 import { formatCount } from '../util/formatCount.js';
+import { createPanelToggle } from './panelToggle.js';
 
 const LABELS = {
   // Stars (rebuild)
@@ -79,7 +80,8 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   // On phones the width comes from style.css (a narrow panel); an inline
   // width from lil-gui would override it.
   const gui = new GUI({ title: 'Galaxy Sandbox', width: narrow ? undefined : 300 });
-  if (narrow) gui.close();
+  // Hidden behind a "Controls" button until asked for (desktop and phone).
+  const visibility = createPanelToggle(gui);
 
   const dispatch = (action) => store.dispatch(action);
 
@@ -409,11 +411,13 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       tierProxy.active = QUALITY[name]?.label ?? '';
       tierController.updateDisplay();
     },
+    /** H key: open or hide the panel (the Controls / Hide buttons do the same). */
     toggle() {
-      gui.show(gui._hidden);
+      visibility.toggle();
     },
     dispose() {
       unsubscribe();
+      visibility.dispose();
       pendingShape?.cancel();
       gui.destroy();
     },
