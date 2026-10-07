@@ -88,6 +88,9 @@ function buildDrone(ctx, out) {
 export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, win = window, doc = document } = {}) {
   const AudioCtx = win.AudioContext ?? win.webkitAudioContext;
   const hasMusic = Boolean(fallMusicUrl);
+  // True once the track can play; a missing file (404) or a bad URL leaves it
+  // false, and the drone keeps playing through the fall.
+  let musicReady = false;
   let ctx = null;
   let master = null;
   let ambientGain = null;
@@ -110,6 +113,15 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, win = window, 
       music = new Audio();
       music.crossOrigin = 'anonymous';
       music.preload = 'auto';
+      music.addEventListener('canplaythrough', () => {
+        if (musicReady) return;
+        musicReady = true;
+        apply(mode === 'fall' ? MUSIC_FADE_IN : TOGGLE_FADE);
+      });
+      music.addEventListener('error', () => {
+        musicReady = false;
+        apply(TOGGLE_FADE);
+      });
       music.src = fallMusicUrl;
       musicGain = ctx.createGain();
       musicGain.gain.value = 0;
@@ -127,7 +139,7 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, win = window, 
   }
 
   function apply(seconds) {
-    const levels = mixLevels({ enabled, mode, hasMusic });
+    const levels = mixLevels({ enabled, mode, hasMusic: musicReady });
     ramp(ambientGain, levels.ambient, seconds);
     if (musicGain) ramp(musicGain, levels.music, seconds);
   }
@@ -141,6 +153,7 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, win = window, 
 
   return {
     hasMusic,
+    isMusicReady: () => musicReady,
     /** Call from a user gesture (click, tap, key): builds and starts the audio. */
     unlock() {
       if (!AudioCtx) return false;
