@@ -31,7 +31,7 @@ export function deflection(b) {
 }
 
 /**
- * Ray march (High tier, core/BlackHolePass.js): the march sphere radius is
+ * Ray march (Accurate tier, core/BlackHolePass.js): the march sphere radius is
  * the disc outer radius times this, and the integrator step is
  * clamp(MARCH_STEP_K · r, MARCH_STEP_MIN, MARCH_STEP_MAX) (in Rs).
  */

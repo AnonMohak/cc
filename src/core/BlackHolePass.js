@@ -32,7 +32,7 @@ export const MAX_LENSES = 4;
 
 const f = (x) => x.toFixed(4);
 
-/** Ray-march step cap (High tier; QUALITY.*.holeSteps must stay at or below it). */
+/** Ray-march step cap (Accurate tier; QUALITY.*.holeSteps must stay at or below it). */
 export const MAX_HOLE_STEPS = 64;
 
 // Disc look shared by the one-bend shader and the ray march: colours, the
@@ -88,7 +88,7 @@ const DISC_GLSL = /* glsl */ `
   }
 `;
 
-// Ray march for the largest lens on the High tier, at 0.4–0.7 of the screen
+// Ray march for the largest lens on the Accurate tier, at 0.4–0.7 of the screen
 // resolution (blackHole.js marchScaleFor: more for a smaller hole).
 // Each pixel traces its bent ray (velocity Verlet on the photon-orbit
 // equation, mirrored from blackHole.js traceRay) through a thick, flared disc
@@ -263,7 +263,7 @@ const fragmentShader = glsl(
   uniform vec3 uSkyTint;
   uniform float uSkyOn;
   uniform float uStarGain;
-  // High tier: the largest lens (index 0) takes its disc from the ray march
+  // Accurate tier: the largest lens (index 0) takes its disc from the ray march
   // (rgb: disc light, a: transmittance), at a reduced resolution.
   uniform sampler2D tMarch;
   uniform vec2 uMarchTexel;
@@ -638,7 +638,7 @@ export class BlackHolePass extends Pass {
     });
     this.fsQuad = new FullScreenQuad(this.material);
 
-    // High tier ray march (setMarch): its own low-res target and material,
+    // Accurate tier ray march (setMarch): its own low-res target and material,
     // sharing the lens uniforms with the main material by reference.
     this.march = false;
     this.marchScale = MARCH_SCALE_MIN;
@@ -687,7 +687,7 @@ export class BlackHolePass extends Pass {
   }
 
   /**
-   * High tier: ray-march the largest lens through a thick disc (on), or use
+   * Accurate tier: ray-march the largest lens through a thick disc (on), or use
    * the one-bend model for every lens (off). `steps` ≤ MAX_HOLE_STEPS.
    */
   setMarch(on, steps = 48) {

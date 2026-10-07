@@ -29,13 +29,16 @@ describe('cinematicEnabled', () => {
 });
 
 describe('holeMarch', () => {
-  it('ray-marches black holes on High only, within the shader step cap', async () => {
-    const { QUALITY } = await import('./quality.js');
+  it('ray-marches black holes on Accurate only, within the shader step cap', async () => {
+    const { QUALITY, TIER_ORDER, QUALITY_OPTIONS } = await import('./quality.js');
     const { MAX_HOLE_STEPS } = await import('./BlackHolePass.js');
     for (const [name, tier] of Object.entries(QUALITY)) {
-      expect(Boolean(tier.holeMarch)).toBe(name === 'high');
+      expect(Boolean(tier.holeMarch)).toBe(name === 'accurate');
     }
-    expect(QUALITY.high.holeSteps).toBeLessThanOrEqual(MAX_HOLE_STEPS);
+    expect(QUALITY.accurate.holeSteps).toBeLessThanOrEqual(MAX_HOLE_STEPS);
+    // A manual choice: Auto never picks it.
+    expect(TIER_ORDER).not.toContain('accurate');
+    expect(QUALITY_OPTIONS).toContain('accurate');
   });
 });
 

@@ -122,7 +122,7 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       blackHole.source = source;
       blackHole.allowed = allowed;
     },
-    /** High tier: ray-march the largest black hole (quality.js holeMarch, holeSteps). */
+    /** Accurate tier: ray-march the largest black hole (quality.js holeMarch, holeSteps). */
     setBlackHoleMarch(on, steps) {
       blackHole.setMarch(on, steps);
     },
