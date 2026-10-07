@@ -11,6 +11,7 @@ Spiral arms are real **density waves**: stars move on twisted elliptical orbits 
 - **Universe generator** — one click builds a galaxy cluster (ellipticals in the core) or a filament.
 - **Globular clusters and supernovae** — dense balls of old stars orbit in each halo, and supernovae flare up and fade in the arms every few seconds (can be turned off).
 - **Diffraction spikes** — the brightest stars and supernovae show JWST-style 6-point or Hubble-style 4-point spikes (choose in Settings, or turn off).
+- **Depth of field** — Settings → Cinematic: the selected object stays sharp while nearer and farther ones and the background blur, with a smooth focus pull (Medium and High).
 - **Milky Way sky** — a faint procedural Milky Way band with dust lanes and nebulae behind the galaxies (can be turned off).
 - **Explore** — orbit and zoom, click to select, double-click to fly to a galaxy, a guided tour, and a free-fly mode.
 - **HUD** — galaxy name labels (off by default; Settings → HUD), a light-year scale bar and a clickable minimap.

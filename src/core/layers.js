@@ -12,4 +12,6 @@ export const LAYERS = {
   BACKGROUND: 2,
   /** Black-hole jets (core/JetPass.js), drawn after the black-hole pass. */
   JETS: 3,
+  /** Depth-of-field proxies (galaxy/dofProxy.js), drawn only by DepthOfFieldPass. */
+  DOF: 4,
 };

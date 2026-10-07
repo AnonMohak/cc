@@ -209,6 +209,11 @@ describe('GalaxyManager black holes', () => {
     expect(hole.jets.layers.isEnabled(LAYERS.JETS)).toBe(true);
     expect(hole.jets.layers.isEnabled(LAYERS.STARS)).toBe(false);
     expect(hole.jetMaterial.depthTest).toBe(false);
+    // Depth-of-field proxy: own layer, round, sized just past the disc.
+    expect(hole.dofProxy.layers.isEnabled(LAYERS.DOF)).toBe(true);
+    expect(hole.dofProxy.layers.isEnabled(LAYERS.STARS)).toBe(false);
+    expect(hole.dofProxy.scale.y).toBeCloseTo(hole.dofProxy.scale.x, 9);
+    expect(hole.dofProxy.scale.x).toBeCloseTo(Math.min(1, 0.05 * 25 * 1.4), 9);
     const s = slots();
     manager.blackHoleCandidates(s);
     expect(s[0].discOuter).toBe(25);

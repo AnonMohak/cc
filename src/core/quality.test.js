@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { spikeStyle, cinematicEnabled } from './quality.js';
+import { spikeStyle, cinematicEnabled, dofEnabled } from './quality.js';
 
 describe('spikeStyle', () => {
   it('maps the setting to a shader style, off on cheap tiers', () => {
@@ -36,5 +36,15 @@ describe('holeMarch', () => {
       expect(Boolean(tier.holeMarch)).toBe(name === 'high');
     }
     expect(QUALITY.high.holeSteps).toBeLessThanOrEqual(MAX_HOLE_STEPS);
+  });
+});
+
+describe('dofEnabled', () => {
+  it('runs with an amount on Medium and High only', () => {
+    expect(dofEnabled(0.5, 'medium')).toBe(true);
+    expect(dofEnabled(0.5, 'high')).toBe(true);
+    expect(dofEnabled(0, 'high')).toBe(false);
+    expect(dofEnabled(0.5, 'low')).toBe(false);
+    expect(dofEnabled(0.5, 'minimal')).toBe(false);
   });
 });
