@@ -130,10 +130,6 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
     setBlackHoleSamples(n) {
       blackHole.setSamples(n);
     },
-    /** Exact light paths (galaxy/photonLut.js) instead of the one-bend lens. */
-    setBlackHoleExact(on) {
-      blackHole.setExact(on);
-    },
     /** `source()` says whether any jet is visible (JetPass is skipped otherwise). */
     setJetSource(source) {
       jetSource = source;

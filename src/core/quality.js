@@ -22,11 +22,11 @@ export const QUALITY = {
   medium: { label: 'Medium', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true, cinematic: true, holeMarch: false },
   high: { label: 'High', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true, holeMarch: false },
   // High plus the geodesic ray march of the largest black hole (BlackHolePass):
-  // closer to the physics than the one-bend lens. Picked by hand only: Auto
+  // a thick disc volume instead of the thin exact-lens disc. Picked by hand only: Auto
   // never goes here (not in TIER_ORDER).
   accurate: { label: 'Accurate', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true, holeMarch: true, holeSteps: 40 },
   // The intro scene (only the animation black hole, 6k stars, no volume) on
-  // every device, whatever the setting: the one-bend lens at its best (no ray
+  // every device, whatever the setting: the exact lens at its best (no ray
   // march), supersampled (holeSamples rays per pixel inside the lens) with a
   // finer streak octave. Not in TIER_ORDER / QUALITY_OPTIONS.
   intro: { label: 'Intro (best)', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true, holeMarch: false, holeSamples: 4 },

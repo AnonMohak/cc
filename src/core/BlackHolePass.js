@@ -49,13 +49,11 @@ const f = (x) => x.toFixed(4);
 /** Ray-march step cap (Accurate tier; QUALITY.*.holeSteps must stay at or below it). */
 export const MAX_HOLE_STEPS = 64;
 
-// Disc look shared by the one-bend shader and the ray march: colours, the
+// Disc look shared by the exact lens and the ray march: colours, the
 // Shakura–Sunyaev profile and the concentric streak noise. Both shaders set
 // the lens globals (lensHot, lensCool, discOuter, lensGain) per lens.
 const DISC_GLSL = /* glsl */ `
   const float DISC_INNER = ${f(DISC_INNER)};
-  // Radius of the flux peak (discFlux = 1 there).
-  const float DISC_PEAK = DISC_INNER * 1.36;
   const float PI = 3.14159265;
   const float NOISE_TEXELS = ${f(NOISE_SIZE)};
   // Runs after bloom, so the disc must outshine a saturated core by itself.
@@ -251,17 +249,18 @@ ${DISC_GLSL}
 `,
 );
 
-// Everything runs in view space in units of Rs, camera at the origin. A ray
-// is bent once, at its closest approach to the hole, by the Schwarzschild
-// deflection (galaxy/blackHole.js deflection). This "one bend" model gives the
-// shadow, the lensed sky behind the hole and the far side of the accretion
-// disc lifted over and under the shadow (the Interstellar arches) with no
-// loop per pixel. Pixels far from every hole only copy the input.
+// Everything runs in view space in units of Rs, camera at the origin. Each
+// lens pixel follows its exact Schwarzschild light path from a lookup table
+// (galaxy/photonLut.js): the path stays in one plane, every crossing of the
+// disc plane along it is a disc image (the near disc, the arches over and
+// under the shadow, the photon rings), and the sky shows where it escapes.
+// One path per pixel, so no seams between images. Pixels far from every hole
+// only copy the input. (The Accurate tier ray-marches a thick disc instead.)
 //
-// The look follows Gargantua (Interstellar), not the physics: no Doppler
-// beaming (both sides equally bright), a gold palette per band, fine
-// concentric streaks, a soft haze for thickness, a glow halo (bloom ran
-// before this pass), thin photon rings and a horizontal lens streak.
+// The look follows Gargantua (Interstellar), not strict physics: the disc
+// reaches in to 1.7 Rs (a fast spin), no Doppler beaming (both sides equally
+// bright), a gold palette per band, fine concentric streaks, a soft haze, a
+// glow halo (bloom ran before this pass) and a horizontal lens streak.
 const fragmentShader = glsl(
   CHUNKS.model,
   /* glsl */ `
@@ -299,9 +298,8 @@ const fragmentShader = glsl(
   // streak octave (on with supersampling).
   uniform int uSamples;
   uniform float uDetail;
-  // Exact lens (galaxy/photonLut.js): the light-path table and the switch.
+  // Exact light paths (galaxy/photonLut.js), RGBA32F.
   uniform sampler2D uLut;
-  uniform float uExact;
   varying vec2 vUv;
 ${DISC_GLSL}
   const float SHADOW_B = ${f(SHADOW_B)};
@@ -423,26 +421,6 @@ ${DISC_GLSL}
     return vec4(col * edge * DISC_GAIN * lensGain, edge * mix(0.6, 1.0, pow(q, 0.3)));
   }
 
-  // Thin accretion disc at hit point h (relative to the hole), seen along rd
-  // from distance dist (Rs). rgb: emitted light, a: opacity. The noise LOD is
-  // explicit (pixel footprint): the atan seam and the branches around this
-  // call would otherwise pick wrong mip levels.
-  // fill: the far image. Its rays that cross the plane inside the inner edge
-  // (just outside the shadow) show the inner edge's light instead of the
-  // empty gap: else a dark band sits between the photon ring and the arches.
-  vec4 discLight(vec3 h, vec3 rd, vec3 n, float time, float dist, bool fill) {
-    float r = length(h);
-    if (r > discOuter || (r < DISC_INNER && !fill)) return vec4(0.0);
-    // Fill: inside the flux peak, mirror the radius back out (continuous at
-    // the peak), so the streaks and the shear stay calm instead of winding
-    // up toward r = 0.
-    // Near r = 0 the angle is singular and the one-bend mapping folds:
-    // flatten the streaks there (detail 0 → flat light).
-    float detail = fill ? gm_smoothstep(0.2 * DISC_INNER, DISC_INNER, r) : 1.0;
-    if (fill && r < DISC_PEAK) r = DISC_PEAK + 0.5 * (DISC_PEAK - r);
-    return discCore(h, r, rd, n, time, dist, detail);
-  }
-
   // Exact lens: the disc at true radius |h|, reaching in to MARCH_INNER.
   // Opaque (alpha = the edge fade), like the film's thick disc: a
   // see-through near disc showed the thin higher-order images through it.
@@ -554,43 +532,38 @@ ${DISC_GLSL}
       streaks += mix(lensHot, vec3(1.0), 0.3) * streak * STREAK_GAIN * lensGain * disc.w * fade
         * mix(0.25, 1.0, gm_smoothstep(SHADOW_B * 0.6, SHADOW_B * 1.2, b));
 
-      // Intro-fall warp: more bend, a wider reach, deeper source light and a
-      // swirl around the hole (blackHole.js WARP_*; all 0 normally).
+      // Intro-fall warp (blackHole.js WARP_*; 0 normally): a wider reach,
+      // more bend, deeper source light and a swirl.
       float warp = uLensWarp[i];
       float reach = LENS_REACH * (1.0 + WARP_REACH * warp);
       if (b >= reach) continue;
       vec3 n = uLensNormal[i].xyz;
       float time = uLensNormal[i].w;
-      bool captured = b < SHADOW_B;
       float reachFade = 1.0 - gm_smoothstep(0.45 * reach, reach, b);
-      // Bend toward the hole; fade the bend out before the reach (no seam).
-      float a = deflection(b) * (1.0 + WARP_BEND * warp) * reachFade;
-      vec3 rd2 = normalize(rd * cos(a) - bv / max(b, 1e-4) * sin(a));
-      if (warp > 0.0) {
-        // Rodrigues rotation about the hole direction: stronger near the shadow.
-        vec3 axis = normalize(c);
-        float sw = WARP_SWIRL * warp * reachFade * min(SHADOW_B / b, 1.0) * PI;
-        rd2 = rd2 * cos(sw) + cross(axis, rd2) * sin(sw) + axis * dot(axis, rd2) * (1.0 - cos(sw));
-      }
-      vec3 src = normalize(p0 + rd2 * SOURCE_DEPTH * (1.0 + WARP_DEPTH * warp));
       float open = gm_smoothstep(SHADOW_B * 2.0, reach, b);
-      vec3 L = captured ? vec3(0.0) : sampleDir(src, rd2)
-        * mix(CAVITY, 1.0, open * open) * gm_smoothstep(SHADOW_B, SHADOW_B * 2.5, length(cross(src, c)));
       float outside = gm_smoothstep(SHADOW_B, SHADOW_B * 1.25, b);
-      float w = max(0.04, 0.6 * length(c) * uPixelAngle);
-      // One photon ring: a thin core (at least ~1 px, same energy) and a
-      // soft outward tail in Rs that runs into the disc image. Two separate
-      // thin rings left dark bands between them up close.
-      float ringB = SHADOW_B * 1.015;
-      float ring = exp(-pow((b - ringB) / w, 2.0)) * (0.04 / w)
-        + RING_TAIL * exp(-max(b - ringB, 0.0) / RING_TAIL_RS) * gm_smoothstep(SHADOW_B, ringB, b);
       vec3 halo = lensCool * HALO_GAIN * lensGain * exp(-(b - SHADOW_B) / HALO_SCALE);
 
       if (i == 0 && uMarch > 0.5) {
-        // Ray-marched thick disc: four bilinear taps half a march texel out.
-        // Each tap averages a 2×2 texel block, which cancels the ordered step
-        // jitter. It already holds the near disc, the arches and the
-        // higher-order images, so no thin disc or haze here.
+        // Accurate tier: the ray-marched thick disc (four bilinear taps half a
+        // march texel out; each averages a 2×2 block, which cancels the
+        // ordered step jitter) over the sky bent once at closest approach by
+        // the Schwarzschild deflection, plus a painted photon ring (a thin
+        // core of at least ~1 px with its energy kept, and a soft tail).
+        float a = deflection(b) * (1.0 + WARP_BEND * warp) * reachFade;
+        vec3 rd2 = normalize(rd * cos(a) - bv / max(b, 1e-4) * sin(a));
+        if (warp > 0.0) {
+          vec3 axis = normalize(c);
+          float sw = WARP_SWIRL * warp * reachFade * min(SHADOW_B / b, 1.0) * PI;
+          rd2 = rd2 * cos(sw) + cross(axis, rd2) * sin(sw) + axis * dot(axis, rd2) * (1.0 - cos(sw));
+        }
+        vec3 src = normalize(p0 + rd2 * SOURCE_DEPTH * (1.0 + WARP_DEPTH * warp));
+        vec3 L = b < SHADOW_B ? vec3(0.0) : sampleDir(src, rd2)
+          * mix(CAVITY, 1.0, open * open) * gm_smoothstep(SHADOW_B, SHADOW_B * 2.5, length(cross(src, c)));
+        float w = max(0.04, 0.6 * length(c) * uPixelAngle);
+        float ringB = SHADOW_B * 1.015;
+        float ring = exp(-pow((b - ringB) / w, 2.0)) * (0.04 / w)
+          + RING_TAIL * exp(-max(b - ringB, 0.0) / RING_TAIL_RS) * gm_smoothstep(SHADOW_B, ringB, b);
         vec2 o = uMarchTexel * 0.5;
         vec4 m = 0.25 * (texture2D(tMarch, uv + vec2(o.x, o.y)) + texture2D(tMarch, uv + vec2(-o.x, o.y))
           + texture2D(tMarch, uv + vec2(o.x, -o.y)) + texture2D(tMarch, uv + vec2(-o.x, -o.y)));
@@ -601,106 +574,76 @@ ${DISC_GLSL}
         continue;
       }
 
-      if (uExact > 0.5) {
-        // Exact light path (photonLut.js): the ray's own plane holds its
-        // whole path. e1: from the hole to the camera, e2: the side the ray
-        // turns to. Every crossing of the disc plane along the path is a disc
-        // image (near disc, arches, photon rings), front to back; then the
-        // sky where the ray escapes. No seams: one path per pixel.
-        float rc = length(c);
-        vec3 e1 = -c / rc;
-        float vr = dot(rd, e1);
-        vec3 tp = rd - e1 * vr;
-        float tl = length(tp);
-        vec3 e2 = tp / max(tl, 1e-6);
-        bool inward = vr < 0.0;
-        // Intro-fall warp, on the disc and the sky alike: a smaller impact
-        // parameter (more bend, a bigger shadow) and the ray's plane turned
-        // about the hole (a swirl).
-        float bw = b * (1.0 - WARP_SHRINK * warp * reachFade);
-        if (warp > 0.0) {
-          float sw = WARP_SWIRL_EXACT * warp * reachFade * min(SHADOW_B / b, 1.0) * PI;
-          e2 = e2 * cos(sw) + cross(e1, e2) * sin(sw);
-        }
-        bool esc = bw > B_CRIT;
-        float row = lutRow(bw);
-        float uEnd = esc ? periapsisU(bw) : 1.0;
-        float uc = 1.0 / max(rc, 1.0001);
-        vec4 t0 = lutAt(esc ? sqrt(max(0.0, 1.0 - uc / uEnd)) : uc, row);
-        float phiC = t0.r;
-        float phiEnd = t0.b;
-        bool back = !esc && !inward;
-        float psiC = esc && !inward ? 2.0 * phiEnd - phiC : phiC;
-        float sweepEnd = esc ? 2.0 * phiEnd - psiC : (back ? phiC : phiEnd - phiC);
-        bool escapes = esc || !inward;
-        // Disc-plane crossings: A cos s + B sin s = 0, every half turn.
-        float s0 = mod(atan(dot(e2, n), dot(e1, n)) + 0.5 * PI, PI);
-        if (s0 < 1e-4) s0 += PI;
-        vec3 E = vec3(0.0);
-        float T = 1.0;
-        for (int k = 0; k < 3; k++) {
-          float sk = s0 + float(k) * PI;
-          if (sk >= sweepEnd) break;
-          float psi = back ? psiC - sk : psiC + sk;
-          float u;
-          if (esc) {
-            if (psi > phiEnd) psi = 2.0 * phiEnd - psi;
-            float g = lutAt(psi / phiEnd, row).g;
-            u = uEnd * (1.0 - g * g);
-          } else {
-            u = lutAt(psi / phiEnd, row).g;
-          }
-          float r = 1.0 / max(u, 1e-6);
-          if (r > discOuter || r < MARCH_INNER) continue;
-          vec3 h = r * (cos(sk) * e1 + sin(sk) * e2);
-          vec3 tangent = -sin(sk) * e1 + cos(sk) * e2;
-          float dist = k == 0 ? length(h + c) : rc + r * float(k);
-          vec4 d = discLightExact(h, tangent, n, time, dist);
-          E += T * d.rgb;
-          T *= 1.0 - d.a;
-          if (T < 0.01) break;
-        }
-        vec3 Lx = vec3(0.0);
-        if (escapes && T > 0.01) {
-          // Where the ray leaves: the angle of its position at infinity.
-          // The bend fades out by the reach (no seam at its edge).
-          float straight = inward ? PI - asin(clamp(tl, 0.0, 1.0)) : asin(clamp(tl, 0.0, 1.0));
-          float sEnd = straight + (sweepEnd - straight) * reachFade;
-          vec3 rdx = cos(sEnd) * e1 + sin(sEnd) * e2;
-          vec3 srcx = normalize(p0 + rdx * SOURCE_DEPTH * (1.0 + WARP_DEPTH * warp));
-          Lx = sampleDir(srcx, rdx) * mix(CAVITY, 1.0, open * open) * gm_smoothstep(SHADOW_B, SHADOW_B * 2.5, length(cross(srcx, c)));
-          Lx += (discHaze(bv, n, time, tc) + halo) * disc.z * outside * reachFade;
-        }
-        col = mix(col, E + T * Lx, fade);
-        continue;
+      // Exact light path (photonLut.js): the ray's own plane holds its
+      // whole path. e1: from the hole to the camera, e2: the side the ray
+      // turns to. Every crossing of the disc plane along the path is a disc
+      // image (near disc, arches, photon rings), front to back; then the
+      // sky where the ray escapes. No seams: one path per pixel.
+      float rc = length(c);
+      vec3 e1 = -c / rc;
+      float vr = dot(rd, e1);
+      vec3 tp = rd - e1 * vr;
+      float tl = length(tp);
+      vec3 e2 = tp / max(tl, 1e-6);
+      bool inward = vr < 0.0;
+      // Intro-fall warp, on the disc and the sky alike: a smaller impact
+      // parameter (more bend, a bigger shadow) and the ray's plane turned
+      // about the hole (a swirl).
+      float bw = b * (1.0 - WARP_SHRINK * warp * reachFade);
+      if (warp > 0.0) {
+        float sw = WARP_SWIRL_EXACT * warp * reachFade * min(SHADOW_B / b, 1.0) * PI;
+        e2 = e2 * cos(sw) + cross(e1, e2) * sin(sw);
       }
-
-      // Far image: the bent ray crosses the disc plane behind the hole (the
-      // arches over and under the shadow).
-      float dn2 = dot(rd2, n);
-      if (!captured && abs(dn2) > 1e-4) {
-        float t2 = dot(c - p0, n) / dn2;
-        if (t2 > 0.0) {
-          vec4 d = discLight(p0 + rd2 * t2 - c, rd2, n, time, tc + t2, true);
-          L = d.rgb + L * (1.0 - d.a);
+      bool esc = bw > B_CRIT;
+      float row = lutRow(bw);
+      float uEnd = esc ? periapsisU(bw) : 1.0;
+      float uc = 1.0 / max(rc, 1.0001);
+      vec4 t0 = lutAt(esc ? sqrt(max(0.0, 1.0 - uc / uEnd)) : uc, row);
+      float phiC = t0.r;
+      float phiEnd = t0.b;
+      bool back = !esc && !inward;
+      float psiC = esc && !inward ? 2.0 * phiEnd - phiC : phiC;
+      float sweepEnd = esc ? 2.0 * phiEnd - psiC : (back ? phiC : phiEnd - phiC);
+      bool escapes = esc || !inward;
+      // Disc-plane crossings: A cos s + B sin s = 0, every half turn.
+      float s0 = mod(atan(dot(e2, n), dot(e1, n)) + 0.5 * PI, PI);
+      if (s0 < 1e-4) s0 += PI;
+      vec3 E = vec3(0.0);
+      float T = 1.0;
+      for (int k = 0; k < 3; k++) {
+        float sk = s0 + float(k) * PI;
+        if (sk >= sweepEnd) break;
+        float psi = back ? psiC - sk : psiC + sk;
+        float u;
+        if (esc) {
+          if (psi > phiEnd) psi = 2.0 * phiEnd - psi;
+          float g = lutAt(psi / phiEnd, row).g;
+          u = uEnd * (1.0 - g * g);
+        } else {
+          u = lutAt(psi / phiEnd, row).g;
         }
+        float r = 1.0 / max(u, 1e-6);
+        if (r > discOuter || r < MARCH_INNER) continue;
+        vec3 h = r * (cos(sk) * e1 + sin(sk) * e2);
+        vec3 tangent = -sin(sk) * e1 + cos(sk) * e2;
+        float dist = k == 0 ? length(h + c) : rc + r * float(k);
+        vec4 d = discLightExact(h, tangent, n, time, dist);
+        E += T * d.rgb;
+        T *= 1.0 - d.a;
+        if (T < 0.01) break;
       }
-      // Photon rings: light that orbited the hole, piled up at the critical b
-      // (w: at least ~1 px wide with the same energy, so a small hole does
-      // not flicker), then haze and the glow halo (bloom ran before this
-      // pass); both stay out of the shadow.
-      L += lensHot * ring * RING_GAIN * lensGain;
-      L += (discHaze(bv, n, time, tc) + halo) * disc.z * outside * reachFade;
-      // Near image: the straight ray meets the disc before its closest approach.
-      float dn = dot(rd, n);
-      if (abs(dn) > 1e-4) {
-        float t1 = dot(c, n) / dn;
-        if (t1 > 0.0 && t1 < tc) {
-          vec4 d = discLight(rd * t1 - c, rd, n, time, t1, false);
-          L = d.rgb + L * (1.0 - d.a);
-        }
+      vec3 Lx = vec3(0.0);
+      if (escapes && T > 0.01) {
+        // Where the ray leaves: the angle of its position at infinity.
+        // The bend fades out by the reach (no seam at its edge).
+        float straight = inward ? PI - asin(clamp(tl, 0.0, 1.0)) : asin(clamp(tl, 0.0, 1.0));
+        float sEnd = straight + (sweepEnd - straight) * reachFade;
+        vec3 rdx = cos(sEnd) * e1 + sin(sEnd) * e2;
+        vec3 srcx = normalize(p0 + rdx * SOURCE_DEPTH * (1.0 + WARP_DEPTH * warp));
+        Lx = sampleDir(srcx, rdx) * mix(CAVITY, 1.0, open * open) * gm_smoothstep(SHADOW_B, SHADOW_B * 2.5, length(cross(srcx, c)));
+        Lx += (discHaze(bv, n, time, tc) + halo) * disc.z * outside * reachFade;
       }
-      col = mix(col, L, fade);
+      col = mix(col, E + T * Lx, fade);
     }
     return col + streaks;
   }
@@ -734,6 +677,16 @@ ${DISC_GLSL}
 );
 
 const _view = new THREE.Vector3();
+
+/** The light-path table as a texture (built once, ~30 ms; read with texelFetch). */
+function createLutTexture() {
+  const tex = new THREE.DataTexture(buildPhotonLut(), LUT_WIDTH, LUT_HEIGHT, THREE.RGBAFormat, THREE.FloatType);
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
 
 /**
  * Gravitational lensing, shadow and accretion disc of the standalone black
@@ -800,8 +753,7 @@ export class BlackHolePass extends Pass {
         uMarch: { value: 0 },
         uSamples: { value: 1 },
         uDetail: { value: 0 },
-        uLut: { value: null },
-        uExact: { value: 0 },
+        uLut: { value: createLutTexture() },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -865,28 +817,11 @@ export class BlackHolePass extends Pass {
 
   /**
    * Accurate tier: ray-march the largest lens through a thick disc (on), or use
-   * the one-bend model for every lens (off). `steps` ≤ MAX_HOLE_STEPS.
+   * the exact lens for every lens (off). `steps` ≤ MAX_HOLE_STEPS.
    */
   setMarch(on, steps = 48) {
     this.march = on;
     this.marchMaterial.uniforms.uSteps.value = Math.min(steps, MAX_HOLE_STEPS);
-  }
-
-  /**
-   * Exact lens (galaxy/photonLut.js) instead of the one-bend model. The table
-   * is built on first use (~30 ms) and kept.
-   */
-  setExact(on) {
-    const u = this.material.uniforms;
-    if (on && !u.uLut.value) {
-      const tex = new THREE.DataTexture(buildPhotonLut(), LUT_WIDTH, LUT_HEIGHT, THREE.RGBAFormat, THREE.FloatType);
-      tex.minFilter = THREE.NearestFilter;
-      tex.magFilter = THREE.NearestFilter;
-      tex.generateMipmaps = false;
-      tex.needsUpdate = true;
-      u.uLut.value = tex;
-    }
-    u.uExact.value = on ? 1 : 0;
   }
 
   /** Lens rays per pixel: 1, 2 or 4 (more adds the finer streak octave). */
