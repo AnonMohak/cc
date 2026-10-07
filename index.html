@@ -145,6 +145,17 @@
       .start-go .go-ready {
         display: none;
       }
+      .start-hint {
+        margin: 10px 0 0;
+        font-size: 11px;
+        font-style: italic;
+        line-height: 1.4;
+        text-align: center;
+        color: rgba(200, 210, 255, 0.55);
+      }
+      .start-hint[hidden] {
+        display: none;
+      }
       .is-ready .start-go {
         color: #cfe0ff;
         animation: start-pulse 2.4s ease-in-out infinite;
@@ -197,6 +208,8 @@
           <span class="go-loading">Loading…</span>
           <span class="go-ready"><span class="go-click">Click</span><span class="go-tap">Tap</span> anywhere to start</span>
         </button>
+        <!-- Hidden by app.js unless the scene is the intro black hole. -->
+        <p class="start-hint" id="start-hint">Stay still to start the animation</p>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>

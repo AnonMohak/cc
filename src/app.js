@@ -30,6 +30,7 @@ import { createFpsMeter } from './ui/fpsMeter.js';
 import { createGpuTimer, formatTimings, gpuName } from './core/gpuTimer.js';
 import { createInfoCard } from './ui/infoCard.js';
 import { createFallOverlay } from './ui/fallOverlay.js';
+import { createWakeLock } from './ui/wakeLock.js';
 import { createHud } from './ui/hud.js';
 import { createTour } from './core/tour.js';
 import { createFlyControls } from './core/flyControls.js';
@@ -305,6 +306,11 @@ export function startApp(container, { startScreen } = {}) {
   // everyone (also with reduced motion: it is the intro, and any click ends it).
   const fall = createFall();
   const fallOverlay = createFallOverlay(container);
+  // Phones would sleep before the minute is over, and the waking tap would
+  // end the fall: keep the screen on while it waits and falls.
+  const wakeLock = createWakeLock();
+  // The start box hint ("Stay still…") only fits the intro scene.
+  document.getElementById('start-hint')?.toggleAttribute('hidden', !isSingleBlackHole(store.getState()));
   /** The running fall: hole, basis and start pose (see beginFall). */
   let fallRun = null;
   let fallU = 0;
@@ -481,6 +487,9 @@ export function startApp(container, { startScreen } = {}) {
       // The scene changed under the fall (e.g. N added a galaxy): leave it.
       if (phase === 'done' && cameraMode === 'fall') escapeFall();
     }
+    // Fallen in (held black) or done: the screen may sleep again.
+    const fallPhase = fall.phase();
+    wakeLock.set(fallPhase === 'falling' || (fallPhase === 'waiting' && !(startScreen?.isOpen() ?? false)));
     if (fovEase) {
       fovEase.t = Math.min(1, fovEase.t + realDt / FALL_ESCAPE_SECONDS);
       camera.fov = THREE.MathUtils.lerp(fovEase.from, baseFov, easeInOutCubic(fovEase.t));
