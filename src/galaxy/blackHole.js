@@ -100,6 +100,22 @@ export function traceRay(origin, dir, { maxSteps = 64, escapeRadius = 40 } = {})
   return { captured: false, escaped: false, dir: v, steps: maxSteps };
 }
 
+/**
+ * Intro-fall warp (fallPose.warp, 0–1): the lens bends more, reaches farther,
+ * reads its screen light from deeper behind the hole, and twists the bent
+ * rays around the hole (an exaggerated frame-drag swirl). Not physics: it
+ * sells the last seconds of the fall. Mirrored in BlackHolePass.
+ */
+export const WARP_BEND = 1.5;
+export const WARP_REACH = 2;
+export const WARP_DEPTH = 3;
+export const WARP_SWIRL = 0.8;
+
+/** Lens reach (Rs) for a warp amount: LENS_REACH at 0. */
+export function warpedReach(warp) {
+  return LENS_REACH * (1 + WARP_REACH * Math.min(1, Math.max(0, warp)));
+}
+
 /** Shadow radius on screen (px) for Rs and distance in world units. */
 export function shadowPixels(rsWorld, distance, tanHalfFovY, viewportHeight) {
   if (!(distance > 0)) return 0;

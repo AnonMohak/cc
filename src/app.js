@@ -232,6 +232,8 @@ export function startApp(container, { startScreen } = {}) {
       controls.enabled = true;
       controls.autoRotate = store.getState().settings.autoRotate;
       fallRun?.galaxy.setHoleSpin(1);
+      // The lens warp eases out with the fov (no pop on escape).
+      if (fallRun && fallRun.galaxy.holeWarp > 0) warpEase = { galaxy: fallRun.galaxy, from: fallRun.galaxy.holeWarp, t: 0 };
       fallRun = null;
     }
     if (cameraMode === 'fly') {
@@ -326,6 +328,7 @@ export function startApp(container, { startScreen } = {}) {
   let fallU = 0;
   let fallTau = 0;
   let fovEase = null; // { from, t } while the fov returns to baseFov
+  let warpEase = null; // { galaxy, from, t } while the lens warp returns to 0
 
   /** Soundscape mode (audio/soundMix.js) for the intro state. */
   function soundMode() {
@@ -363,6 +366,7 @@ export function startApp(container, { startScreen } = {}) {
       clock: 0,
     };
     fovEase = null;
+    warpEase = null;
     setCameraMode('fall');
     controls.target.copy(_fallCenter);
   }
@@ -393,6 +397,7 @@ export function startApp(container, { startScreen } = {}) {
       camera.updateProjectionMatrix();
     }
     run.galaxy.setHoleSpin(pose.spin);
+    run.galaxy.setHoleWarp(pose.warp);
     fallOverlay.set(pose.vignette, pose.black);
   }
 
@@ -531,6 +536,11 @@ export function startApp(container, { startScreen } = {}) {
       camera.updateProjectionMatrix();
       if (fovEase.t >= 1) fovEase = null;
     }
+    if (warpEase) {
+      warpEase.t = Math.min(1, warpEase.t + realDt / FALL_ESCAPE_SECONDS);
+      warpEase.galaxy.setHoleWarp(warpEase.from * (1 - easeInOutCubic(warpEase.t)));
+      if (warpEase.t >= 1) warpEase = null;
+    }
     cameraFly.update(realDt);
     if (cameraMode === 'fly') fly.update(realDt);
     else if (cameraMode === 'fall') updateFallCamera(realDt, fallU, fallTau);
@@ -594,6 +604,7 @@ export function startApp(container, { startScreen } = {}) {
       cameraFly.isFlying() ||
       cameraMode !== 'orbit' ||
       fovEase !== null ||
+      warpEase !== null ||
       controls.autoRotate ||
       galaxies.isEasing() ||
       autoFactor !== autoTarget ||

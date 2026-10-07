@@ -121,6 +121,8 @@ export class Galaxy {
     // the disc up). Accumulated, so a spin change never makes the streaks jump.
     this.holeTime = 0;
     this.holeSpin = 1;
+    // Intro-fall lens warp 0–1 (BlackHolePass; blackHole.js WARP_*).
+    this.holeWarp = 0;
 
     this.jetMaterial = createJetMaterial(this.uniforms);
     this.jets = new THREE.Mesh(createJetGeometry(), this.jetMaterial);
@@ -304,6 +306,11 @@ export class Galaxy {
     this.holeSpin = k;
   }
 
+  /** Intro-fall lens warp, 0 (none) to 1 (blackHole.js WARP_*). */
+  setHoleWarp(k) {
+    this.holeWarp = k;
+  }
+
   /** A standalone black hole's params (params.js LIMITS.hole): uniforms only. */
   setHole(hole) {
     if (!this.standalone) return;
@@ -337,6 +344,7 @@ export class Galaxy {
     slot.gain = h.brightness * this.emphasis;
     slot.glow = h.glow;
     slot.streak = h.streak ? 1 : 0;
+    slot.warp = this.holeWarp;
     slot.hot.copy(this.holeHot);
     slot.cool.copy(this.holeCool);
     return true;

@@ -15,6 +15,11 @@ import {
   MARCH_STEP_MAX,
   PHOTON_SPHERE,
   MARCH_SCALE_MIN,
+  WARP_BEND,
+  WARP_REACH,
+  WARP_DEPTH,
+  WARP_SWIRL,
+  warpedReach,
   marchScaleFor,
   shadowPixels,
   lensFade,
@@ -241,6 +246,7 @@ const fragmentShader = glsl(
   uniform vec4 uLensCenter[MAX_LENSES]; // xyz: centre / Rs (view space), w: fade
   uniform vec4 uLensNormal[MAX_LENSES]; // xyz: disc normal (view space), w: time
   uniform vec4 uLensDisc[MAX_LENSES]; // x: disc outer radius (Rs), y: gain, z: glow, w: streak (0/1)
+  uniform float uLensWarp[MAX_LENSES]; // intro-fall warp 0–1 (blackHole.js WARP_*)
   uniform vec3 uLensHot[MAX_LENSES]; // disc colour at the inner edge (visible light)
   uniform vec3 uLensCool[MAX_LENSES]; // disc colour at the outer edge
   uniform float uDiscGain; // band brightness (bands.js agnGain)
@@ -265,6 +271,10 @@ ${DISC_GLSL}
   const float SHADOW_B = ${f(SHADOW_B)};
   const float LENS_REACH = ${f(LENS_REACH)};
   const float MAX_DEFLECTION = ${f(MAX_DEFLECTION)};
+  const float WARP_BEND = ${f(WARP_BEND)};
+  const float WARP_REACH = ${f(WARP_REACH)};
+  const float WARP_DEPTH = ${f(WARP_DEPTH)};
+  const float WARP_SWIRL = ${f(WARP_SWIRL)};
   const float RING_GAIN = 3.0;
   const float HAZE_GAIN = 0.9;
   const float HALO_GAIN = 0.1;
@@ -417,16 +427,26 @@ ${DISC_GLSL}
       streaks += mix(lensHot, vec3(1.0), 0.3) * streak * STREAK_GAIN * lensGain * disc.w * fade
         * mix(0.25, 1.0, gm_smoothstep(SHADOW_B * 0.6, SHADOW_B * 1.2, b));
 
-      if (b >= LENS_REACH) continue;
+      // Intro-fall warp: more bend, a wider reach, deeper source light and a
+      // swirl around the hole (blackHole.js WARP_*; all 0 normally).
+      float warp = uLensWarp[i];
+      float reach = LENS_REACH * (1.0 + WARP_REACH * warp);
+      if (b >= reach) continue;
       vec3 n = uLensNormal[i].xyz;
       float time = uLensNormal[i].w;
       bool captured = b < SHADOW_B;
-      float reachFade = 1.0 - gm_smoothstep(0.45 * LENS_REACH, LENS_REACH, b);
-      // Bend toward the hole; fade the bend out before LENS_REACH (no seam).
-      float a = deflection(b) * reachFade;
+      float reachFade = 1.0 - gm_smoothstep(0.45 * reach, reach, b);
+      // Bend toward the hole; fade the bend out before the reach (no seam).
+      float a = deflection(b) * (1.0 + WARP_BEND * warp) * reachFade;
       vec3 rd2 = normalize(rd * cos(a) - bv / max(b, 1e-4) * sin(a));
-      vec3 src = normalize(p0 + rd2 * SOURCE_DEPTH);
-      float open = gm_smoothstep(SHADOW_B * 2.0, LENS_REACH, b);
+      if (warp > 0.0) {
+        // Rodrigues rotation about the hole direction: stronger near the shadow.
+        vec3 axis = normalize(c);
+        float sw = WARP_SWIRL * warp * reachFade * min(SHADOW_B / b, 1.0) * PI;
+        rd2 = rd2 * cos(sw) + cross(axis, rd2) * sin(sw) + axis * dot(axis, rd2) * (1.0 - cos(sw));
+      }
+      vec3 src = normalize(p0 + rd2 * SOURCE_DEPTH * (1.0 + WARP_DEPTH * warp));
+      float open = gm_smoothstep(SHADOW_B * 2.0, reach, b);
       vec3 L = captured ? vec3(0.0) : sampleDir(src, rd2)
         * mix(CAVITY, 1.0, open * open) * gm_smoothstep(SHADOW_B, SHADOW_B * 2.5, length(cross(src, c)));
       float outside = gm_smoothstep(SHADOW_B, SHADOW_B * 1.25, b);
@@ -514,6 +534,7 @@ export class BlackHolePass extends Pass {
       gain: 1,
       glow: 1,
       streak: 1,
+      warp: 0, // intro-fall lens warp 0–1
       hot: new THREE.Color(),
       cool: new THREE.Color(),
     }));
@@ -530,6 +551,7 @@ export class BlackHolePass extends Pass {
         uLensCenter: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Vector4()) },
         uLensNormal: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Vector4()) },
         uLensDisc: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Vector4()) },
+        uLensWarp: { value: new Array(MAX_LENSES).fill(0) },
         uLensHot: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Color()) },
         uLensCool: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Color()) },
         uDiscGain: { value: 1 },
@@ -663,7 +685,7 @@ export class BlackHolePass extends Pass {
       const depth = -_view.z;
       c.shadowPx = shadowPixels(c.rsWorld, depth, tanY, this.height);
       // In front of the camera and the lens reach overlaps the screen.
-      const reach = (LENS_REACH * c.rsWorld) / Math.max(depth, 1e-6);
+      const reach = (warpedReach(c.warp) * c.rsWorld) / Math.max(depth, 1e-6);
       c.visible = depth > 0 && Math.abs(_view.x / depth) < tanX + reach && Math.abs(_view.y / depth) < tanY + reach;
     }
     const n = pickLenses(this.candidates, count, MAX_LENSES, this.picked);
@@ -675,6 +697,7 @@ export class BlackHolePass extends Pass {
       _view.copy(c.normal).transformDirection(view);
       u.uLensNormal.value[i].set(_view.x, _view.y, _view.z, c.time);
       u.uLensDisc.value[i].set(c.discOuter, c.gain, c.glow, c.streak);
+      u.uLensWarp.value[i] = c.warp;
       u.uLensHot.value[i].copy(c.hot);
       u.uLensCool.value[i].copy(c.cool);
     }

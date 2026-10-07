@@ -102,3 +102,14 @@ describe('marchScaleFor', () => {
     }
   });
 });
+
+describe('warpedReach', () => {
+  it('is LENS_REACH without warp and grows with it, clamped', async () => {
+    const { warpedReach, LENS_REACH, WARP_REACH } = await import('./blackHole.js');
+    expect(warpedReach(0)).toBe(LENS_REACH);
+    expect(warpedReach(1)).toBeCloseTo(LENS_REACH * (1 + WARP_REACH), 9);
+    expect(warpedReach(0.5)).toBeGreaterThan(LENS_REACH);
+    expect(warpedReach(5)).toBe(warpedReach(1));
+    expect(warpedReach(-1)).toBe(LENS_REACH);
+  });
+});
