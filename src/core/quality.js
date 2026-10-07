@@ -16,10 +16,11 @@ export const QUALITY = {
     maxPointPx: 8,
     spikes: false, // diffraction spikes (extra sprite fill)
     cinematic: false, // vignette / grain / aberration (one extra full-res pass)
+    holeMarch: false, // ray-march the largest black hole through a thick disc (core/BlackHolePass.js)
   },
-  low: { label: 'Low', volumeScale: 0.35, steps: 14, bloom: 'off', maxPixelRatio: 1, starCap: 60_000, volumeDust: true, maxPointPx: 10, spikes: false, cinematic: false },
-  medium: { label: 'Medium', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true, cinematic: true },
-  high: { label: 'High', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true },
+  low: { label: 'Low', volumeScale: 0.35, steps: 14, bloom: 'off', maxPixelRatio: 1, starCap: 60_000, volumeDust: true, maxPointPx: 10, spikes: false, cinematic: false, holeMarch: false },
+  medium: { label: 'Medium', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true, cinematic: true, holeMarch: false },
+  high: { label: 'High', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true, holeMarch: true, holeSteps: 40 },
 };
 
 /** Cheapest first: the governor moves along this list. */

@@ -4,7 +4,6 @@ Ideas to make Galaxy Sandbox more feature-rich and better looking. None of these
 
 ## Visual
 
-- **Ray-marched black hole on High**: integrate curved rays (24–64 steps) instead of the one-bend model, for exact arch shapes, higher-order images and a volumetric disc. Costs more GPU time when the hole fills the screen.
 - **Depth of field** on the focused galaxy (needs depth data: stars do not write depth). Vignette, film grain, chromatic aberration (`core/CinematicPass.js`) and auto exposure (`core/autoExposure.js`) are already done.
 
 ## Features

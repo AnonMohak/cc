@@ -182,6 +182,7 @@ export function startApp(container, { startScreen } = {}) {
     galaxies.setQuality(tier);
     post.setVolumeScale(tier.volumeScale);
     post.setBloomMode(tier.bloom);
+    post.setBlackHoleMarch(Boolean(tier.holeMarch), tier.holeSteps);
     if (setMaxPixelRatio(tier.maxPixelRatio)) resizeAll();
     gate.invalidate();
     onTierChange(name);

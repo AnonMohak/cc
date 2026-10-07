@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deflection, shadowPixels, lensFade, pickLenses, SHADOW_B, MAX_DEFLECTION } from './blackHole.js';
+import { deflection, traceRay, shadowPixels, lensFade, pickLenses, SHADOW_B, MAX_DEFLECTION, DISC_OUTER, MARCH_SPHERE_K } from './blackHole.js';
 
 describe('deflection', () => {
   it('matches the weak-field limit 2Rs/b far away', () => {
@@ -47,5 +47,43 @@ describe('pickLenses', () => {
     expect(pickLenses([c(9), c(8)], 1, 4, out)).toBe(1);
     expect(out[0].shadowPx).toBe(9);
     expect(pickLenses([c(0.1), c(9, false)], 2, 4, out)).toBe(0);
+  });
+});
+
+describe('traceRay', () => {
+  // Total bending of a ray from far away (0..2π, so loops count).
+  const bend = (b) => {
+    const r = traceRay([-400, b, 0], [1, 0, 0], { maxSteps: 4000, escapeRadius: 400 });
+    let a = Math.atan2(-r.dir[1], r.dir[0]);
+    if (a < 0) a += 2 * Math.PI;
+    return { ...r, bend: a };
+  };
+
+  it('captures rays inside the shadow and lets the rest escape', () => {
+    expect(bend(2.5).captured).toBe(true);
+    expect(bend(SHADOW_B - 0.05).captured).toBe(true);
+    expect(bend(2.7).escaped).toBe(true);
+    expect(bend(8).escaped).toBe(true);
+  });
+
+  it('matches the exact Schwarzschild deflection', () => {
+    // Exact values from the deflection integral (Rs = 1).
+    expect(bend(3.5).bend).toBeCloseTo(1.128, 2);
+    expect(bend(5).bend).toBeCloseTo(0.59, 2);
+    expect(bend(10).bend).toBeCloseTo(0.236, 2);
+    expect(bend(20).bend).toBeCloseTo(0.108, 2);
+  });
+
+  it('loops near the critical ray (the secondary images)', () => {
+    expect(bend(2.65).bend).toBeGreaterThan(Math.PI);
+  });
+
+  it('crosses the march sphere in few steps', () => {
+    const R = DISC_OUTER * MARCH_SPHERE_K;
+    for (const b of [3, 6, 12, 20]) {
+      const r = traceRay([-Math.sqrt(R * R - b * b), b, 0], [1, 0, 0], { maxSteps: 64, escapeRadius: R });
+      expect(r.escaped).toBe(true);
+      expect(r.steps).toBeLessThan(64);
+    }
   });
 });

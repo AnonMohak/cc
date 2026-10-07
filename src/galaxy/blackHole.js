@@ -30,6 +30,57 @@ export function deflection(b) {
   return Math.min(MAX_DEFLECTION, Math.max(weak, strong));
 }
 
+/**
+ * Ray march (High tier, core/BlackHolePass.js): the march sphere radius is
+ * the disc outer radius times this, and the integrator step is
+ * clamp(MARCH_STEP_K · r, MARCH_STEP_MIN, MARCH_STEP_MAX) (in Rs).
+ */
+export const MARCH_SPHERE_K = 1.25;
+export const MARCH_STEP_K = 0.12;
+export const MARCH_STEP_MIN = 0.03;
+export const MARCH_STEP_MAX = 2;
+/** Photon sphere radius: inside it, a ray moving inward always falls in. */
+export const PHOTON_SPHERE = 1.5;
+
+/**
+ * Trace a light ray past a Schwarzschild black hole (units of Rs, hole at the
+ * origin). Photon orbits obey d²p/dλ² = −1.5 h² p / |p|⁵ with h = |p × v|
+ * constant: exact for the orbit shape, so it gives the shadow at √27/2 Rs,
+ * the arches and the higher-order images (rays that loop the hole).
+ * Velocity Verlet with an adaptive step. Mirrored in BlackHolePass.js
+ * (holeMarch); the shader adds the disc volume and a slab step limit.
+ *
+ * @param {number[]} origin [x, y, z]
+ * @param {number[]} dir [x, y, z] (normalised here)
+ * @param {{ maxSteps?: number, escapeRadius?: number }} [options]
+ * @returns {{ captured: boolean, escaped: boolean, dir: number[], steps: number }}
+ */
+export function traceRay(origin, dir, { maxSteps = 64, escapeRadius = 40 } = {}) {
+  const p = [...origin];
+  const len = Math.hypot(...dir);
+  const v = dir.map((x) => x / len);
+  const cross = [p[1] * v[2] - p[2] * v[1], p[2] * v[0] - p[0] * v[2], p[0] * v[1] - p[1] * v[0]];
+  const h2 = cross[0] ** 2 + cross[1] ** 2 + cross[2] ** 2;
+  const accel = (q) => {
+    const r2 = q[0] ** 2 + q[1] ** 2 + q[2] ** 2;
+    const k = (-1.5 * h2) / (r2 * r2 * Math.sqrt(r2));
+    return q.map((x) => k * x);
+  };
+  let a = accel(p);
+  for (let step = 0; step < maxSteps; step++) {
+    const r = Math.hypot(...p);
+    const outward = p[0] * v[0] + p[1] * v[1] + p[2] * v[2] > 0;
+    if (r < PHOTON_SPHERE && !outward) return { captured: true, escaped: false, dir: v, steps: step };
+    if (r > escapeRadius && outward) return { captured: false, escaped: true, dir: v, steps: step };
+    const dt = Math.min(MARCH_STEP_MAX, Math.max(MARCH_STEP_MIN, MARCH_STEP_K * r));
+    for (let i = 0; i < 3; i++) p[i] += v[i] * dt + 0.5 * a[i] * dt * dt;
+    const a1 = accel(p);
+    for (let i = 0; i < 3; i++) v[i] += 0.5 * (a[i] + a1[i]) * dt;
+    a = a1;
+  }
+  return { captured: false, escaped: false, dir: v, steps: maxSteps };
+}
+
 /** Shadow radius on screen (px) for Rs and distance in world units. */
 export function shadowPixels(rsWorld, distance, tanHalfFovY, viewportHeight) {
   if (!(distance > 0)) return 0;

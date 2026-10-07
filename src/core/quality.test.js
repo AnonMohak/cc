@@ -27,3 +27,14 @@ describe('cinematicEnabled', () => {
     expect(cinematicEnabled(on, 'bogus')).toBe(false);
   });
 });
+
+describe('holeMarch', () => {
+  it('ray-marches black holes on High only, within the shader step cap', async () => {
+    const { QUALITY } = await import('./quality.js');
+    const { MAX_HOLE_STEPS } = await import('./BlackHolePass.js');
+    for (const [name, tier] of Object.entries(QUALITY)) {
+      expect(Boolean(tier.holeMarch)).toBe(name === 'high');
+    }
+    expect(QUALITY.high.holeSteps).toBeLessThanOrEqual(MAX_HOLE_STEPS);
+  });
+});

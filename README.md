@@ -17,7 +17,43 @@ Spiral arms are real **density waves**: stars move on twisted elliptical orbits 
 - **Share and save** — the scene saves automatically; copy a share link, export/import JSON, undo/redo.
 - **Record** — screenshots, video (WebM/MP4) and 4-second GIFs.
 - **Start screen** — a translucent box over the live, blurred scene lists the controls for your device; click or tap to start. The UI uses JetBrains Mono, and the control panel is translucent glass (narrow on phones).
+- **Black holes** — add standalone black holes in the Interstellar style; on the High tier the light bending is a real ray march through curved spacetime with a thick disc (see Physics).
 - **Runs on ordinary hardware** — Auto quality adapts to your device (laptop integrated GPUs and phones included); or pick Minimal / Low / Medium / High.
+
+## Physics
+
+What in the app follows real physics or real astronomy, and the model behind it. Everything is scaled and simplified so it runs in real time; the code lives in `src/galaxy/` (galaxy model mirrored between `densityModel.js` and `shaders/chunks/model.glsl`).
+
+**Black holes** (`blackHole.js`, `core/BlackHolePass.js`)
+
+- **Light bending on the High tier is a real geodesic ray march.** Each pixel integrates its light ray through Schwarzschild spacetime (the photon-orbit equation d²p/dλ² = −1.5 h² p / r⁵). This gives the shadow at the true critical impact parameter √27/2 Rs, the photon sphere at 1.5 Rs, the far side of the disc lifted over and under the hole, and the thin higher-order images from light that loops the hole. Tests check it against the exact Schwarzschild deflection integral (within 1% for b ≥ 3.5 Rs).
+- **Other tiers bend each ray once** by the Schwarzschild deflection angle: the second-order weak-field formula far away and the strong-deflection limit near the photon sphere.
+- **Accretion disc:** the Shakura–Sunyaev thin-disc flux profile F ∝ r⁻³ (1 − √(r_in / r)), with the inner edge at the ISCO (3 Rs) and Keplerian shear (inner gas orbits faster, ω ∝ r⁻¹·⁵). On High the disc is a flared volume that emits and absorbs light along each ray.
+- **Jets** leave along the spin axis, are hidden behind the shadow, and are dimmed where the disc is in front of them.
+
+**Galaxies** (`densityModel.js`, `generateGalaxy.js`, `discMap.js`)
+
+- **Spiral arms are density waves** (Lin–Shu / Lindblad): every disc star moves on a slightly elongated orbit whose orientation twists with radius, so orbits crowd into arms. Stars flow through the arms, the pattern turns rigidly, and the arms never wind up.
+- **Rotation:** a damped flat rotation curve (inner orbits take less time per turn).
+- **Structure:** an exponential disc with a sech² vertical profile, a Sérsic bulge (n ≈ 4 is de Vaucouleurs), a bar that turns with the pattern, and a stellar halo.
+- **Dust:** an exponential dust slab whose optical depth dims and reddens the light behind it, concentrated on the inner (concave) edge of the arms, as in real spirals; edge-on discs show a dark midplane lane.
+- **Stars:** black-body colours from their temperatures; young hot blue stars light up on the arm crests where star formation happens; pink H II regions (ionised hydrogen) glow there too.
+- **Globular clusters** are Plummer spheres of old stars on slow halo orbits.
+- **Supernovae** follow a Poisson schedule, prefer young stars (core-collapse) or anywhere in ellipticals (type Ia), and have a fast-rise, exponential-fade light curve.
+
+**Observing**
+
+- **Wavelength views:** visible light; the Hubble SHO palette (Hα, [O III], [S II]); JWST-style infrared (dust becomes transparent and glows, stars dim); 21 cm radio (neutral hydrogen along the arms with a central hole, as in real HI maps); X-ray (a few compact sources, hot gas, bright supernovae).
+- **Telescope optics:** diffraction spikes in the real JWST 6+2 and Hubble 4-point patterns.
+- **Real galaxies** (M31, M51, M101, M104, M87, LMC) at their real relative diameters and inclinations; the scale bar uses 1 world unit = 9,000 light-years.
+
+**Artistic choices (not physics)**
+
+- No Doppler beaming: both sides of the disc are equally bright, as in the film *Interstellar* (a real disc is much brighter on the side moving toward you).
+- The gold disc palette and the white-hot inner edge (a real disc this hot would look blue-white).
+- Black holes are drawn far larger than real ones at galaxy scale, and the space around them is dimmed (a "cleared cavity") so the disc stands out.
+- The horizontal lens streak, the glow halo and the soft haze around the disc on the lower tiers.
+- The intro fall: its timing, camera path and the fade to black are cinematic, not a simulation of falling in.
 
 ## Quick start
 

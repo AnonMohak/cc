@@ -3,13 +3,215 @@ import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { CHUNKS, glsl } from '../galaxy/shaders/glsl.js';
 import { getNoiseTexture, NOISE_SIZE } from '../galaxy/noiseTexture.js';
 import { BANDS } from '../galaxy/bands.js';
-import { SHADOW_B, DISC_INNER, DISC_OUTER, LENS_REACH, MAX_DEFLECTION, shadowPixels, lensFade, pickLenses } from '../galaxy/blackHole.js';
+import {
+  SHADOW_B,
+  DISC_INNER,
+  DISC_OUTER,
+  LENS_REACH,
+  MAX_DEFLECTION,
+  MARCH_SPHERE_K,
+  MARCH_STEP_K,
+  MARCH_STEP_MIN,
+  MARCH_STEP_MAX,
+  PHOTON_SPHERE,
+  shadowPixels,
+  lensFade,
+  pickLenses,
+} from '../galaxy/blackHole.js';
 import { MAX_GALAXIES } from '../galaxy/params.js';
 
 /** Lenses drawn per frame (the largest on screen). */
 export const MAX_LENSES = 4;
 
 const f = (x) => x.toFixed(4);
+
+/** Ray-march step cap (High tier; QUALITY.*.holeSteps must stay at or below it). */
+export const MAX_HOLE_STEPS = 64;
+/** The march renders at this fraction of the screen resolution. */
+export const MARCH_SCALE = 0.4;
+
+// Disc look shared by the one-bend shader and the ray march: colours, the
+// Shakura–Sunyaev profile and the concentric streak noise. Both shaders set
+// the lens globals (lensHot, lensCool, discOuter, lensGain) per lens.
+const DISC_GLSL = /* glsl */ `
+  const float DISC_INNER = ${f(DISC_INNER)};
+  const float PI = 3.14159265;
+  const float NOISE_TEXELS = ${f(NOISE_SIZE)};
+  // Runs after bloom, so the disc must outshine a saturated core by itself.
+  // Lower than the old 4.0: ACES turns brighter light white, and the film
+  // disc is gold.
+  const float DISC_GAIN = 2.0;
+  // Disc streak noise: tiles per Rs along the radius (one tile per turn around).
+  const float STREAK_FREQ_R = 0.35;
+  const float FINE_FREQ_R = 1.1;
+  // Slow, calm spin (the film disc barely moves).
+  const float SPIN = 0.5;
+
+  vec3 lensHot;
+  vec3 lensCool;
+  float discOuter;
+  float lensGain;
+
+  // Disc colour by the normalised flux q (1 at the inner peak): gold outside,
+  // white-hot at the peak.
+  vec3 discColour(float q) {
+    vec3 c = mix(lensCool, lensHot, pow(q, 0.35));
+    return c + (1.0 - c) * 0.25 * q * q * q;
+  }
+
+  // Shakura–Sunyaev flux ∝ r⁻³ (1 − √(r_in/r)), normalised to peak 1.
+  float discFlux(float r) {
+    float x = DISC_INNER / r;
+    return x * x * x * (1.0 - sqrt(x)) * 17.6;
+  }
+
+  // Disc turn coordinate at in-plane point h (relative to the hole, normal n):
+  // the angle in turns, minus the Keplerian shear (inner gas laps the outer,
+  // so the streaks wind up).
+  float discTurn(vec3 h, vec3 n, float r, float time) {
+    vec3 e1 = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+    float phi = atan(dot(h, cross(n, e1)), dot(h, e1));
+    float omega = pow(DISC_INNER / r, 1.5) * SPIN;
+    return (phi - omega * time) / (2.0 * PI);
+  }
+
+  // Disc radial edges: in from the ISCO, soft fade out to discOuter.
+  float discEdge(float r) {
+    return gm_smoothstep(DISC_INNER, DISC_INNER * 1.08, r) * (1.0 - gm_smoothstep(discOuter * 0.45, discOuter, r));
+  }
+`;
+
+// Ray march for the largest lens on the High tier, at MARCH_SCALE resolution.
+// Each pixel traces its bent ray (velocity Verlet on the photon-orbit
+// equation, mirrored from blackHole.js traceRay) through a thick, flared disc
+// volume, and writes the disc light (rgb) and the transmittance (a). Captured
+// rays end with transmittance 0. The main pass adds the lensed background
+// times the transmittance, so the background stays at full resolution.
+const marchShader = glsl(
+  CHUNKS.model,
+  /* glsl */ `
+  #define MAX_LENSES ${MAX_LENSES}
+  #define MAX_HOLE_STEPS ${MAX_HOLE_STEPS}
+  uniform sampler2D uNoise;
+  uniform vec2 uTanHalfFov;
+  uniform float uPixelAngle;
+  uniform vec4 uLensCenter[MAX_LENSES];
+  uniform vec4 uLensNormal[MAX_LENSES];
+  uniform vec4 uLensDisc[MAX_LENSES];
+  uniform vec3 uLensHot[MAX_LENSES];
+  uniform vec3 uLensCool[MAX_LENSES];
+  uniform float uDiscGain;
+  uniform vec3 uBandHot;
+  uniform vec3 uBandCool;
+  uniform int uSteps;
+  varying vec2 vUv;
+${DISC_GLSL}
+  const float MARCH_SPHERE_K = ${f(MARCH_SPHERE_K)};
+  const float STEP_K = ${f(MARCH_STEP_K)};
+  const float STEP_MIN = ${f(MARCH_STEP_MIN)};
+  const float STEP_MAX = ${f(MARCH_STEP_MAX)};
+  const float PHOTON_SPHERE = ${f(PHOTON_SPHERE)};
+  // Flared disc: Gaussian half-thickness H(R) = H0 + H1 · R (Rs).
+  const float H0 = 0.07;
+  const float H1 = 0.04;
+  // Emission per unit column, and absorption: a face-on column is about as
+  // bright and as opaque as the thin disc of the other tiers (alpha ~0.8).
+  const float ABSORB = 1.6;
+
+  vec3 accel(vec3 p, float h2) {
+    float r2 = dot(p, p);
+    return p * (-1.5 * h2 / (r2 * r2 * sqrt(r2)));
+  }
+
+  void main() {
+    vec3 rd = normalize(vec3((vUv * 2.0 - 1.0) * uTanHalfFov, -1.0));
+    vec3 c = uLensCenter[0].xyz;
+    vec3 n = uLensNormal[0].xyz;
+    float time = uLensNormal[0].w;
+    vec4 disc = uLensDisc[0];
+    discOuter = disc.x;
+    lensGain = uDiscGain * disc.y;
+    lensHot = uLensHot[0] * uBandHot;
+    lensCool = uLensCool[0] * uBandCool;
+
+    // March sphere: rays that miss it see no disc and are not bent here.
+    float R = discOuter * MARCH_SPHERE_K;
+    float tc = dot(c, rd);
+    float b2 = dot(c, c) - tc * tc;
+    float inside = step(dot(c, c), R * R);
+    if (b2 > R * R || (inside < 0.5 && tc < 0.0)) {
+      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+      return;
+    }
+    // Start where the ray enters the sphere (or at the camera, inside it).
+    float tEnter = inside > 0.5 ? 0.0 : tc - sqrt(R * R - b2);
+    vec3 p = rd * tEnter - c;
+    vec3 v = rd;
+    vec3 cr = cross(p, v);
+    float h2 = dot(cr, cr);
+    vec3 a = accel(p, h2);
+    float dist = tEnter;
+    // Disc basis, once per pixel (e2 = n × e1: the spin direction).
+    vec3 e1 = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+    vec3 e2 = cross(n, e1);
+    // Emission is summed as a scalar with a flux-weighted q; the colour is
+    // applied once after the loop (no pow/mix per step).
+    float Es = 0.0;
+    float Qs = 0.0;
+    float T = 1.0;
+    // Per-pixel offset of the first step (fixed, so no flicker): the step
+    // pattern turns from visible bands into fine noise that the composite
+    // tent filter hides.
+    float jitter = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+
+    for (int i = 0; i < MAX_HOLE_STEPS; i++) {
+      if (i >= uSteps) break;
+      float r = length(p);
+      float radial = dot(p, v);
+      if (r < PHOTON_SPHERE && radial < 0.0) { T = 0.0; break; }
+      if (r > R && radial > 0.0) break;
+      float dt = clamp(STEP_K * r, STEP_MIN, STEP_MAX);
+
+      // Disc slab: limit the step so it never jumps across the slab, and so
+      // inside it the height changes by at most 0.9 thickness per step.
+      float z = dot(p, n);
+      float Rr = length(p - n * z);
+      float H = H0 + H1 * Rr;
+      float vz = max(abs(dot(v, n)), 1e-3);
+      if (Rr > DISC_INNER * 0.85 && Rr < discOuter) {
+        dt = min(dt, max(abs(z) - 2.0 * H, 0.9 * H) / vz);
+        if (abs(z) < 3.0 * H) {
+          float dens = exp(-z * z / (H * H)) / (1.77 * H) * discEdge(Rr);
+          if (dens > 1e-4) {
+            // Keplerian shear (inner gas laps the outer): x^1.5 as x·√x.
+            float x = DISC_INNER / Rr;
+            float turn = (atan(dot(p, e2), dot(p, e1)) - x * sqrt(x) * SPIN * time) / (2.0 * PI);
+            // Filter the streaks by the pixel (a little by the step too).
+            float foot = max(dist * uPixelAngle, dt * 0.15);
+            float lod = log2(max(foot * STREAK_FREQ_R * NOISE_TEXELS, 1.0));
+            float s = textureLod(uNoise, vec2(Rr * STREAK_FREQ_R, turn), lod).r;
+            float q = discFlux(Rr);
+            float w = T * dens * dt * sqrt(q) * (0.3 + 1.4 * gm_smoothstep(0.35, 0.65, s));
+            Es += w;
+            Qs += w * q;
+            T *= exp(-ABSORB * dens * dt);
+            if (T < 0.02) { T = 0.0; break; }
+          }
+        }
+      }
+
+      if (i == 0) dt *= 0.5 + 0.5 * jitter;
+      p += v * dt + 0.5 * a * dt * dt;
+      vec3 a1 = accel(p, h2);
+      v += 0.5 * (a + a1) * dt;
+      a = a1;
+      dist += dt;
+    }
+    vec3 E = Es > 0.0 ? discColour(Qs / Es) * Es : vec3(0.0);
+    gl_FragColor = vec4(E * DISC_GAIN * lensGain, T);
+  }
+`,
+);
 
 // Everything runs in view space in units of Rs, camera at the origin. A ray
 // is bent once, at its closest approach to the hole, by the Schwarzschild
@@ -49,18 +251,16 @@ const fragmentShader = glsl(
   uniform vec3 uSkyTint;
   uniform float uSkyOn;
   uniform float uStarGain;
+  // High tier: the largest lens (index 0) takes its disc from the ray march
+  // (rgb: disc light, a: transmittance), at MARCH_SCALE resolution.
+  uniform sampler2D tMarch;
+  uniform vec2 uMarchTexel;
+  uniform float uMarch;
   varying vec2 vUv;
-
+${DISC_GLSL}
   const float SHADOW_B = ${f(SHADOW_B)};
-  const float DISC_INNER = ${f(DISC_INNER)};
   const float LENS_REACH = ${f(LENS_REACH)};
   const float MAX_DEFLECTION = ${f(MAX_DEFLECTION)};
-  const float PI = 3.14159265;
-  const float NOISE_TEXELS = ${f(NOISE_SIZE)};
-  // Runs after bloom, so the disc must outshine a saturated core by itself.
-  // Lower than the old 4.0: ACES turns brighter light white, and the film
-  // disc is gold.
-  const float DISC_GAIN = 2.0;
   const float RING_GAIN = 3.0;
   const float HAZE_GAIN = 0.9;
   const float HALO_GAIN = 0.1;
@@ -79,11 +279,6 @@ const fragmentShader = glsl(
   // lens edge: no seam. Light read from right behind the shadow (which no
   // unlensed pixel shows) is removed too: that is where the cusp sits.
   const float CAVITY = 0.03;
-  // Disc streak noise: tiles per Rs along the radius (one tile per turn around).
-  const float STREAK_FREQ_R = 0.35;
-  const float FINE_FREQ_R = 1.1;
-  // Slow, calm spin (the film disc barely moves).
-  const float SPIN = 0.5;
   // Procedural field stars: cells per cube-face side and the chance of a star
   // in a cell (~8 000 on the whole sky, like scene/starfield.js).
   const float STAR_CELLS = 96.0;
@@ -96,12 +291,6 @@ const fragmentShader = glsl(
     float strong = -log(b / SHADOW_B - 1.0) - 0.4;
     return min(MAX_DEFLECTION, max(weak, strong));
   }
-
-  // The lens being drawn (set at the top of each loop pass in main).
-  vec3 lensHot;
-  vec3 lensCool;
-  float discOuter;
-  float lensGain;
 
   float hash12(vec2 p) {
     vec3 q = fract(vec3(p.xyx) * 0.1031);
@@ -156,19 +345,6 @@ const fragmentShader = glsl(
     return w > 0.99 ? screen : screen * w + background(dSky) * (1.0 - w);
   }
 
-  // Disc colour by the normalised flux q (1 at the inner peak): gold outside,
-  // white-hot at the peak.
-  vec3 discColour(float q) {
-    vec3 c = mix(lensCool, lensHot, pow(q, 0.35));
-    return c + (1.0 - c) * 0.25 * q * q * q;
-  }
-
-  // Shakura–Sunyaev flux ∝ r⁻³ (1 − √(r_in/r)), normalised to peak 1.
-  float discFlux(float r) {
-    float x = DISC_INNER / r;
-    return x * x * x * (1.0 - sqrt(x)) * 17.6;
-  }
-
   // Thin accretion disc at hit point h (relative to the hole), seen along rd
   // from distance dist (Rs). rgb: emitted light, a: opacity. The noise LOD is
   // explicit (pixel footprint): the atan seam and the branches around this
@@ -176,11 +352,7 @@ const fragmentShader = glsl(
   vec4 discLight(vec3 h, vec3 rd, vec3 n, float time, float dist) {
     float r = length(h);
     if (r < DISC_INNER || r > discOuter) return vec4(0.0);
-    vec3 e1 = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
-    float phi = atan(dot(h, cross(n, e1)), dot(h, e1));
-    // Keplerian shear: inner gas laps the outer, so the streaks wind up.
-    float omega = pow(DISC_INNER / r, 1.5) * SPIN;
-    float turn = (phi - omega * time) / (2.0 * PI);
+    float turn = discTurn(h, n, r, time);
     // Footprint of one pixel on the disc (Rs); grazing views stretch it.
     float foot = dist * uPixelAngle / sqrt(max(abs(dot(rd, n)), 0.02));
     float lod = log2(max(foot * STREAK_FREQ_R * NOISE_TEXELS, 1.0));
@@ -190,7 +362,7 @@ const fragmentShader = glsl(
     float s2 = textureLod(uNoise, vec2(r * FINE_FREQ_R + 0.37, turn * 2.0 + 0.5), lod + log2(FINE_FREQ_R / STREAK_FREQ_R)).g;
     float streak = gm_smoothstep(0.3, 0.7, 0.55 * s1 + 0.45 * s2);
     float q = discFlux(r);
-    float edge = gm_smoothstep(DISC_INNER, DISC_INNER * 1.08, r) * (1.0 - gm_smoothstep(discOuter * 0.45, discOuter, r));
+    float edge = discEdge(r);
     vec3 col = discColour(q) * pow(q, 0.55) * (0.35 + 1.3 * streak);
     return vec4(col * edge * DISC_GAIN * lensGain, edge * mix(0.6, 1.0, pow(q, 0.3)));
   }
@@ -253,6 +425,26 @@ const fragmentShader = glsl(
       float open = gm_smoothstep(SHADOW_B * 2.0, LENS_REACH, b);
       vec3 L = captured ? vec3(0.0) : sampleDir(src, rd2)
         * mix(CAVITY, 1.0, open * open) * gm_smoothstep(SHADOW_B, SHADOW_B * 2.5, length(cross(src, c)));
+      float outside = gm_smoothstep(SHADOW_B, SHADOW_B * 1.25, b);
+      float w = max(0.04, 0.6 * length(c) * uPixelAngle);
+      float ring = (exp(-pow((b - SHADOW_B * 1.015) / w, 2.0))
+        + 0.35 * exp(-pow((b - SHADOW_B * 1.09) / (1.6 * w), 2.0))) * (0.04 / w);
+      vec3 halo = lensCool * HALO_GAIN * lensGain * exp(-(b - SHADOW_B) / HALO_SCALE);
+
+      if (i == 0 && uMarch > 0.5) {
+        // Ray-marched thick disc: four bilinear taps one march texel apart
+        // (a soft tent that also hides the step jitter). It already holds the
+        // near disc, the arches and the higher-order images, so no thin disc
+        // or haze here.
+        vec2 o = uMarchTexel;
+        vec4 m = 0.25 * (texture2D(tMarch, vUv + vec2(o.x, o.y)) + texture2D(tMarch, vUv + vec2(-o.x, o.y))
+          + texture2D(tMarch, vUv + vec2(o.x, -o.y)) + texture2D(tMarch, vUv + vec2(-o.x, -o.y)));
+        L = L * m.a + m.rgb;
+        L += lensHot * ring * RING_GAIN * lensGain * m.a;
+        L += halo * disc.z * outside * reachFade * m.a;
+        col = mix(col, L, fade);
+        continue;
+      }
 
       // Far image: the bent ray crosses the disc plane behind the hole (the
       // arches over and under the shadow).
@@ -264,15 +456,11 @@ const fragmentShader = glsl(
           L = d.rgb + L * (1.0 - d.a);
         }
       }
-      // Photon rings: light that orbited the hole, piled up at the critical b.
-      // At least ~1 px wide with the same energy, so a small hole does not flicker.
-      float w = max(0.04, 0.6 * length(c) * uPixelAngle);
-      float ring = (exp(-pow((b - SHADOW_B * 1.015) / w, 2.0))
-        + 0.35 * exp(-pow((b - SHADOW_B * 1.09) / (1.6 * w), 2.0))) * (0.04 / w);
+      // Photon rings: light that orbited the hole, piled up at the critical b
+      // (w: at least ~1 px wide with the same energy, so a small hole does
+      // not flicker), then haze and the glow halo (bloom ran before this
+      // pass); both stay out of the shadow.
       L += lensHot * ring * RING_GAIN * lensGain;
-      // Haze and glow halo (bloom ran before this pass); both stay out of the shadow.
-      float outside = gm_smoothstep(SHADOW_B, SHADOW_B * 1.25, b);
-      vec3 halo = lensCool * HALO_GAIN * lensGain * exp(-(b - SHADOW_B) / HALO_SCALE);
       L += (discHaze(bv, n, time, tc) + halo) * disc.z * outside * reachFade;
       // Near image: the straight ray meets the disc before its closest approach.
       float dn = dot(rd, n);
@@ -350,6 +538,9 @@ export class BlackHolePass extends Pass {
         uSkyTint: { value: new THREE.Color(1, 1, 1) },
         uSkyOn: { value: 0 },
         uStarGain: { value: 1 },
+        tMarch: { value: null },
+        uMarchTexel: { value: new THREE.Vector2(1, 1) },
+        uMarch: { value: 0 },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -362,11 +553,53 @@ export class BlackHolePass extends Pass {
       depthWrite: false,
     });
     this.fsQuad = new FullScreenQuad(this.material);
+
+    // High tier ray march (setMarch): its own low-res target and material,
+    // sharing the lens uniforms with the main material by reference.
+    this.march = false;
+    this.marchTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+    const u = this.material.uniforms;
+    this.marchMaterial = new THREE.ShaderMaterial({
+      name: 'BlackHoleMarch',
+      uniforms: {
+        uNoise: u.uNoise,
+        uTanHalfFov: u.uTanHalfFov,
+        uPixelAngle: { value: 0.001 },
+        uLensCenter: u.uLensCenter,
+        uLensNormal: u.uLensNormal,
+        uLensDisc: u.uLensDisc,
+        uLensHot: u.uLensHot,
+        uLensCool: u.uLensCool,
+        uDiscGain: u.uDiscGain,
+        uBandHot: u.uBandHot,
+        uBandCool: u.uBandCool,
+        uSteps: { value: 48 },
+      },
+      vertexShader: this.material.vertexShader,
+      fragmentShader: marchShader,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.marchQuad = new FullScreenQuad(this.marchMaterial);
+    u.tMarch.value = this.marchTarget.texture;
   }
 
   setSize(width, height) {
     this.height = height;
     this.material.uniforms.uResolution.value.set(width, height);
+    const w = Math.max(1, Math.round(width * MARCH_SCALE));
+    const h = Math.max(1, Math.round(height * MARCH_SCALE));
+    this.marchTarget.setSize(w, h);
+    this.material.uniforms.uMarchTexel.value.set(1 / w, 1 / h);
+  }
+
+  /**
+   * High tier: ray-march the largest lens through a thick disc (on), or use
+   * the one-bend model for every lens (off). `steps` ≤ MAX_HOLE_STEPS.
+   */
+  setMarch(on, steps = 48) {
+    this.march = on;
+    this.marchMaterial.uniforms.uSteps.value = Math.min(steps, MAX_HOLE_STEPS);
   }
 
   /**
@@ -435,11 +668,18 @@ export class BlackHolePass extends Pass {
     u.uCount.value = n;
     u.uTanHalfFov.value.set(tanX, tanY);
     u.uPixelAngle.value = (2 * tanY) / this.height;
+    // March pixels are 1 / MARCH_SCALE screen pixels wide.
+    this.marchMaterial.uniforms.uPixelAngle.value = u.uPixelAngle.value / MARCH_SCALE;
     u.uViewToWorld.value.setFromMatrix4(camera.matrixWorld);
+    u.uMarch.value = this.march && n > 0 ? 1 : 0;
     this.enabled = n > 0;
   }
 
   render(renderer, writeBuffer, readBuffer) {
+    if (this.material.uniforms.uMarch.value > 0.5) {
+      renderer.setRenderTarget(this.marchTarget);
+      this.marchQuad.render(renderer);
+    }
     this.material.uniforms.tDiffuse.value = readBuffer.texture;
     renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
     this.fsQuad.render(renderer);
@@ -448,5 +688,8 @@ export class BlackHolePass extends Pass {
   dispose() {
     this.material.dispose();
     this.fsQuad.dispose();
+    this.marchMaterial.dispose();
+    this.marchQuad.dispose();
+    this.marchTarget.dispose();
   }
 }

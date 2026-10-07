@@ -122,6 +122,10 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       blackHole.source = source;
       blackHole.allowed = allowed;
     },
+    /** High tier: ray-march the largest black hole (quality.js holeMarch, holeSteps). */
+    setBlackHoleMarch(on, steps) {
+      blackHole.setMarch(on, steps);
+    },
     /** `source()` says whether any jet is visible (JetPass is skipped otherwise). */
     setJetSource(source) {
       jetSource = source;
