@@ -40,6 +40,8 @@ export const MAX_HOLE_STEPS = 64;
 // the lens globals (lensHot, lensCool, discOuter, lensGain) per lens.
 const DISC_GLSL = /* glsl */ `
   const float DISC_INNER = ${f(DISC_INNER)};
+  // Radius of the flux peak (discFlux = 1 there).
+  const float DISC_PEAK = DISC_INNER * 1.36;
   const float PI = 3.14159265;
   const float NOISE_TEXELS = ${f(NOISE_SIZE)};
   // Runs after bloom, so the disc must outshine a saturated core by itself.
@@ -280,6 +282,8 @@ ${DISC_GLSL}
   const float WARP_DEPTH = ${f(WARP_DEPTH)};
   const float WARP_SWIRL = ${f(WARP_SWIRL)};
   const float RING_GAIN = 3.0;
+  const float RING_TAIL = 0.12;
+  const float RING_TAIL_RS = 0.35;
   const float HAZE_GAIN = 0.9;
   const float HALO_GAIN = 0.1;
   const float HALO_SCALE = 6.0; // Rs
@@ -367,9 +371,19 @@ ${DISC_GLSL}
   // from distance dist (Rs). rgb: emitted light, a: opacity. The noise LOD is
   // explicit (pixel footprint): the atan seam and the branches around this
   // call would otherwise pick wrong mip levels.
-  vec4 discLight(vec3 h, vec3 rd, vec3 n, float time, float dist) {
+  // fill: the far image. Its rays that cross the plane inside the inner edge
+  // (just outside the shadow) show the inner edge's light instead of the
+  // empty gap: else a dark band sits between the photon ring and the arches.
+  vec4 discLight(vec3 h, vec3 rd, vec3 n, float time, float dist, bool fill) {
     float r = length(h);
-    if (r < DISC_INNER || r > discOuter) return vec4(0.0);
+    if (r > discOuter || (r < DISC_INNER && !fill)) return vec4(0.0);
+    // Fill: inside the flux peak, mirror the radius back out (continuous at
+    // the peak), so the streaks and the shear stay calm instead of winding
+    // up toward r = 0.
+    // Near r = 0 the angle is singular and the one-bend mapping folds:
+    // flatten the streaks there (detail 0 → flat light).
+    float detail = fill ? gm_smoothstep(0.2 * DISC_INNER, DISC_INNER, r) : 1.0;
+    if (fill && r < DISC_PEAK) r = DISC_PEAK + 0.5 * (DISC_PEAK - r);
     float turn = discTurn(h, n, r, time);
     // Footprint of one pixel on the disc (Rs); grazing views stretch it.
     float foot = dist * uPixelAngle / sqrt(max(abs(dot(rd, n)), 0.02));
@@ -384,7 +398,7 @@ ${DISC_GLSL}
       float s3 = textureLod(uNoise, vec2(r * FINE_FREQ_R * 3.1 + 0.71, turn * 4.0 + 0.25), lod + log2(3.1 * FINE_FREQ_R / STREAK_FREQ_R)).r;
       s = 0.45 * s1 + 0.35 * s2 + 0.2 * s3;
     }
-    float streak = gm_smoothstep(0.3, 0.7, s);
+    float streak = gm_smoothstep(0.3, 0.7, mix(0.5, s, detail));
     float q = discFlux(r);
     float edge = discEdge(r);
     vec3 col = discColour(q) * pow(q, 0.55) * (0.35 + 1.3 * streak);
@@ -463,8 +477,12 @@ ${DISC_GLSL}
         * mix(CAVITY, 1.0, open * open) * gm_smoothstep(SHADOW_B, SHADOW_B * 2.5, length(cross(src, c)));
       float outside = gm_smoothstep(SHADOW_B, SHADOW_B * 1.25, b);
       float w = max(0.04, 0.6 * length(c) * uPixelAngle);
-      float ring = (exp(-pow((b - SHADOW_B * 1.015) / w, 2.0))
-        + 0.35 * exp(-pow((b - SHADOW_B * 1.09) / (1.6 * w), 2.0))) * (0.04 / w);
+      // One photon ring: a thin core (at least ~1 px, same energy) and a
+      // soft outward tail in Rs that runs into the disc image. Two separate
+      // thin rings left dark bands between them up close.
+      float ringB = SHADOW_B * 1.015;
+      float ring = exp(-pow((b - ringB) / w, 2.0)) * (0.04 / w)
+        + RING_TAIL * exp(-max(b - ringB, 0.0) / RING_TAIL_RS) * gm_smoothstep(SHADOW_B, ringB, b);
       vec3 halo = lensCool * HALO_GAIN * lensGain * exp(-(b - SHADOW_B) / HALO_SCALE);
 
       if (i == 0 && uMarch > 0.5) {
@@ -488,7 +506,7 @@ ${DISC_GLSL}
       if (!captured && abs(dn2) > 1e-4) {
         float t2 = dot(c - p0, n) / dn2;
         if (t2 > 0.0) {
-          vec4 d = discLight(p0 + rd2 * t2 - c, rd2, n, time, tc + t2);
+          vec4 d = discLight(p0 + rd2 * t2 - c, rd2, n, time, tc + t2, true);
           L = d.rgb + L * (1.0 - d.a);
         }
       }
@@ -503,7 +521,7 @@ ${DISC_GLSL}
       if (abs(dn) > 1e-4) {
         float t1 = dot(c, n) / dn;
         if (t1 > 0.0 && t1 < tc) {
-          vec4 d = discLight(rd * t1 - c, rd, n, time, t1);
+          vec4 d = discLight(rd * t1 - c, rd, n, time, t1, false);
           L = d.rgb + L * (1.0 - d.a);
         }
       }
