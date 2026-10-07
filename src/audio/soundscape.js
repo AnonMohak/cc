@@ -1,5 +1,5 @@
 import { mixLevels, MUSIC_FADE_IN, MUSIC_FADE_OUT } from './soundMix.js';
-import { FALL_MUSIC_URL } from './tracks.js';
+import { FALL_MUSIC_URL, FALL_MUSIC_START } from './tracks.js';
 
 // Seconds for the drone to fade in after unlock, and for on/off toggles.
 const UNLOCK_FADE = 2;
@@ -83,9 +83,9 @@ function buildDrone(ctx, out) {
  * unlock() is called from one (the start-box click). A silent no-op where
  * Web Audio is missing.
  *
- * @param {{ fallMusicUrl?: string, win?: Window, doc?: Document }} [options]
+ * @param {{ fallMusicUrl?: string, fallMusicStart?: number, win?: Window, doc?: Document }} [options]
  */
-export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, win = window, doc = document } = {}) {
+export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart = FALL_MUSIC_START, win = window, doc = document } = {}) {
   const AudioCtx = win.AudioContext ?? win.webkitAudioContext;
   const hasMusic = Boolean(fallMusicUrl);
   // True once the track can play; a missing file (404) or a bad URL leaves it
@@ -154,6 +154,8 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, win = window, 
   return {
     hasMusic,
     isMusicReady: () => musicReady,
+    /** Play position of the fall track (s), or null without one. */
+    musicTime: () => music?.currentTime ?? null,
     /** Call from a user gesture (click, tap, key): builds and starts the audio. */
     unlock() {
       if (!AudioCtx) return false;
@@ -184,7 +186,9 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, win = window, 
       if (!ctx) return;
       clearTimeout(stopTimer);
       if (music && mode === 'fall') {
-        music.currentTime = 0;
+        // A seek before the metadata arrives is dropped: retry once it has.
+        if (music.readyState >= 1) music.currentTime = fallMusicStart;
+        else music.addEventListener('loadedmetadata', () => (music.currentTime = fallMusicStart), { once: true });
         music.play().catch(() => {});
       } else if (music) {
         stopTimer = setTimeout(() => music.pause(), MUSIC_FADE_OUT * 1000 + 100);

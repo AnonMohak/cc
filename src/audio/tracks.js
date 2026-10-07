@@ -8,5 +8,24 @@
  * plays as silence there.
  */
 
-/** Plays during the intro fall into the black hole. Drop the file at public/audio/interstellar.mp3. */
-export const FALL_MUSIC_URL = '/audio/interstellar.mp3';
+/**
+ * Plays during the intro fall into the black hole: Interstellar main theme
+ * (Hans Zimmer), streamed from the audio.com upload's CDN (CORS: *).
+ *
+ * This is a signed link (X-Amz-Expires = 6 days from 2026-10-05 17:44 UTC):
+ * it stops working on 2026-10-11 at about 17:44 UTC, and then the drone plays
+ * instead. For a lasting setup, save the file as public/audio/interstellar.mp3
+ * and set this to '/audio/interstellar.mp3'.
+ */
+export const FALL_MUSIC_URL =
+  'https://s3.ustatik.com/audio.com.audio/transcoding/85/19/1845855631841985-1845855631994643-1845855633379012.mp3' +
+  '?X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Algorithm=AWS4-HMAC-SHA256' +
+  '&X-Amz-Credential=F0E8U41NBMMW3Y027UTJ%2F20261005%2Feu-central-1%2Fs3%2Faws4_request' +
+  '&X-Amz-Date=20261005T174418Z&X-Amz-SignedHeaders=host&X-Amz-Expires=518400' +
+  '&X-Amz-Signature=5cbc56589a26e74551224e7c3af1a9796e10efeb8fbacdd0090f6b317cdea8db';
+
+/**
+ * Where the fall music starts (s). The first ~22 s are near silent (about
+ * -32 dB); at 0:23 the theme becomes clearly audible (about -21 dB).
+ */
+export const FALL_MUSIC_START = 23;
