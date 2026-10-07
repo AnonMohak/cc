@@ -50,6 +50,11 @@ const _fallE1 = new THREE.Vector3();
 const _fallE2 = new THREE.Vector3();
 const _fallOffset = new THREE.Vector3();
 const _fallLook = new THREE.Vector3();
+
+/** The intro scene: exactly one standalone black hole (film shot + intro fall). */
+function isSingleBlackHole(state) {
+  return state.galaxies.length === 1 && state.galaxies[0].kind === 'blackhole';
+}
 // Camera height above a standalone black hole's disc plane for the film shot.
 const FILM_ELEVATION_DEG = 6;
 
@@ -91,8 +96,7 @@ export function startApp(container, { startScreen } = {}) {
   const actions = createActions();
   const store = createStore(undefined, persistence.load(storage) ?? createInitialState());
   // A fresh scene starts with one standalone black hole, framed like the film shot.
-  const freshScene = store.getState().galaxies.length === 0;
-  if (freshScene) store.dispatch(actions.addBlackHole(store.getState()));
+  if (store.getState().galaxies.length === 0) store.dispatch(actions.addBlackHole(store.getState()));
 
   const save = debounce(() => persistence.save(store.getState(), storage), SAVE_DEBOUNCE_MS);
   store.subscribe(save);
@@ -146,8 +150,10 @@ export function startApp(container, { startScreen } = {}) {
     const dir = side.multiplyScalar(Math.cos(elevation)).addScaledVector(normal, Math.sin(elevation));
     return { center, position: center.clone().addScaledVector(dir, distance) };
   }
-  if (freshScene) {
-    const shot = filmShot(store.getState().selectedId);
+  // The camera is not saved: every load of a single-black-hole scene starts
+  // at the film shot (the home view would be far away).
+  if (isSingleBlackHole(store.getState())) {
+    const shot = filmShot(store.getState().galaxies[0].id);
     if (shot) {
       controls.target.copy(shot.center);
       camera.position.copy(shot.position);
@@ -304,10 +310,9 @@ export function startApp(container, { startScreen } = {}) {
   // ── Intro fall into the black hole (core/blackHoleFall.js) ─────────────
   // Idle after the start box on a single-black-hole scene: the camera
   // spirals in with the disc and falls in. A click, tap, wheel or the
-  // controls panel ends it and flies back out. Once per page load; never
-  // with reduced motion.
-  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-  const fall = reducedMotion ? null : createFall();
+  // controls panel ends it and flies back out. Once per page load, for
+  // everyone (also with reduced motion: it is the intro, and any click ends it).
+  const fall = createFall();
   const fallOverlay = createFallOverlay(container);
   /** The running fall: hole, basis and start pose (see beginFall). */
   let fallRun = null;
@@ -315,8 +320,7 @@ export function startApp(container, { startScreen } = {}) {
   let fovEase = null; // { from, t } while the fov returns to baseFov
 
   function fallEligible() {
-    const list = store.getState().galaxies;
-    return list.length === 1 && list[0].kind === 'blackhole' && (cameraMode === 'orbit' || cameraMode === 'fall');
+    return isSingleBlackHole(store.getState()) && (cameraMode === 'orbit' || cameraMode === 'fall');
   }
 
   /** Start from wherever the camera is (after a reload it is at CAMERA_HOME). */

@@ -33,6 +33,18 @@ describe('createFall', () => {
     expect(fallen.interact()).toBe('escape');
   });
 
+  it('takes the same time from any start distance', () => {
+    // Progress is time-based; the distance only maps through fallDistance.
+    for (const r0 of [4, 18]) {
+      const fall = createFall({ idleSeconds: 5, fallSeconds: 60 });
+      fall.tick(5, true);
+      expect(fall.tick(59.9, true).phase).toBe('falling');
+      expect(fall.tick(0.1, true).phase).toBe('fallen');
+      expect(fallDistance(r0, 0.15, fallPose(1).distanceT)).toBeCloseTo(0.15, 9);
+      expect(fallDistance(r0, 0.15, fallPose(0).distanceT)).toBeCloseTo(r0, 9);
+    }
+  });
+
   it('ends for good when the scene stops being eligible', () => {
     const fall = createFall();
     fall.tick(1, true);
