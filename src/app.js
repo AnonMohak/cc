@@ -4,7 +4,7 @@ import { createCamera, CAMERA_LIMITS, CAMERA_HOME } from './core/createCamera.js
 import { createComposer } from './core/createComposer.js';
 import { createLoop } from './core/loop.js';
 import { createCameraFly, framingPosition, easeInOutCubic } from './core/cameraFly.js';
-import { createFall, fallPose, fallDistance, orbitRate, R_END, FALL_ELEVATION_DEG } from './core/blackHoleFall.js';
+import { createFall, fallPose, fallDistance, orbitRate, R_END, FILM_ELEVATION_DEG } from './core/blackHoleFall.js';
 import { captureScreenshot } from './core/screenshot.js';
 import { createStarfield } from './scene/starfield.js';
 import { createSky } from './scene/sky.js';
@@ -39,6 +39,8 @@ import { bandFor, nextBand } from './galaxy/bands.js';
 import { meterFrame, targetFactor, adapt } from './core/autoExposure.js';
 
 const SAVE_DEBOUNCE_MS = 500;
+// The film shot is this much closer than the "disc fills the view" distance.
+const FILM_CLOSER = 0.9;
 // Intro fall: seconds for the fly back out, and for the elevation to settle.
 const FALL_ESCAPE_SECONDS = 1.5;
 const FALL_SETTLE_SECONDS = 10;
@@ -55,8 +57,6 @@ const _fallLook = new THREE.Vector3();
 function isSingleBlackHole(state) {
   return state.galaxies.length === 1 && state.galaxies[0].kind === 'blackhole';
 }
-// Camera height above a standalone black hole's disc plane for the film shot.
-const FILM_ELEVATION_DEG = 6;
 
 /**
  * Build the scene, state, UI and loop inside `container`.
@@ -127,8 +127,8 @@ export function startApp(container, { startScreen } = {}) {
 
   /**
    * Camera for the "Interstellar" view of a standalone black hole: a few
-   * degrees above its disc plane, close enough that the disc fills most of
-   * the width.
+   * degrees above its disc plane (FILM_ELEVATION_DEG), close enough that the
+   * disc fills most of the width (FILM_CLOSER brings it a bit nearer).
    */
   function filmShot(id) {
     const galaxy = galaxies.get(id);
@@ -138,7 +138,7 @@ export function startApp(container, { startScreen } = {}) {
     const tanY = Math.tan(THREE.MathUtils.degToRad(baseFov / 2));
     const tanX = tanY * camera.aspect;
     const distance = THREE.MathUtils.clamp(
-      Math.max(outer / tanY, outer / (0.9 * tanX)),
+      Math.max(outer / tanY, outer / (0.9 * tanX)) * FILM_CLOSER,
       CAMERA_LIMITS.minDistance,
       CAMERA_LIMITS.maxDistance,
     );
@@ -361,7 +361,7 @@ export function startApp(container, { startScreen } = {}) {
     const r = fallDistance(run.r0, run.rEnd, pose.distanceT);
     run.angle += orbitRate(r, run.r0) * realDt;
     const settle = easeInOutCubic(Math.min(1, run.clock / FALL_SETTLE_SECONDS));
-    const elevation = THREE.MathUtils.lerp(run.elevation0, THREE.MathUtils.degToRad(FALL_ELEVATION_DEG), settle);
+    const elevation = THREE.MathUtils.lerp(run.elevation0, THREE.MathUtils.degToRad(FILM_ELEVATION_DEG), settle);
     const ring = Math.cos(elevation) * r;
     camera.position
       .copy(_fallCenter)

@@ -13,8 +13,12 @@ export const R_END = 1.2;
 /** Orbit speed at the start distance (rad/s) and its cap. */
 export const ORBIT_START = 0.06;
 export const ORBIT_MAX = 2.5;
-/** Camera height above the disc plane that the orbit eases toward. */
-export const FALL_ELEVATION_DEG = 6;
+/**
+ * Camera height above the disc plane for the film shot (app.js filmShot); the
+ * fall's orbit eases toward it. High enough that the near side of the disc
+ * hides the bottom of the shadow.
+ */
+export const FILM_ELEVATION_DEG = 20;
 
 function smoothstep(e0, e1, x) {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
