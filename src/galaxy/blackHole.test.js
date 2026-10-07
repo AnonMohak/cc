@@ -113,3 +113,19 @@ describe('warpedReach', () => {
     expect(warpedReach(-1)).toBe(LENS_REACH);
   });
 });
+
+describe('marchDiscRadius', () => {
+  it('puts the inner edge at MARCH_INNER, leaves the outer disc alone and never folds', async () => {
+    const { marchDiscRadius, MARCH_INNER, MARCH_BLEND, DISC_INNER, PHOTON_SPHERE } = await import('./blackHole.js');
+    expect(MARCH_INNER).toBeGreaterThan(PHOTON_SPHERE);
+    expect(marchDiscRadius(MARCH_INNER)).toBeCloseTo(DISC_INNER, 9);
+    expect(marchDiscRadius(MARCH_BLEND)).toBe(MARCH_BLEND);
+    expect(marchDiscRadius(12)).toBe(12);
+    let prev = -Infinity;
+    for (let r = MARCH_INNER; r <= MARCH_BLEND + 1; r += 0.01) {
+      const m = marchDiscRadius(r);
+      expect(m).toBeGreaterThan(prev);
+      prev = m;
+    }
+  });
+});

@@ -14,6 +14,8 @@ import {
   MARCH_STEP_MIN,
   MARCH_STEP_MAX,
   PHOTON_SPHERE,
+  MARCH_INNER,
+  MARCH_BLEND,
   MARCH_SCALE_MIN,
   WARP_BEND,
   WARP_REACH,
@@ -119,6 +121,14 @@ ${DISC_GLSL}
   const float STEP_MIN = ${f(MARCH_STEP_MIN)};
   const float STEP_MAX = ${f(MARCH_STEP_MAX)};
   const float PHOTON_SPHERE = ${f(PHOTON_SPHERE)};
+  const float MARCH_INNER = ${f(MARCH_INNER)};
+  const float MARCH_BLEND = ${f(MARCH_BLEND)};
+
+  // Mirror of blackHole.js marchDiscRadius: the disc reaches in to
+  // MARCH_INNER; its look is evaluated at the remapped radius.
+  float marchDiscRadius(float r) {
+    return r + (DISC_INNER - MARCH_INNER) * (1.0 - gm_smoothstep(MARCH_INNER, MARCH_BLEND, r));
+  }
   // Flared disc: Gaussian half-thickness H(R) = H0 + H1 · R (Rs).
   const float H0 = 0.07;
   const float H1 = 0.04;
@@ -188,20 +198,22 @@ ${DISC_GLSL}
       float Rr = length(p - n * z);
       float H = H0 + H1 * Rr;
       float vz = max(abs(dot(v, n)), 1e-3);
-      if (Rr > DISC_INNER * 0.85 && Rr < discOuter) {
+      if (Rr > MARCH_INNER * 0.95 && Rr < discOuter) {
         dt = min(dt, max(abs(z) - 2.0 * H, 0.9 * H) / vz);
         if (abs(z) < 3.0 * H) {
-          float dens = exp(-z * z / (H * H)) / (1.77 * H) * discEdge(Rr);
+          // Disc look at the remapped radius (inner edge at MARCH_INNER).
+          float Rd = marchDiscRadius(Rr);
+          float dens = exp(-z * z / (H * H)) / (1.77 * H) * discEdge(Rd);
           if (dens > 1e-4) {
             // Keplerian shear (inner gas laps the outer): x^1.5 as x·√x.
-            float x = DISC_INNER / Rr;
+            float x = DISC_INNER / Rd;
             float turn = (atan(dot(p, e2), dot(p, e1)) - x * sqrt(x) * SPIN * time) / (2.0 * PI);
             // Filter the streaks by the pixel (a little by the step too).
             float foot = max(dist * uPixelAngle, dt * 0.15);
             float lod = log2(max(foot * STREAK_FREQ_R * NOISE_TEXELS, 1.0));
-            float s1 = textureLod(uNoise, vec2(Rr * STREAK_FREQ_R, turn), lod).r;
-            float s2 = textureLod(uNoise, vec2(Rr * FINE_FREQ_R + 0.37, turn * 2.0 + 0.5), lod + log2(FINE_FREQ_R / STREAK_FREQ_R)).g;
-            float q = discFlux(Rr);
+            float s1 = textureLod(uNoise, vec2(Rd * STREAK_FREQ_R, turn), lod).r;
+            float s2 = textureLod(uNoise, vec2(Rd * FINE_FREQ_R + 0.37, turn * 2.0 + 0.5), lod + log2(FINE_FREQ_R / STREAK_FREQ_R)).g;
+            float q = discFlux(Rd);
             float w = T * dens * dt * sqrt(q) * (0.3 + 1.4 * gm_smoothstep(0.32, 0.68, 0.55 * s1 + 0.45 * s2));
             Es += w;
             Qs += w * q;

@@ -42,6 +42,23 @@ export const MARCH_STEP_MAX = 2;
 /** Photon sphere radius: inside it, a ray moving inward always falls in. */
 export const PHOTON_SPHERE = 1.5;
 
+/**
+ * Accurate-tier ray march only: the disc's inner edge sits at MARCH_INNER
+ * (Rs) instead of the ISCO (DISC_INNER), like Gargantua's near-extremal spin
+ * in the film. Otherwise a dark band shows between the photon ring and the
+ * lensed inner edge up close. The disc look is evaluated at a remapped
+ * radius (marchDiscRadius), so its profile and streaks are unchanged farther
+ * out. Mirrored in BlackHolePass (march shader).
+ */
+export const MARCH_INNER = 1.7;
+export const MARCH_BLEND = 7;
+
+/** Radius (Rs) at which the march evaluates the disc look for a true radius r. */
+export function marchDiscRadius(r) {
+  const t = Math.min(1, Math.max(0, (r - MARCH_INNER) / (MARCH_BLEND - MARCH_INNER)));
+  return r + (DISC_INNER - MARCH_INNER) * (1 - t * t * (3 - 2 * t));
+}
+
 /** Ray-march resolution range (fraction of the screen) and its step. */
 export const MARCH_SCALE_MIN = 0.4;
 export const MARCH_SCALE_MAX = 0.7;
