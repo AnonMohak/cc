@@ -1,4 +1,4 @@
-import { mixLevels, MUSIC_FADE_IN, MUSIC_FADE_OUT } from './soundMix.js';
+import { mixLevels, mixFades, MUSIC_MIN } from './soundMix.js';
 import { FALL_MUSIC_URL, FALL_MUSIC_START } from './tracks.js';
 
 // Seconds for the drone to fade in after unlock, and for on/off toggles.
@@ -77,7 +77,10 @@ function buildDrone(ctx, out) {
 
 /**
  * Background sound: the generated drone everywhere, and the fall track (if
- * one is set in tracks.js) during the intro fall, with crossfades.
+ * one is set in tracks.js) for the intro fall, with crossfades. The track
+ * starts at the start-box click (mode 'wait'), early by the wait's length so
+ * it reaches FALL_MUSIC_START as the fall starts, rises to full by then, and
+ * fades out over ~5 s once fallen in (mode 'end').
  *
  * Browsers start audio only after a user gesture, so nothing is built until
  * unlock() is called from one (the start-box click). A silent no-op where
@@ -98,6 +101,7 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
   let music = null;
   let enabled = true;
   let mode = 'ambient';
+  let waitEndsAt = 0; // performance.now() ms when the wait ends (fall starts)
   let stopTimer = null;
   let suspendTimer = null;
 
@@ -116,7 +120,8 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
       music.addEventListener('canplaythrough', () => {
         if (musicReady) return;
         musicReady = true;
-        apply(mode === 'fall' ? MUSIC_FADE_IN : TOGGLE_FADE);
+        if (musicMode()) enter();
+        else apply(TOGGLE_FADE);
       });
       music.addEventListener('error', () => {
         musicReady = false;
@@ -129,19 +134,54 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
     }
   }
 
-  /** Ramp a gain from its current value (no clicks). */
-  function ramp(node, value, seconds) {
+  const musicMode = () => mode === 'wait' || mode === 'fall';
+  const waitLeft = () => Math.max(0, (waitEndsAt - win.performance.now()) / 1000);
+
+  /**
+   * Ramp a gain from its current value (no clicks), after `delay` seconds.
+   * `rise`: exponential from at least MUSIC_MIN (an even rise to the ear).
+   */
+  function ramp(node, value, seconds, delay = 0, rise = false) {
     const g = node.gain;
     const t = ctx.currentTime;
     g.cancelScheduledValues(t);
     g.setValueAtTime(g.value, t);
-    g.linearRampToValueAtTime(value, t + seconds);
+    if (delay > 0) g.setValueAtTime(g.value, t + delay);
+    if (rise && value > 0) {
+      g.setValueAtTime(Math.max(g.value, MUSIC_MIN), t);
+      g.exponentialRampToValueAtTime(value, t + delay + seconds);
+    } else {
+      g.linearRampToValueAtTime(value, t + delay + seconds);
+    }
   }
 
-  function apply(seconds) {
+  /** Ramp to the mode's levels: `fades` from mixFades, or one time for all. */
+  function apply(fades) {
+    const f = typeof fades === 'number' ? { music: fades, ambient: fades, ambientDelay: 0, rise: false } : fades;
     const levels = mixLevels({ enabled, mode, hasMusic: musicReady });
-    ramp(ambientGain, levels.ambient, seconds);
-    if (musicGain) ramp(musicGain, levels.music, seconds);
+    ramp(ambientGain, levels.ambient, f.ambient, f.ambientDelay);
+    if (musicGain) ramp(musicGain, levels.music, f.music, 0, f.rise);
+  }
+
+  /** Start or stop the track for the current mode, then fade to its levels. */
+  function enter() {
+    clearTimeout(stopTimer);
+    const fades = mixFades(mode, waitLeft());
+    if (music && musicReady && musicMode()) {
+      // In the wait, start early by the time left, so the fall starts at
+      // fallMusicStart; in the fall, seek only if it drifted or never played.
+      const at = mode === 'wait' ? Math.max(0, fallMusicStart - waitLeft()) : fallMusicStart;
+      const seek = () => (music.currentTime = at);
+      if (mode === 'wait' || music.paused || Math.abs(music.currentTime - at) > 1) {
+        // A seek before the metadata arrives is dropped: retry once it has.
+        if (music.readyState >= 1) seek();
+        else music.addEventListener('loadedmetadata', seek, { once: true });
+      }
+      music.play().catch(() => {});
+    } else if (music && !music.paused) {
+      stopTimer = setTimeout(() => music.pause(), fades.music * 1000 + 100);
+    }
+    apply(fades);
   }
 
   function onVisibility() {
@@ -162,8 +202,9 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
       if (!ctx) {
         build();
         // iOS also wants each media element started once inside a gesture.
-        music?.play().then(() => mode !== 'fall' && music.pause()).catch(() => {});
-        apply(UNLOCK_FADE);
+        music?.play().then(() => !musicMode() && music.pause()).catch(() => {});
+        if (musicMode()) enter();
+        else apply(UNLOCK_FADE);
       }
       if (enabled && ctx.state !== 'running') ctx.resume().catch(() => {});
       return true;
@@ -179,21 +220,17 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
       // Off: fade, then stop the audio thread (saves battery on phones).
       if (!on) suspendTimer = setTimeout(() => ctx.suspend().catch(() => {}), TOGGLE_FADE * 1000 + 50);
     },
-    /** 'fall' during the intro fall, 'ambient' otherwise. */
-    setMode(next) {
+    /**
+     * 'wait' in the intro's idle wait (`waitSeconds` until the fall), 'fall'
+     * during the fall, 'end' once fallen in, 'ambient' otherwise.
+     * @param {'ambient' | 'wait' | 'fall' | 'end'} next
+     * @param {number} [waitSeconds]
+     */
+    setMode(next, waitSeconds = 0) {
       if (next === mode) return;
       mode = next;
-      if (!ctx) return;
-      clearTimeout(stopTimer);
-      if (music && mode === 'fall') {
-        // A seek before the metadata arrives is dropped: retry once it has.
-        if (music.readyState >= 1) music.currentTime = fallMusicStart;
-        else music.addEventListener('loadedmetadata', () => (music.currentTime = fallMusicStart), { once: true });
-        music.play().catch(() => {});
-      } else if (music) {
-        stopTimer = setTimeout(() => music.pause(), MUSIC_FADE_OUT * 1000 + 100);
-      }
-      apply(mode === 'fall' ? MUSIC_FADE_IN : MUSIC_FADE_OUT);
+      if (mode === 'wait') waitEndsAt = win.performance.now() + waitSeconds * 1000;
+      if (ctx) enter();
     },
     isRunning: () => ctx?.state === 'running',
     dispose() {

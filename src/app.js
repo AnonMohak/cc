@@ -46,6 +46,8 @@ const FILM_CLOSER = 0.9;
 // Intro fall: seconds for the fly back out, and for the elevation to settle.
 const FALL_ESCAPE_SECONDS = 1.5;
 const FALL_SETTLE_SECONDS = 10;
+// Intro fall: idle seconds after the start box before the fall starts.
+const FALL_IDLE_SECONDS = 5;
 
 // Intro fall scratch objects (no per-frame allocation).
 const _fallCenter = new THREE.Vector3();
@@ -302,7 +304,7 @@ export function startApp(container, { startScreen } = {}) {
   // spirals in with the disc and falls in. A click, tap, wheel or the
   // controls panel ends it and flies back out. Once per page load, for
   // everyone (also with reduced motion: it is the intro, and any click ends it).
-  const fall = createFall();
+  const fall = createFall({ idleSeconds: FALL_IDLE_SECONDS });
   const fallOverlay = createFallOverlay(container);
   // Phones would sleep before the minute is over, and the waking tap would
   // end the fall: keep the screen on while it waits and falls.
@@ -324,6 +326,13 @@ export function startApp(container, { startScreen } = {}) {
   let fallU = 0;
   let fallTau = 0;
   let fovEase = null; // { from, t } while the fov returns to baseFov
+
+  /** Soundscape mode (audio/soundMix.js) for the intro state. */
+  function soundMode() {
+    const phase = fall.phase();
+    if (phase === 'done' || cameraMode !== 'fall' || (startScreen?.isOpen() ?? false)) return 'ambient';
+    return { waiting: 'wait', falling: 'fall', fallen: 'end' }[phase];
+  }
 
   function fallEligible() {
     return isIntroScene(store.getState()) && (cameraMode === 'orbit' || cameraMode === 'fall');
@@ -510,8 +519,9 @@ export function startApp(container, { startScreen } = {}) {
       // The scene changed under the fall (e.g. N added a galaxy): leave it.
       if (phase === 'done' && cameraMode === 'fall') escapeFall();
     }
-    // The music is timed to the fall, not the wait.
-    soundscape.setMode(cameraMode === 'fall' && fall.phase() !== 'waiting' ? 'fall' : 'ambient');
+    // The fall music starts at the start-box click and rises through the
+    // wait (timed so the fall itself is unchanged), and fades out once fallen.
+    soundscape.setMode(soundMode(), FALL_IDLE_SECONDS - fallTau);
     // Fallen in (held black) or done: the screen may sleep again.
     const fallPhase = fall.phase();
     wakeLock.set(fallPhase === 'falling' || (fallPhase === 'waiting' && !(startScreen?.isOpen() ?? false)));
