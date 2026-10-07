@@ -71,6 +71,11 @@ export function createGalaxyUniforms() {
     uBandLightColor: { value: new THREE.Matrix3() },
     uBandGasColor: { value: new THREE.Color(0, 0, 0) },
     uBandGasHole: { value: 0 },
+    uBandJetGain: { value: 1 },
+    // Black hole jets (blackHole.js; Galaxy sets them)
+    uJetRs: { value: 0 },
+    uJetLength: { value: 0.22 },
+    uViewHeight: { value: 800 },
   };
   applyBandUniforms(u, 'visible');
   return u;
@@ -93,6 +98,7 @@ export function applyBandUniforms(u, name) {
   u.uBandLightColor.value.set(...b.lightColor);
   u.uBandGasColor.value.setRGB(...b.gasColor);
   u.uBandGasHole.value = b.gasHole;
+  u.uBandJetGain.value = b.jetGain;
 }
 
 export function applyShapeUniforms(u, shape) {

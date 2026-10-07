@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { generateGalaxy } from './generateGalaxy.js';
-import { createStarMaterial, createHiiMaterial, createSupernovaMaterial } from './starMaterials.js';
+import { createStarMaterial, createHiiMaterial, createSupernovaMaterial, createJetMaterial } from './starMaterials.js';
+import { blackHoleRadius } from './blackHole.js';
 import { createSupernovaSchedule, pickSupernovaSite, SUPERNOVA_SLOTS } from './supernovae.js';
 import { createVolumeMaterial } from './volumeMaterial.js';
 import { volumeBounds, marchBounds } from './densityModel.js';
@@ -23,6 +24,34 @@ const UP = new THREE.Vector3(0, 1, 0);
 // bound at the origin covers every phase of the animation.
 const BOUND_RADIUS = 1.7;
 const _inverse = new THREE.Matrix4();
+const _quaternion = new THREE.Quaternion();
+const JET_SEGMENTS = 8;
+
+/** Two strips (north/south jet), x ∈ [−0.5, 0.5] across, y ∈ [0, 1] along. */
+function createJetGeometry() {
+  const positions = [];
+  const sides = [];
+  const index = [];
+  for (const side of [1, -1]) {
+    const base = positions.length / 3;
+    for (let i = 0; i <= JET_SEGMENTS; i++) {
+      const y = i / JET_SEGMENTS;
+      positions.push(-0.5, y, 0, 0.5, y, 0);
+      sides.push(side, side);
+    }
+    for (let i = 0; i < JET_SEGMENTS; i++) {
+      const a = base + i * 2;
+      index.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('aSide', new THREE.Float32BufferAttribute(sides, 1));
+  geometry.setIndex(index);
+  // The strips turn to face the camera in the shader: bound the whole axis.
+  geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 0.5);
+  return geometry;
+}
 // Structure sliders fire many updates; the disc map (tens of ms to bake) is
 // rebuilt once they settle. Star uniforms still update immediately.
 const REBAKE_DELAY_MS = 120;
@@ -36,6 +65,9 @@ const REBAKE_DELAY_MS = 120;
  *   stars — density-wave star particles (renderOrder 1)
  *   hii   — H II nebulae that glow on the arm crests (renderOrder 2)
  *   supernovae — a few flash points that follow their exploding star (renderOrder 3)
+ *   jets  — AGN jets along the axis, when Settings → Black holes = jets (renderOrder 4)
+ * The black hole's shadow, lensing and accretion disc are drawn by
+ * core/BlackHolePass.js from blackHoleInfo().
  */
 export class Galaxy {
   /**
@@ -75,7 +107,14 @@ export class Galaxy {
     this.snSlot = 0;
     this.snTime = 0;
 
-    this.group.add(this.volume, this.stars, this.hii, this.supernovae);
+    this.jetMaterial = createJetMaterial(this.uniforms);
+    this.jets = new THREE.Mesh(createJetGeometry(), this.jetMaterial);
+    this.jets.renderOrder = 4;
+    this.jets.visible = false;
+    this.blackHoleMode = 'on';
+    this.rsUnit = 0;
+
+    this.group.add(this.volume, this.stars, this.hii, this.supernovae, this.jets);
 
     this.phase = 0;
     this.speed = 0;
@@ -138,6 +177,9 @@ export class Galaxy {
     this.count = data.count;
     this.hiiCount = data.hii.count;
     this.shape = shape;
+    this.rsUnit = blackHoleRadius(clampShape(shape));
+    this.uniforms.uJetRs.value = this.rsUnit;
+    this.updateJets();
     this.applyStarCap();
     applyShapeUniforms(this.uniforms, shape);
     this.updateVolumeBounds();
@@ -235,6 +277,32 @@ export class Galaxy {
   /** Settings → View (wavelength band, see bands.js). */
   setBand(name) {
     applyBandUniforms(this.uniforms, name);
+  }
+
+  /** Settings → Black holes: 'on', 'jets' or 'off' (blackHole.js). */
+  setBlackHoleMode(mode) {
+    this.blackHoleMode = mode;
+    this.updateJets();
+  }
+
+  updateJets() {
+    this.jets.visible = this.blackHoleMode === 'jets' && this.rsUnit > 0;
+  }
+
+  /**
+   * Fill a lens slot for BlackHolePass (world centre, disc normal, Rs in world
+   * units, simulation time). False when there is no black hole to draw.
+   * Allocation-free: called every frame.
+   */
+  blackHoleInfo(slot) {
+    if (this.rsUnit <= 0 || this.blackHoleMode === 'off') return false;
+    this.group.updateMatrixWorld();
+    this.group.getWorldPosition(slot.center);
+    this.group.getWorldQuaternion(_quaternion);
+    slot.normal.copy(UP).applyQuaternion(_quaternion);
+    slot.rsWorld = this.rsUnit * this.radius;
+    slot.time = this.snTime;
+    return true;
   }
 
   /** Settings → Supernovae. */
@@ -335,6 +403,8 @@ export class Galaxy {
     this.starMaterial.dispose();
     this.hiiMaterial.dispose();
     this.volumeMaterial.dispose();
+    this.jets.geometry.dispose();
+    this.jetMaterial.dispose();
     clearTimeout(this.rebakeTimer);
     this.discMap?.dispose();
   }

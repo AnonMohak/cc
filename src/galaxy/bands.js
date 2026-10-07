@@ -40,6 +40,8 @@ const SHO_GRADE = [1.25, 0.0, -0.25, 0.5, 0.5, 0.0, -0.6, 0.7, 0.9];
  * - lightColor: matrix on the smooth starlight (applied after the march).
  * - gasColor: colour × gain of light emitted by the dust/gas itself.
  * - gasHole: radius (unit disc) of the central gas hole, 0 = none.
+ * - agnGain / jetGain: accretion disc (BlackHolePass) and jet brightness:
+ *   jets shine in radio (synchrotron), discs in X-ray.
  * - snGain: supernova flash brightness.
  * - skyTint / fieldGain: Milky Way background tint and field-star gain.
  */
@@ -59,6 +61,8 @@ export const BANDS = {
     lightColor: IDENTITY,
     gasColor: [0, 0, 0],
     gasHole: 0,
+    agnGain: 1,
+    jetGain: 1,
     snGain: 1,
     skyTint: [1, 1, 1],
     fieldGain: 1,
@@ -78,6 +82,8 @@ export const BANDS = {
     lightColor: SHO_GRADE,
     gasColor: [0.7, 0.6, 0.1], // diffuse Hα gold along the arms
     gasHole: 0,
+    agnGain: 1,
+    jetGain: 1,
     snGain: 1,
     skyTint: [0.95, 1.0, 0.9],
     fieldGain: 1,
@@ -97,6 +103,8 @@ export const BANDS = {
     lightColor: lumaTint([1.0, 0.8, 0.6]),
     gasColor: [3.6, 1.3, 0.3], // warm dust glow (the dust slab is thin: a strong gain)
     gasHole: 0,
+    agnGain: 0.5,
+    jetGain: 0.4,
     snGain: 0.5,
     skyTint: [1.0, 0.6, 0.4],
     fieldGain: 0.5,
@@ -116,6 +124,8 @@ export const BANDS = {
     lightColor: IDENTITY,
     gasColor: [0.9, 2.2, 5.0],
     gasHole: 0.22,
+    agnGain: 0.3,
+    jetGain: 4,
     snGain: 0.4, // remnants are radio sources too
     skyTint: [0.3, 0.5, 1.0],
     fieldGain: 0.03,
@@ -135,6 +145,8 @@ export const BANDS = {
     lightColor: lumaTint([0.7, 0.55, 1.0]),
     gasColor: [0, 0, 0],
     gasHole: 0,
+    agnGain: 3,
+    jetGain: 2,
     snGain: 3,
     skyTint: [0.5, 0.4, 1.0],
     fieldGain: 0.08,

@@ -23,7 +23,8 @@ describe('bands', () => {
     const v = BANDS.visible;
     expect(v.starColor).toEqual(IDENTITY);
     expect(v.lightColor).toEqual(IDENTITY);
-    expect([v.starGain, v.starKeep, v.dustPass, v.hiiGain, v.discGain, v.bulgeGain, v.snGain, v.fieldGain]).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
+    expect([v.starGain, v.starKeep, v.dustPass, v.hiiGain, v.discGain, v.bulgeGain, v.snGain, v.fieldGain, v.agnGain, v.jetGain]).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+    expect(v.discFalloff).toBe(0);
     expect(v.gasColor).toEqual([0, 0, 0]);
     expect(v.gasHole).toBe(0);
     expect(v.skyTint).toEqual([1, 1, 1]);

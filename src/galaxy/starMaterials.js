@@ -7,6 +7,8 @@ import hiiVert from './shaders/hii.vert.glsl?raw';
 import hiiFrag from './shaders/hii.frag.glsl?raw';
 import supernovaVert from './shaders/supernova.vert.glsl?raw';
 import supernovaFrag from './shaders/supernova.frag.glsl?raw';
+import jetVert from './shaders/jet.vert.glsl?raw';
+import jetFrag from './shaders/jet.frag.glsl?raw';
 
 const additive = {
   blending: THREE.AdditiveBlending,
@@ -41,6 +43,17 @@ export function createSupernovaMaterial(uniforms) {
     vertexShader: glsl(CHUNKS.model, starsChunk, supernovaVert),
     fragmentShader: glsl(CHUNKS.spikes, supernovaFrag),
     uniforms,
+    ...additive,
+  });
+}
+
+/** @param {ReturnType<typeof import('./galaxyUniforms.js').createGalaxyUniforms>} uniforms shared, by reference */
+export function createJetMaterial(uniforms) {
+  return new THREE.ShaderMaterial({
+    vertexShader: jetVert,
+    fragmentShader: jetFrag,
+    uniforms,
+    side: THREE.DoubleSide,
     ...additive,
   });
 }

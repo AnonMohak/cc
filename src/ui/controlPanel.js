@@ -347,6 +347,10 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .add(settingsProxy, 'spikes', { 'JWST (6)': 'jwst', 'Hubble (4)': 'hubble', Off: 'off' })
     .name('Star spikes')
     .onChange((v) => setting({ spikes: v }));
+  settingsFolder
+    .add(settingsProxy, 'blackHoles', { 'On (zoom into a core)': 'on', 'On + jets': 'jets', Off: 'off' })
+    .name('Black holes')
+    .onChange((v) => setting({ blackHoles: v }));
   const cineFolder = settingsFolder.addFolder('Cinematic (Medium/High)').close();
   for (const [key, name] of [['vignette', 'Vignette'], ['grain', 'Film grain'], ['aberration', 'Chromatic aberration']]) {
     const limit = SETTINGS_LIMITS[key];

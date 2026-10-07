@@ -10,7 +10,7 @@ import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
 import { createStore, createInitialState, canAddGalaxy } from './state/store.js';
-import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled } from './core/quality.js';
+import { QUALITY, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled, blackHolesEnabled } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createRenderGate } from './core/renderGate.js';
 import { createActions } from './state/actions.js';
@@ -125,6 +125,14 @@ export function startApp(container, { startScreen } = {}) {
     onTierChange(name);
     applySpikes();
     applyCinematic();
+    applyBlackHoles();
+  }
+
+  const blackHoleSource = (slots) => galaxies.blackHoleCandidates(slots);
+  function applyBlackHoles() {
+    const { blackHoles } = store.getState().settings;
+    galaxies.setBlackHoleMode(blackHoles);
+    post.setBlackHoles(blackHoleSource, blackHolesEnabled(blackHoles, currentTier));
   }
 
   function applyCinematic() {
@@ -225,6 +233,7 @@ export function startApp(container, { startScreen } = {}) {
     currentBand = name;
     const { skyTint, fieldGain } = bandFor(name);
     galaxies.setBand(name);
+    post.setBlackHoleGain(bandFor(name).agnGain);
     sky.setBandTint(...skyTint);
     starfield.setBandTint(...skyTint.map((c) => c * fieldGain));
   }
@@ -241,6 +250,7 @@ export function startApp(container, { startScreen } = {}) {
     if (currentTier) {
       applySpikes();
       applyCinematic();
+      applyBlackHoles();
     }
   }
   applySettings(store.getState().settings);

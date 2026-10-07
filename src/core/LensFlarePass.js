@@ -52,6 +52,9 @@ const LensFlareShader = {
         vec2 edge = smoothstep(0.0, 0.08, src) * smoothstep(0.0, 0.08, 1.0 - src);
         float mask = edge.x * edge.y;
         if (mask <= 0.0) continue;
+        // A source on the optical axis stacks every ghost on itself, where it
+        // only washes out the source (a focused core, a black hole's shadow).
+        mask *= smoothstep(0.03, 0.18, length(src - 0.5));
         vec3 c = max(texture2D(tSource, src).rgb - uThreshold, 0.0);
         sum += c * TINT[i] * (WEIGHT[i] * mask);
       }

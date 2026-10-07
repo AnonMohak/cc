@@ -5,6 +5,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { GalaxyScenePass } from './GalaxyScenePass.js';
 import { CinematicPass } from './CinematicPass.js';
 import { LensFlarePass } from './LensFlarePass.js';
+import { BlackHolePass } from './BlackHolePass.js';
 
 // Bloom is blurry by nature: half resolution looks the same and costs 1/4.
 const BLOOM_SCALE = 0.5;
@@ -23,13 +24,15 @@ const FLARE_GAIN = 0.5;
 
 const PASS_LABELS = new Map([
   [UnrealBloomPass, 'bloom'],
+  [BlackHolePass, 'blackhole'],
   [LensFlarePass, 'flare'],
   [OutputPass, 'output'],
   [CinematicPass, 'cinematic'],
 ]);
 
 /**
- * GalaxyScenePass (low-res volumes) → UnrealBloomPass → LensFlarePass (reads the bloom
+ * GalaxyScenePass (low-res volumes) → UnrealBloomPass → BlackHolePass (lensing +
+ * accretion discs; only while a black hole is resolved) → LensFlarePass (reads the bloom
  * mips; only when bloom runs) → OutputPass (tone mapping + sRGB)
  * → CinematicPass (vignette, grain, aberration; skipped when off).
  *
@@ -53,6 +56,9 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
   const scenePass = new GalaxyScenePass(scene, camera, { volumeScale });
   composer.addPass(scenePass);
   composer.addPass(bloom);
+  // After bloom: the bloom of a bright core would otherwise flood the shadow.
+  const blackHole = new BlackHolePass(camera);
+  composer.addPass(blackHole);
   const flare = new LensFlarePass(bloom);
   let flareAmount = 0;
   composer.addPass(flare);
@@ -67,6 +73,7 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
     render() {
       // Skip the bloom passes entirely when bloom is off (by strength or tier).
       bloom.enabled = bloom.strength > 0 && bloomMode !== 'off';
+      blackHole.update();
       flare.enabled = bloom.enabled && flareAmount > 0;
       composer.render();
     },
@@ -91,6 +98,18 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       flareAmount = amount;
       flare.setAmount(amount * FLARE_GAIN, FLARE_THRESHOLD);
     },
+    /**
+     * Black holes: `source(slots)` fills candidate slots and returns the count;
+     * `allowed` is false when the setting or the quality tier turns them off.
+     */
+    setBlackHoles(source, allowed) {
+      blackHole.source = source;
+      blackHole.allowed = allowed;
+    },
+    /** Accretion-disc brightness for the wavelength band. */
+    setBlackHoleGain(gain) {
+      blackHole.setDiscGain(gain);
+    },
     setExposure(value) {
       renderer.toneMappingExposure = value;
     },
@@ -110,6 +129,7 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       scenePass.dispose();
       bloom.dispose();
       flare.dispose();
+      blackHole.dispose();
       cinematic.dispose();
       composer.dispose();
     },

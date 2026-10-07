@@ -16,10 +16,11 @@ export const QUALITY = {
     maxPointPx: 8,
     spikes: false, // diffraction spikes (extra sprite fill)
     cinematic: false, // vignette / grain / aberration (one extra full-res pass)
+    blackHole: false, // lensing pass (full-res copy while a black hole is resolved)
   },
-  low: { label: 'Low', volumeScale: 0.35, steps: 14, bloom: 'off', maxPixelRatio: 1, starCap: 60_000, volumeDust: true, maxPointPx: 10, spikes: false, cinematic: false },
-  medium: { label: 'Medium', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true, cinematic: true },
-  high: { label: 'High', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true },
+  low: { label: 'Low', volumeScale: 0.35, steps: 14, bloom: 'off', maxPixelRatio: 1, starCap: 60_000, volumeDust: true, maxPointPx: 10, spikes: false, cinematic: false, blackHole: true },
+  medium: { label: 'Medium', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true, cinematic: true, blackHole: true },
+  high: { label: 'High', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true, blackHole: true },
 };
 
 /** Cheapest first: the governor moves along this list. */
@@ -79,4 +80,9 @@ export function spikeStyle(setting, tierName) {
  */
 export function cinematicEnabled({ vignette, grain, aberration }, tierName) {
   return Boolean(QUALITY[tierName]?.cinematic) && (vignette > 0 || grain > 0 || aberration > 0);
+}
+
+/** Whether black-hole lensing may run: the setting is on and the tier allows the pass. */
+export function blackHolesEnabled(setting, tierName) {
+  return setting !== 'off' && Boolean(QUALITY[tierName]?.blackHole);
 }

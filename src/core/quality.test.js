@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { spikeStyle, cinematicEnabled } from './quality.js';
+import { spikeStyle, cinematicEnabled, blackHolesEnabled } from './quality.js';
 
 describe('spikeStyle', () => {
   it('maps the setting to a shader style, off on cheap tiers', () => {
@@ -25,5 +25,14 @@ describe('cinematicEnabled', () => {
     expect(cinematicEnabled(on, 'low')).toBe(false);
     expect(cinematicEnabled(on, 'minimal')).toBe(false);
     expect(cinematicEnabled(on, 'bogus')).toBe(false);
+  });
+});
+
+describe('blackHolesEnabled', () => {
+  it('follows the setting, off on Minimal', () => {
+    expect(blackHolesEnabled('on', 'low')).toBe(true);
+    expect(blackHolesEnabled('jets', 'high')).toBe(true);
+    expect(blackHolesEnabled('off', 'high')).toBe(false);
+    expect(blackHolesEnabled('on', 'minimal')).toBe(false);
   });
 });
