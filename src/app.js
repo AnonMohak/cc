@@ -4,7 +4,7 @@ import { createCamera, CAMERA_LIMITS, CAMERA_HOME } from './core/createCamera.js
 import { createComposer } from './core/createComposer.js';
 import { createLoop } from './core/loop.js';
 import { createCameraFly, framingPosition, easeInOutCubic } from './core/cameraFly.js';
-import { createFall, fallPose, fallDistance, orbitRate, R_END, FILM_ELEVATION_DEG } from './core/blackHoleFall.js';
+import { createFall, fallPose, fallDistance, fallAngle, R_END, FILM_ELEVATION_DEG } from './core/blackHoleFall.js';
 import { captureScreenshot } from './core/screenshot.js';
 import { createStarfield } from './scene/starfield.js';
 import { createSky } from './scene/sky.js';
@@ -53,7 +53,6 @@ const _fallNormal = new THREE.Vector3();
 const _fallE1 = new THREE.Vector3();
 const _fallE2 = new THREE.Vector3();
 const _fallOffset = new THREE.Vector3();
-const _fallLook = new THREE.Vector3();
 
 /**
  * Build the scene, state, UI and loop inside `container`.
@@ -323,6 +322,7 @@ export function startApp(container, { startScreen } = {}) {
   /** The running fall: hole, basis and start pose (see beginFall). */
   let fallRun = null;
   let fallU = 0;
+  let fallTau = 0;
   let fovEase = null; // { from, t } while the fov returns to baseFov
 
   function fallEligible() {
@@ -358,31 +358,26 @@ export function startApp(container, { startScreen } = {}) {
     controls.target.copy(_fallCenter);
   }
 
-  /** Place the camera for fall progress u (loop, real time). */
-  function updateFallCamera(realDt, u) {
+  /**
+   * Place the camera for fall progress u and orbit clock tau (loop, real
+   * time). In the wait u is 0: the camera circles at the start distance.
+   */
+  function updateFallCamera(realDt, u, tau) {
     const run = fallRun;
     if (!run) return;
     const pose = fallPose(u);
     run.clock += realDt;
     const r = fallDistance(run.r0, run.rEnd, pose.distanceT);
-    run.angle += orbitRate(r, run.r0) * realDt;
+    const angle = run.angle + fallAngle(tau);
     const settle = easeInOutCubic(Math.min(1, run.clock / FALL_SETTLE_SECONDS));
     const elevation = THREE.MathUtils.lerp(run.elevation0, THREE.MathUtils.degToRad(FILM_ELEVATION_DEG), settle);
     const ring = Math.cos(elevation) * r;
     camera.position
       .copy(_fallCenter)
-      .addScaledVector(_fallE1, Math.cos(run.angle) * ring)
-      .addScaledVector(_fallE2, Math.sin(run.angle) * ring)
+      .addScaledVector(_fallE1, Math.cos(angle) * ring)
+      .addScaledVector(_fallE2, Math.sin(angle) * ring)
       .addScaledVector(_fallNormal, Math.sin(elevation) * r);
-    // Tidal shake near the end: the look point wobbles (sums of sines).
-    const k = pose.shake * r * 0.02;
-    const c = run.clock;
-    _fallLook
-      .copy(_fallCenter)
-      .addScaledVector(_fallE1, k * Math.sin(c * 13.1))
-      .addScaledVector(_fallE2, k * Math.sin(c * 17.3 + 1.1))
-      .addScaledVector(_fallNormal, k * Math.sin(c * 11.7 + 2.3));
-    camera.lookAt(_fallLook);
+    camera.lookAt(_fallCenter);
     const fov = baseFov + pose.fovAdd;
     if (camera.fov !== fov) {
       camera.fov = fov;
@@ -407,6 +402,9 @@ export function startApp(container, { startScreen } = {}) {
     if (!fall || (startScreen?.isOpen() ?? false)) return false;
     const result = fall.interact();
     if (result === 'escape') escapeFall(flyBack);
+    // Cancelled in the wait: hand the camera back where it is (the same
+    // press then orbits; OrbitControls is enabled again before it sees it).
+    if (result === 'cancel' && cameraMode === 'fall') setCameraMode('orbit');
     return result === 'escape';
   }
 
@@ -502,13 +500,18 @@ export function startApp(container, { startScreen } = {}) {
     if (fall && fall.phase() !== 'done' && !(startScreen?.isOpen() ?? false)) {
       // Opening the controls panel is an interaction too.
       if (panel.isOpen()) interruptFall();
-      const { phase, u } = fall.tick(realDt, fallEligible());
-      if ((phase === 'falling' || phase === 'fallen') && cameraMode !== 'fall') beginFall();
-      if (cameraMode === 'fall') fallU = u;
+      const { phase, u, tau } = fall.tick(realDt, fallEligible());
+      // The orbit starts in the wait already.
+      if (phase !== 'done' && cameraMode !== 'fall') beginFall();
+      if (cameraMode === 'fall') {
+        fallU = u;
+        fallTau = tau;
+      }
       // The scene changed under the fall (e.g. N added a galaxy): leave it.
       if (phase === 'done' && cameraMode === 'fall') escapeFall();
     }
-    soundscape.setMode(cameraMode === 'fall' ? 'fall' : 'ambient');
+    // The music is timed to the fall, not the wait.
+    soundscape.setMode(cameraMode === 'fall' && fall.phase() !== 'waiting' ? 'fall' : 'ambient');
     // Fallen in (held black) or done: the screen may sleep again.
     const fallPhase = fall.phase();
     wakeLock.set(fallPhase === 'falling' || (fallPhase === 'waiting' && !(startScreen?.isOpen() ?? false)));
@@ -520,7 +523,7 @@ export function startApp(container, { startScreen } = {}) {
     }
     cameraFly.update(realDt);
     if (cameraMode === 'fly') fly.update(realDt);
-    else if (cameraMode === 'fall') updateFallCamera(realDt, fallU);
+    else if (cameraMode === 'fall') updateFallCamera(realDt, fallU, fallTau);
     else controls.update();
     galaxies.updateCamera(camera, container.clientWidth, container.clientHeight);
     starfield.update(camera.position);
