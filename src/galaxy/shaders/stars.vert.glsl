@@ -8,6 +8,11 @@ uniform float uPhysical;
 uniform float uMaxPointPx; // per quality tier
 uniform vec3 uColorInner;
 uniform vec3 uColorOuter;
+// Collision star simulation (scene/CollisionSim.js): world position per
+// star (one texel per vertex, w = arm-crest value at the start).
+uniform float uSim;
+uniform sampler2D uSimPos;
+uniform mat4 uSimToLocal;
 
 attribute vec4 aOrbit;
 attribute vec3 aStar; // (temperature K, size, youth)
@@ -21,9 +26,18 @@ const float POINT_SCALE = 5.0;
 
 void main() {
   float crestV;
-  vec3 p = gs_position(aOrbit, crestV);
-  // Globular-cluster stars: offset from the cluster centre (generateGalaxy.js).
-  p += position * step(KIND_CLUSTER, aOrbit.w);
+  vec3 p;
+  if (uSim > 0.5) {
+    int w = textureSize(uSimPos, 0).x;
+    vec4 s = texelFetch(uSimPos, ivec2(gl_VertexID % w, gl_VertexID / w), 0);
+    // Back to unit space, so the tint, dust and size below are unchanged.
+    p = (uSimToLocal * vec4(s.xyz, 1.0)).xyz;
+    crestV = s.w;
+  } else {
+    p = gs_position(aOrbit, crestV);
+    // Globular-cluster stars: offset from the cluster centre (generateGalaxy.js).
+    p += position * step(KIND_CLUSTER, aOrbit.w);
+  }
   vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mvPosition;
 

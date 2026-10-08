@@ -39,6 +39,8 @@ import { universeBounds, LAYOUTS } from './state/universe.js';
 import { catalogueViewDirection } from './galaxy/catalogue.js';
 import { bandFor, nextBand } from './galaxy/bands.js';
 import { meterFrame, targetFactor, adapt } from './core/autoExposure.js';
+import { CollisionSim, collisionSupported } from './scene/CollisionSim.js';
+import { collisionBroken } from './galaxy/collision.js';
 
 const SAVE_DEBOUNCE_MS = 500;
 // The film shot is this much closer than the "disc fills the view" distance.
@@ -538,6 +540,16 @@ export function startApp(container, { startScreen } = {}) {
 
   loop.onTick((dt, _elapsed, realDt) => {
     galaxies.tick(dt, realDt);
+    if (collision) {
+      try {
+        collision.update(dt);
+      } catch (error) {
+        // The GPU star simulation starts at contact; a driver may refuse it.
+        console.error(error);
+        stopCollision();
+        showToast(container, 'Collisions are not supported on this device');
+      }
+    }
     if (cameraMode === 'tour') handleTourEvent(tour.tick(realDt));
     if (fall && fall.phase() !== 'done' && !(startScreen?.isOpen() ?? false)) {
       // Opening the controls panel is an interaction too.
@@ -678,6 +690,42 @@ export function startApp(container, { startScreen } = {}) {
   }
   window.addEventListener('resize', resizeAll);
 
+  // ── Galaxy collisions (one at a time; transient: never in the store) ──
+  let collision = null;
+  const collisionListeners = new Set();
+  const collisionOk = collisionSupported(renderer);
+  const notifyCollision = () => {
+    for (const fn of collisionListeners) fn();
+    gate.invalidate();
+  };
+  function stopCollision() {
+    if (!collision) return;
+    collision.dispose();
+    collision = null;
+    notifyCollision();
+  }
+  function startCollision(idA, idB, options = {}) {
+    stopCollision();
+    const a = galaxies.get(idA);
+    const b = galaxies.get(idB);
+    if (!collisionOk || !a || !b || a === b || a.standalone || b.standalone) return;
+    collision = new CollisionSim({ renderer, a, b, ...options });
+    // Frame the pair from the current direction; the barycentre stays put.
+    if (cameraMode !== 'orbit') setCameraMode('orbit');
+    const target = collision.centre();
+    const span = a.group.position.distanceTo(b.group.position) + a.radius + b.radius;
+    const distance = THREE.MathUtils.clamp(span * 1.4, CAMERA_LIMITS.minDistance * 2, CAMERA_LIMITS.maxDistance * 0.9);
+    const dir = camera.position.clone().sub(controls.target).normalize();
+    cameraFly.flyTo(target, target.clone().addScaledVector(dir, distance), 1.5);
+    notifyCollision();
+  }
+  // Any change that moves, reshapes or removes either galaxy ends it.
+  store.subscribe((next, prev) => {
+    if (collision && next.galaxies !== prev.galaxies && collisionBroken(prev.galaxies, next.galaxies, collision.pair())) stopCollision();
+  });
+  // The simulation textures do not survive a lost context.
+  renderer.domElement.addEventListener('webglcontextlost', stopCollision);
+
   // ── Commands ───────────────────────────────────────────────────────────
   const getTarget = () => controls.target.toArray().map((v) => Math.round(v * 100) / 100);
 
@@ -810,6 +858,16 @@ export function startApp(container, { startScreen } = {}) {
     onToggleVideo: commands.toggleVideo,
     onRecordGif: commands.recordGif,
     onGenerateUniverse: commands.generateUniverse,
+    collision: {
+      supported: collisionOk,
+      start: startCollision,
+      stop: stopCollision,
+      pair: () => collision?.pair() ?? null,
+      subscribe(fn) {
+        collisionListeners.add(fn);
+        return () => collisionListeners.delete(fn);
+      },
+    },
   });
   commands.togglePanel = () => panel.toggle();
   onTierChange = (name) => panel.setActiveTier(name);
@@ -822,6 +880,8 @@ export function startApp(container, { startScreen } = {}) {
     controls,
     onSelect: (id) => store.dispatch(actions.selectGalaxy(id)),
     onFocus: focusGalaxy,
+    // Colliding galaxies move away from their stored positions.
+    getPosition: (id) => galaxies.get(id)?.group.position ?? null,
   });
   loop.onTick(() => hud.update());
 
@@ -850,6 +910,6 @@ export function startApp(container, { startScreen } = {}) {
   loop.start(renderer);
 
   if (import.meta.env.DEV) {
-    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history, soundscape, getCameraMode: () => cameraMode };
+    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history, soundscape, getCameraMode: () => cameraMode, startCollision, stopCollision, getCollision: () => collision };
   }
 }

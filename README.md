@@ -9,6 +9,7 @@ Spiral arms are real **density waves**: stars move on twisted elliptical orbits 
 - **Make and edit galaxies** — spiral, barred spiral, elliptical and irregular presets; change size, colours, tilt, rotation speed, arm count and winding, dust, bulge and more. Most sliders update live.
 - **Real galaxies** — Andromeda (M31), Whirlpool (M51), Pinwheel (M101), Sombrero (M104), M87 and the Large Magellanic Cloud, shown at their real inclination with a fact card.
 - **Universe generator** — one click builds a galaxy cluster (ellipticals in the core) or a filament.
+- **Galaxy collisions** — pick two galaxies and collide them (Selected galaxy → Collision): tidal tails and bridges form, a slow pass merges into one round remnant and a fast wide pass flies by. "Stop collision" puts both back.
 - **Globular clusters and supernovae** — dense balls of old stars orbit in each halo, and supernovae flare up and fade in the arms every few seconds (can be turned off).
 - **Diffraction spikes** — the brightest stars and supernovae show JWST-style 6-point or Hubble-style 4-point spikes (choose in Settings, or turn off).
 - **Milky Way sky** — a faint procedural Milky Way band with dust lanes and nebulae behind the galaxies (can be turned off).
@@ -40,6 +41,7 @@ What in the app follows real physics or real astronomy, and the model behind it.
 - **Stars:** black-body colours from their temperatures; young hot blue stars light up on the arm crests where star formation happens; pink H II regions (ionised hydrogen) glow there too.
 - **Globular clusters** are Plummer spheres of old stars on slow halo orbits.
 - **Supernovae** follow a Poisson schedule, prefer young stars (core-collapse) or anywhere in ellipticals (type Ia), and have a fast-rise, exponential-fade light curve.
+- **Collisions** (`collision.js`) use the restricted N-body method of Toomre & Toomre (1972): each galaxy is a softened point mass (a Plummer sphere, mass ∝ radius²) and its stars are test particles that feel both galaxies, stepped on the GPU. The two centres also feel a drag while they overlap that fades for fast passes (∝ 1/v³, like Chandrasekhar dynamical friction), so slow encounters merge and fast ones escape. Tidal tails come out of the dynamics, not a script.
 
 **Observing**
 
@@ -54,6 +56,7 @@ What in the app follows real physics or real astronomy, and the model behind it.
 - Black holes are drawn far larger than real ones at galaxy scale, and the space around them is dimmed (a "cleared cavity") so the disc stands out.
 - The horizontal lens streak, the glow halo and the soft haze around the disc on the lower tiers.
 - The intro fall: its timing, camera path and the fade to black are cinematic, not a simulation of falling in.
+- Collisions: the approach is fast-forwarded while the galaxies are far apart, the gas (the glowing body, nebulae and dust) simply fades as the discs are torn apart, and stars do not pull on each other (no self-gravity).
 
 ## Quick start
 

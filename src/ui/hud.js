@@ -20,9 +20,10 @@ const _toTarget = new THREE.Vector3();
  *   controls: { target: THREE.Vector3 },
  *   onSelect: (id: string) => void,
  *   onFocus: (id: string) => void,
- * }} options
+ *   getPosition?: (id: string) => THREE.Vector3 | null,
+ * }} options getPosition: a galaxy's live position (a collision moves it off its stored one)
  */
-export function createHud({ container, store, camera, controls, onSelect, onFocus }) {
+export function createHud({ container, store, camera, controls, onSelect, onFocus, getPosition }) {
   const root = document.createElement('div');
   root.className = 'hud';
 
@@ -105,7 +106,9 @@ export function createHud({ container, store, camera, controls, onSelect, onFocu
     for (const g of state.galaxies) {
       const el = labels.get(g.id);
       if (!el) continue;
-      _v.fromArray(g.look.position);
+      const live = getPosition?.(g.id);
+      if (live) _v.copy(live);
+      else _v.fromArray(g.look.position);
       const distance = camera.position.distanceTo(_v);
       const radiusPx = g.look.radius * pxPerUnitAt(distance, camera.fov, height);
       _v.project(camera);
@@ -129,8 +132,8 @@ export function createHud({ container, store, camera, controls, onSelect, onFocu
     _toTarget.subVectors(controls.target, camera.position);
     const items = state.galaxies.map((g) => ({
       id: g.id,
-      x: g.look.position[0],
-      z: g.look.position[2],
+      x: getPosition?.(g.id)?.x ?? g.look.position[0],
+      z: getPosition?.(g.id)?.z ?? g.look.position[2],
       r: g.look.radius,
       color: g.look.colorInner,
       selected: g.id === state.selectedId,

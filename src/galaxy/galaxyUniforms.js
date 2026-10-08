@@ -49,6 +49,11 @@ export function createGalaxyUniforms() {
     uLodGain: { value: 1 }, // star LOD: fewer, brighter stars far away (lod.js starLod)
     uPixelRatio: { value: 1 },
     uCameraLocal: { value: new THREE.Vector3(0, 10, 0) },
+    // Collision (scene/CollisionSim.js): gas fade, simulated star positions.
+    uGasFade: { value: 1 },
+    uSim: { value: 0 },
+    uSimPos: { value: null },
+    uSimToLocal: { value: new THREE.Matrix4() },
     // Baked textures for the volume (see discMap.js, noiseTexture.js)
     uDiscMap: { value: null },
     uNoise: { value: getNoiseTexture() },

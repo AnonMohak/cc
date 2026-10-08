@@ -252,3 +252,39 @@ describe('Galaxy supernovae', () => {
     expect(g.supernovae.visible).toBe(false);
   });
 });
+
+describe('Galaxy collisions', () => {
+  it('holds the sim position against look edits and goes home at the end', () => {
+    const g = makeGalaxy({ look: { ...PRESETS.spiral.look, position: [1, 2, 3] } });
+    g.setQuality({ steps: 20, starCap: 1000, maxPointPx: 10, volumeDust: true });
+    g.beginCollision();
+    expect(g.supernovae.visible).toBe(false);
+    g.group.position.set(9, 9, 9);
+    g.setLook({ ...PRESETS.spiral.look, position: [1, 2, 3], colorInner: '#ff0000' });
+    expect(g.group.position.toArray()).toEqual([9, 9, 9]);
+    g.endCollision();
+    expect(g.group.position.toArray()).toEqual([1, 2, 3]);
+    expect(g.supernovae.visible).toBe(true);
+  });
+
+  it('draws only the simulated stars, unculled, and fades the gas', () => {
+    const g = makeGalaxy();
+    g.setQuality({ steps: 20, starCap: 1500, maxPointPx: 10, volumeDust: true });
+    const texture = new THREE.DataTexture(new Float32Array(4), 1, 1);
+    g.beginCollision();
+    g.setStarSimulation(texture, 1200);
+    expect(g.uniforms.uSim.value).toBe(1);
+    expect(g.stars.geometry.drawRange.count).toBe(1200);
+    expect(g.stars.frustumCulled).toBe(false);
+    g.setGasFade(0);
+    expect(g.volume.visible).toBe(false);
+    expect(g.uniforms.uGasFade.value).toBe(0);
+    g.endCollision();
+    expect(g.uniforms.uSim.value).toBe(0);
+    expect(g.stars.geometry.drawRange.count).toBe(1500);
+    expect(g.stars.frustumCulled).toBe(true);
+    expect(g.volume.visible).toBe(true);
+    expect(g.uniforms.uGasFade.value).toBe(1);
+  });
+
+});
