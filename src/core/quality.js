@@ -99,3 +99,11 @@ export function spikeStyle(setting, tierName) {
 export function cinematicEnabled({ vignette, grain, aberration }, tierName) {
   return Boolean(QUALITY[tierName]?.cinematic) && (vignette > 0 || grain > 0 || aberration > 0);
 }
+
+/**
+ * Whether depth of field runs: an amount above 0 on a tier that can afford
+ * the cinematic passes (Medium and High).
+ */
+export function dofEnabled(amount, tierName) {
+  return amount > 0 && Boolean(QUALITY[tierName]?.cinematic);
+}

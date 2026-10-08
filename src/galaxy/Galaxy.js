@@ -17,6 +17,7 @@ import { approach } from './emphasis.js';
 import { LAYERS } from '../core/layers.js';
 import { screenFootprint, adaptiveSteps, starLod } from './lod.js';
 import { createDiscMapTexture } from './discMap.js';
+import { createDofProxy, setDofProxyHole, disposeDofProxy } from './dofProxy.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 // Stars move on orbits up to a·(1 + e) and the halo reaches 1.4; one fixed
@@ -134,7 +135,10 @@ export class Galaxy {
     this.jets.layers.set(LAYERS.JETS);
     this.rsUnit = 0;
 
-    this.group.add(this.volume, this.stars, this.hii, this.supernovae, this.jets);
+    // Depth-of-field stand-in (galaxies share it; a black hole owns its material).
+    this.dofProxy = createDofProxy(this.standalone);
+
+    this.group.add(this.volume, this.stars, this.hii, this.supernovae, this.jets, this.dofProxy);
 
     this.phase = 0;
     this.speed = 0;
@@ -330,6 +334,9 @@ export class Galaxy {
     // Jets reach well past the disc, out of the star cloud.
     this.uniforms.uJetLength.value = Math.min(2, this.rsUnit * 60);
     this.uniforms.uJetDiscOuter.value = this.hole.discSize;
+    // Depth-of-field stand-in: just past the disc, writing the hole's depth
+    // only where the lens shows the hole (dofProxy.js).
+    if (this.dofProxy) setDofProxyHole(this.dofProxy, this.rsUnit, this.hole.discSize);
     this.updateJets();
   }
 
@@ -505,6 +512,7 @@ export class Galaxy {
     this.volumeMaterial.dispose();
     this.jets.geometry.dispose();
     this.jetMaterial.dispose();
+    disposeDofProxy(this.dofProxy);
     clearTimeout(this.rebakeTimer);
     this.discMap?.dispose();
   }

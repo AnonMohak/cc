@@ -259,8 +259,56 @@ ${DISC_GLSL}
 //
 // The look follows Gargantua (Interstellar), not strict physics: the disc
 // reaches in to 1.7 Rs (a fast spin), no Doppler beaming (both sides equally
+// The lens streak, one per lens: a horizontal line through the hole. It is
+// camera optics, not scene light, so depth of field must not blur it: while
+// DepthOfFieldPass runs, this pass leaves it out (uStreaks 0) and the DOF
+// composite adds it after the blur, from these same uniforms (by reference).
+// Needs the uniforms in STREAK_UNIFORMS and SHADOW_B.
+export const STREAK_UNIFORMS = /* glsl */ `
+  #ifndef MAX_LENSES
+  #define MAX_LENSES ${MAX_LENSES}
+  #endif
+  uniform vec2 uTanHalfFov;
+  uniform vec2 uResolution;
+  uniform float uPixelAngle;
+  uniform int uCount;
+  uniform vec4 uLensCenter[MAX_LENSES];
+  uniform vec4 uLensDisc[MAX_LENSES];
+  uniform vec3 uLensHot[MAX_LENSES];
+  uniform float uDiscGain;
+  uniform vec3 uBandHot;
+`;
+/** Uniform names the streak reads (DepthOfFieldPass shares them by reference). */
+export const STREAK_UNIFORM_NAMES = ['uTanHalfFov', 'uResolution', 'uPixelAngle', 'uCount', 'uLensCenter', 'uLensDisc', 'uLensHot', 'uDiscGain', 'uBandHot'];
+export const STREAK_GLSL = /* glsl */ `
+  const float STREAK_GAIN = 0.2;
+  const float STREAK_LENGTH = 5.0; // × the disc radius on screen
+  // Horizontal lens streak through each hole; it reaches past the lens.
+  // Faint over the shadow, so the shadow still reads black.
+  vec3 lensStreaks(vec2 uv) {
+    vec3 rd = normalize(vec3((uv * 2.0 - 1.0) * uTanHalfFov, -1.0));
+    vec3 sum = vec3(0.0);
+    for (int i = 0; i < MAX_LENSES; i++) {
+      if (i >= uCount) break;
+      vec3 c = uLensCenter[i].xyz;
+      float tc = dot(c, rd);
+      if (tc <= 0.0 || c.z >= 0.0) continue;
+      vec4 disc = uLensDisc[i];
+      float b = length(rd * tc - c);
+      vec2 dpx = (uv - ((c.xy / -c.z) / uTanHalfFov * 0.5 + 0.5)) * uResolution;
+      float discPx = disc.x * 0.5 / (-c.z * uPixelAngle);
+      float thick = max(1.2, uResolution.y / 700.0);
+      float streak = exp(-abs(dpx.y) / thick - abs(dpx.x) / max(discPx * STREAK_LENGTH, 1.0));
+      sum += mix(uLensHot[i] * uBandHot, vec3(1.0), 0.3) * streak * STREAK_GAIN * uDiscGain * disc.y * disc.w * uLensCenter[i].w
+        * mix(0.25, 1.0, smoothstep(SHADOW_B * 0.6, SHADOW_B * 1.2, b));
+    }
+    return sum;
+  }
+`;
+
 // bright), a gold palette per band, fine concentric streaks, a soft haze, a
-// glow halo (bloom ran before this pass) and a horizontal lens streak.
+// glow halo (bloom ran before this pass) and a horizontal lens streak
+// (STREAK_GLSL).
 const fragmentShader = glsl(
   CHUNKS.model,
   /* glsl */ `
@@ -300,6 +348,8 @@ const fragmentShader = glsl(
   uniform float uDetail;
   // Exact light paths (galaxy/photonLut.js), RGBA32F.
   uniform sampler2D uLut;
+  // 1: draw the lens streak here; 0: DepthOfFieldPass draws it after the blur.
+  uniform float uStreaks;
   varying vec2 vUv;
 ${DISC_GLSL}
   const float SHADOW_B = ${f(SHADOW_B)};
@@ -317,8 +367,7 @@ ${DISC_GLSL}
   const float HAZE_GAIN = 0.9;
   const float HALO_GAIN = 0.1;
   const float HALO_SCALE = 6.0; // Rs
-  const float STREAK_GAIN = 0.2;
-  const float STREAK_LENGTH = 5.0; // × the disc radius on screen
+${STREAK_GLSL}
   // The rendered scene around a hole is mostly the galaxy's own bulge, close
   // behind it, not at infinity: bent rays read it on a plane this far (Rs)
   // behind the closest approach. At infinity the bright bulge cusp became a
@@ -507,7 +556,6 @@ ${DISC_GLSL}
   vec3 shade(vec2 uv) {
     vec3 col = texture2D(tDiffuse, uv).rgb;
     vec3 rd = normalize(vec3((uv * 2.0 - 1.0) * uTanHalfFov, -1.0));
-    vec3 streaks = vec3(0.0);
     for (int i = 0; i < MAX_LENSES; i++) {
       if (i >= uCount) break;
       vec3 c = uLensCenter[i].xyz;
@@ -522,15 +570,6 @@ ${DISC_GLSL}
       vec3 p0 = rd * tc; // closest approach
       vec3 bv = p0 - c;
       float b = length(bv);
-
-      // Horizontal lens streak through the hole; it reaches past the lens.
-      // Faint over the shadow, so the shadow still reads black.
-      vec2 dpx = (uv - ((c.xy / -c.z) / uTanHalfFov * 0.5 + 0.5)) * uResolution;
-      float discPx = discOuter * 0.5 / (-c.z * uPixelAngle);
-      float thick = max(1.2, uResolution.y / 700.0);
-      float streak = exp(-abs(dpx.y) / thick - abs(dpx.x) / max(discPx * STREAK_LENGTH, 1.0));
-      streaks += mix(lensHot, vec3(1.0), 0.3) * streak * STREAK_GAIN * lensGain * disc.w * fade
-        * mix(0.25, 1.0, gm_smoothstep(SHADOW_B * 0.6, SHADOW_B * 1.2, b));
 
       // Intro-fall warp (blackHole.js WARP_*; 0 normally): a wider reach,
       // more bend, deeper source light and a swirl.
@@ -645,7 +684,7 @@ ${DISC_GLSL}
       }
       col = mix(col, E + T * Lx, fade);
     }
-    return col + streaks;
+    return col;
   }
 
   // Inside any lens reach: true when the extra rays can change the pixel.
@@ -662,8 +701,9 @@ ${DISC_GLSL}
   }
 
   void main() {
+    vec3 streaks = uStreaks > 0.5 ? lensStreaks(vUv) : vec3(0.0);
     if (uSamples < 2 || !inLens(vUv)) {
-      gl_FragColor = vec4(shade(vUv), 1.0);
+      gl_FragColor = vec4(shade(vUv) + streaks, 1.0);
       return;
     }
     // Rotated-grid sub-pixel rays (2 or 4): smooth thin rings and fine
@@ -671,7 +711,7 @@ ${DISC_GLSL}
     vec2 px = 1.0 / uResolution;
     vec3 sum = shade(vUv + vec2(0.125, 0.375) * px) + shade(vUv + vec2(-0.125, -0.375) * px);
     if (uSamples > 2) sum += shade(vUv + vec2(-0.375, 0.125) * px) + shade(vUv + vec2(0.375, -0.125) * px);
-    gl_FragColor = vec4(sum / float(uSamples), 1.0);
+    gl_FragColor = vec4(sum / float(uSamples) + streaks, 1.0);
   }
 `,
 );
@@ -754,6 +794,7 @@ export class BlackHolePass extends Pass {
         uSamples: { value: 1 },
         uDetail: { value: 0 },
         uLut: { value: createLutTexture() },
+        uStreaks: { value: 1 },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;

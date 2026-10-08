@@ -209,9 +209,22 @@ describe('GalaxyManager black holes', () => {
     expect(hole.jets.layers.isEnabled(LAYERS.JETS)).toBe(true);
     expect(hole.jets.layers.isEnabled(LAYERS.STARS)).toBe(false);
     expect(hole.jetMaterial.depthTest).toBe(false);
+    // Depth-of-field proxy: own layer, round, sized just past the disc.
+    expect(hole.dofProxy.layers.isEnabled(LAYERS.DOF)).toBe(true);
+    expect(hole.dofProxy.layers.isEnabled(LAYERS.STARS)).toBe(false);
+    expect(hole.dofProxy.scale.y).toBeCloseTo(hole.dofProxy.scale.x, 9);
+    expect(hole.dofProxy.scale.x).toBeCloseTo(Math.min(1, 0.05 * 25 * 1.4), 9);
+    // Its lens test (Rs in proxy units, disc size) and its own material.
+    const u = hole.dofProxy.material.uniforms;
+    expect(u.uRs.value * hole.dofProxy.scale.x).toBeCloseTo(0.05, 9);
+    expect(u.uDiscOuter.value).toBe(25);
+    let disposed = false;
+    hole.dofProxy.material.addEventListener('dispose', () => (disposed = true));
     const s = slots();
     manager.blackHoleCandidates(s);
     expect(s[0].discOuter).toBe(25);
+    hole.dispose();
+    expect(disposed).toBe(true);
   });
 
   it('the disc lies in the object plane', () => {

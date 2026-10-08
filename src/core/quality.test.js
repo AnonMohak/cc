@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { spikeStyle, cinematicEnabled } from './quality.js';
+import { spikeStyle, cinematicEnabled, dofEnabled } from './quality.js';
 
 describe('spikeStyle', () => {
   it('maps the setting to a shader style, off on cheap tiers', () => {
@@ -57,5 +57,15 @@ describe('intro tier', () => {
       expect(spikeStyle('jwst', name)).toBe(2);
       expect(cinematicEnabled({ vignette: 0.3, grain: 0, aberration: 0 }, name)).toBe(true);
     }
+  });
+});
+
+describe('dofEnabled', () => {
+  it('runs with an amount on Medium and High only', () => {
+    expect(dofEnabled(0.5, 'medium')).toBe(true);
+    expect(dofEnabled(0.5, 'high')).toBe(true);
+    expect(dofEnabled(0, 'high')).toBe(false);
+    expect(dofEnabled(0.5, 'low')).toBe(false);
+    expect(dofEnabled(0.5, 'minimal')).toBe(false);
   });
 });

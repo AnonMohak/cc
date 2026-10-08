@@ -7,6 +7,7 @@ import { CinematicPass } from './CinematicPass.js';
 import { LensFlarePass } from './LensFlarePass.js';
 import { BlackHolePass } from './BlackHolePass.js';
 import { JetPass } from './JetPass.js';
+import { DepthOfFieldPass } from './DepthOfFieldPass.js';
 import { ExposureMeterPass } from './ExposureMeterPass.js';
 
 // Bloom is blurry by nature: half resolution looks the same and costs 1/4.
@@ -28,6 +29,7 @@ const PASS_LABELS = new Map([
   [UnrealBloomPass, 'bloom'],
   [BlackHolePass, 'blackhole'],
   [JetPass, 'jets'],
+  [DepthOfFieldPass, 'dof'],
   [LensFlarePass, 'flare'],
   [ExposureMeterPass, 'meter'],
   [OutputPass, 'output'],
@@ -37,7 +39,8 @@ const PASS_LABELS = new Map([
 /**
  * GalaxyScenePass (low-res volumes) → UnrealBloomPass → LensFlarePass (reads the bloom
  * mips; only when bloom runs) → BlackHolePass (lensing + accretion discs; only while a
- * black hole is resolved) → JetPass (black-hole jets; only while one is visible) → ExposureMeterPass (auto exposure reading; the image
+ * black hole is resolved) → JetPass (black-hole jets; only while one is visible) → DepthOfFieldPass
+ * (only when on) → ExposureMeterPass (auto exposure reading; the image
  * passes through) → OutputPass (tone mapping + sRGB)
  * → CinematicPass (vignette, grain, aberration; skipped when off).
  *
@@ -72,6 +75,9 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
   const jets = new JetPass(scene, camera);
   let jetSource = () => false;
   composer.addPass(jets);
+  // After everything optical (lens, jets, flare, bloom): it all blurs together.
+  const dof = new DepthOfFieldPass(scene, camera);
+  composer.addPass(dof);
   // Measures the finished HDR frame, before the exposure it controls.
   const meter = new ExposureMeterPass();
   composer.addPass(meter);
@@ -89,6 +95,10 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       // Skip the bloom passes entirely when bloom is off (by strength or tier).
       bloom.enabled = bloom.strength > 0 && bloomMode !== 'off';
       blackHole.update();
+      // Lens streaks are camera optics: with depth of field they draw after the blur.
+      const streaksAfterDof = dof.enabled && blackHole.enabled;
+      blackHole.material.uniforms.uStreaks.value = streaksAfterDof ? 0 : 1;
+      dof.setStreaks(blackHole.material.uniforms, streaksAfterDof);
       jets.enabled = jetSource();
       flare.enabled = bloom.enabled && flareAmount > 0;
       composer.render();
@@ -129,6 +139,15 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
     /** Lens rays per pixel (quality.js holeSamples; the intro tier supersamples). */
     setBlackHoleSamples(n) {
       blackHole.setSamples(n);
+    },
+    /** Depth of field strength 0–1 and whether the pass runs (quality.js dofEnabled). */
+    setDof(amount, enabled) {
+      dof.setAmount(amount);
+      dof.enabled = enabled;
+    },
+    /** Depth of field focus distance (view depth, world units). */
+    setDofFocus(distance) {
+      dof.setFocus(distance);
     },
     /** `source()` says whether any jet is visible (JetPass is skipped otherwise). */
     setJetSource(source) {
@@ -184,6 +203,7 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       bloom.dispose();
       flare.dispose();
       blackHole.dispose();
+      dof.dispose();
       meter.dispose();
       cinematic.dispose();
       composer.dispose();
