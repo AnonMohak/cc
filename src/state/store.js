@@ -84,6 +84,26 @@ export function isIntroScene(state) {
   return state.galaxies.length === 1 && state.galaxies[0].intro === true;
 }
 
+/**
+ * Every load opens on the animation black hole. A saved scene with objects
+ * is held back (`pending`) until the intro ends (app.js), with the saved
+ * settings applied from the start.
+ * @param {object | null} saved persistence.load() result
+ * @returns {{ state: object, pending: { galaxies: object[], selectedId: string | null } | null }}
+ */
+export function splitIntroStart(saved) {
+  if (!saved || saved.galaxies.length === 0 || isIntroScene(saved)) return { state: saved ?? createInitialState(), pending: null };
+  return {
+    state: { ...saved, galaxies: [], selectedId: null },
+    pending: { galaxies: saved.galaxies, selectedId: saved.selectedId },
+  };
+}
+
+/** The held-back scene with the current settings (splitIntroStart). */
+export function restorePending(state, pending) {
+  return { ...state, galaxies: pending.galaxies, selectedId: pending.selectedId };
+}
+
 export function canAddGalaxy(state, count) {
   const galaxies = withoutIntro(state.galaxies);
   return galaxies.length < MAX_GALAXIES && totalParticles({ galaxies }) + count <= MAX_TOTAL_PARTICLES;

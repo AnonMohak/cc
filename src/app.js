@@ -10,7 +10,7 @@ import { createStarfield } from './scene/starfield.js';
 import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
-import { createStore, createInitialState, canAddGalaxy, isIntroScene } from './state/store.js';
+import { createStore, canAddGalaxy, isIntroScene, splitIntroStart, restorePending } from './state/store.js';
 import { QUALITY, TIER_ORDER, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createRenderGate } from './core/renderGate.js';
@@ -92,12 +92,20 @@ export function startApp(container, { startScreen } = {}) {
   // ── State ──────────────────────────────────────────────────────────────
   const storage = window.localStorage;
   const actions = createActions();
-  const store = createStore(undefined, persistence.load(storage) ?? createInitialState());
-  // A fresh scene starts with the animation black hole, framed like the film
-  // shot. The first add replaces it (store.js withoutIntro).
+  // Every load starts with the animation black hole, framed like the film
+  // shot. A saved scene waits in pendingScene and comes back when the intro
+  // ends (restoreSavedScene); on a fresh scene the first add replaces the
+  // hole (store.js withoutIntro).
+  const intro = splitIntroStart(persistence.load(storage));
+  const store = createStore(undefined, intro.state);
+  let pendingScene = intro.pending;
   if (store.getState().galaxies.length === 0) store.dispatch(actions.addBlackHole(store.getState(), undefined, { intro: true }));
 
-  const save = debounce(() => persistence.save(store.getState(), storage), SAVE_DEBOUNCE_MS);
+  // While the saved scene waits, keep saving it (with the current settings), not the intro.
+  const save = debounce(() => {
+    const state = store.getState();
+    persistence.save(pendingScene ? restorePending(state, pendingScene) : state, storage);
+  }, SAVE_DEBOUNCE_MS);
   store.subscribe(save);
   window.addEventListener('pagehide', () => save.flush());
 
@@ -105,6 +113,8 @@ export function startApp(container, { startScreen } = {}) {
 
   /** Replace the whole scene (share link or imported file). */
   function loadScene(state, message) {
+    // A shared or imported scene replaces the waiting saved one.
+    pendingScene = null;
     store.dispatch(actions.loadState(state));
     history.clear();
     showToast(container, message);
@@ -439,14 +449,28 @@ export function startApp(container, { startScreen } = {}) {
 
   // An add replaced the animation black hole: end the intro and frame the
   // new object (the film-shot camera would sit inside a galaxy).
+  let restoring = false;
   store.subscribe((next, prev) => {
-    if (!prev.galaxies.some((g) => g.intro) || next.galaxies.some((g) => g.intro)) return;
+    if (restoring || !prev.galaxies.some((g) => g.intro) || next.galaxies.some((g) => g.intro)) return;
     const added = next.galaxies.filter((g) => !prev.galaxies.some((p) => p.id === g.id));
     if (added.length !== 1) return;
     interruptFall(false);
     setCameraMode('orbit');
     focusGalaxy(added[0].id);
   });
+
+  /** The intro is over: bring back the saved scene, seen from the home view. */
+  function restoreSavedScene() {
+    if (!pendingScene) return;
+    const pending = pendingScene;
+    pendingScene = null;
+    restoring = true;
+    store.dispatch(actions.loadState(restorePending(store.getState(), pending)));
+    restoring = false;
+    history.clear();
+    if (cameraMode !== 'orbit') setCameraMode('orbit');
+    cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position, 2);
+  }
 
   let currentBand = null;
   function applyBand(name) {
@@ -528,6 +552,8 @@ export function startApp(container, { startScreen } = {}) {
       // The scene changed under the fall (e.g. N added a galaxy): leave it.
       if (phase === 'done' && cameraMode === 'fall') escapeFall();
     }
+    // Watched, skipped or interrupted: the saved scene comes back.
+    if (pendingScene && fall.phase() === 'done') restoreSavedScene();
     // The fall music starts at the start-box click and rises through the
     // wait (timed so the fall itself is unchanged), and fades out once fallen.
     soundscape.setMode(soundMode(), FALL_IDLE_SECONDS - fallTau);
@@ -657,6 +683,8 @@ export function startApp(container, { startScreen } = {}) {
 
   const commands = {
     addGalaxy() {
+      // N during the intro adds to the saved scene, not in place of the hole.
+      restoreSavedScene();
       const state = store.getState();
       if (canAddGalaxy(state, PRESETS.spiral.shape.count)) {
         store.dispatch(actions.addGalaxy(state, 'spiral', getTarget()));

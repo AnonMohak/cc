@@ -8,6 +8,8 @@ import {
   clampSettings,
   sanitizeGalaxy,
   isIntroScene,
+  splitIntroStart,
+  restorePending,
   DEFAULT_SETTINGS,
 } from './store.js';
 import { createActions } from './actions.js';
@@ -272,6 +274,35 @@ describe('standalone black holes', () => {
 
 describe('animation black hole (intro)', () => {
   const intro = (store, actions) => store.dispatch(actions.addBlackHole(store.getState(), [0, 0, 0], { intro: true }));
+
+  it('opens every load on the intro and holds a saved scene back', () => {
+    const { store, add } = setup();
+    add();
+    add();
+    const saved = { ...store.getState(), settings: { ...store.getState().settings, sound: false } };
+    const { state, pending } = splitIntroStart(saved);
+    expect(state.galaxies).toEqual([]);
+    expect(state.selectedId).toBeNull();
+    expect(state.settings.sound).toBe(false);
+    expect(pending.galaxies).toBe(saved.galaxies);
+    expect(pending.selectedId).toBe(saved.selectedId);
+    // Settings changed during the intro are kept on restore.
+    const back = restorePending({ ...state, settings: { ...state.settings, sound: true } }, pending);
+    expect(back.galaxies).toBe(saved.galaxies);
+    expect(back.selectedId).toBe(saved.selectedId);
+    expect(back.settings.sound).toBe(true);
+  });
+
+  it('holds nothing back for a fresh, empty or intro-only save', () => {
+    expect(splitIntroStart(null).pending).toBeNull();
+    expect(splitIntroStart(null).state.galaxies).toEqual([]);
+    expect(splitIntroStart(createInitialState()).pending).toBeNull();
+    const { store, actions } = setup();
+    intro(store, actions);
+    const { state, pending } = splitIntroStart(store.getState());
+    expect(pending).toBeNull();
+    expect(isIntroScene(state)).toBe(true);
+  });
 
   it('the first add replaces it, in one action', () => {
     const { store, actions, add } = setup();
