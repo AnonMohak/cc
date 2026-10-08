@@ -76,6 +76,31 @@ function buildDrone(ctx, out) {
 }
 
 /**
+ * A tiny silent WAV (blob URL): played once inside the unlock gesture, so iOS
+ * lets the media element play later, before the real track has arrived.
+ */
+function silentClipUrl(win) {
+  const samples = 800; // 0.1 s, 8 kHz, 8-bit mono
+  const bytes = new Uint8Array(44 + samples);
+  const view = new DataView(bytes.buffer);
+  const text = (at, s) => [...s].forEach((c, i) => view.setUint8(at + i, c.charCodeAt(0)));
+  text(0, 'RIFF');
+  view.setUint32(4, 36 + samples, true);
+  text(8, 'WAVEfmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, 8000, true);
+  view.setUint32(28, 8000, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  text(36, 'data');
+  view.setUint32(40, samples, true);
+  bytes.fill(128, 44); // 8-bit silence
+  return win.URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+}
+
+/**
  * Background sound: the generated drone everywhere, and the fall track (if
  * one is set in tracks.js) for the intro fall, with crossfades. The track
  * starts at the start-box click (mode 'wait'), early by the wait's length so
@@ -99,6 +124,7 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
   let ambientGain = null;
   let musicGain = null;
   let music = null;
+  let trackUrl = null; // blob URL of the downloaded track
   let enabled = true;
   let mode = 'ambient';
   let waitEndsAt = 0; // performance.now() ms when the wait ends (fall starts)
@@ -118,16 +144,35 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
       music.crossOrigin = 'anonymous';
       music.preload = 'auto';
       music.addEventListener('canplaythrough', () => {
-        if (musicReady) return;
+        // Only the real track counts, not the silent unlock clip.
+        if (musicReady || !trackUrl || music.src !== trackUrl) return;
         musicReady = true;
         if (musicMode()) enter();
         else apply(TOGGLE_FADE);
       });
-      music.addEventListener('error', () => {
+      const fail = () => {
         musicReady = false;
         apply(TOGGLE_FADE);
+      };
+      music.addEventListener('error', () => {
+        if (trackUrl && music.src === trackUrl) fail();
       });
-      music.src = fallMusicUrl;
+      music.src = silentClipUrl(win);
+      // Download the whole track, then play it from memory. A streamed file
+      // can only seek to fallMusicStart if the server answers HTTP Range
+      // requests, and Cloudflare Pages does not (it sends the full file).
+      win
+        .fetch(fallMusicUrl)
+        .then((r) => {
+          if (!r.ok) throw new Error(`fall music: HTTP ${r.status}`);
+          return r.blob();
+        })
+        .then((blob) => {
+          if (!music) return;
+          trackUrl = win.URL.createObjectURL(blob);
+          music.src = trackUrl;
+        })
+        .catch(fail);
       musicGain = ctx.createGain();
       musicGain.gain.value = 0;
       ctx.createMediaElementSource(music).connect(musicGain).connect(master);
@@ -169,8 +214,11 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
     const fades = mixFades(mode, waitLeft());
     if (music && musicReady && musicMode()) {
       // In the wait, start early by the time left, so the fall starts at
-      // fallMusicStart; in the fall, seek only if it drifted or never played.
-      const at = mode === 'wait' ? Math.max(0, fallMusicStart - waitLeft()) : fallMusicStart;
+      // fallMusicStart; in the fall (also when the track arrives late), at
+      // the place it would have reached by now. Seek only if it drifted or
+      // never played.
+      const intoFall = waitEndsAt > 0 ? Math.max(0, (win.performance.now() - waitEndsAt) / 1000) : 0;
+      const at = mode === 'wait' ? Math.max(0, fallMusicStart - waitLeft()) : fallMusicStart + intoFall;
       const seek = () => (music.currentTime = at);
       if (mode === 'wait' || music.paused || Math.abs(music.currentTime - at) > 1) {
         // A seek before the metadata arrives is dropped: retry once it has.
@@ -238,6 +286,7 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
       clearTimeout(stopTimer);
       clearTimeout(suspendTimer);
       music?.pause();
+      if (trackUrl) win.URL.revokeObjectURL(trackUrl);
       ctx?.close().catch(() => {});
       ctx = null;
     },
