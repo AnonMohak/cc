@@ -113,6 +113,7 @@ export class Galaxy {
     this.supernovaMaterial = createSupernovaMaterial(this.uniforms);
     this.supernovae = new THREE.Points(snGeometry, this.supernovaMaterial);
     this.supernovae.renderOrder = 3;
+    this.supernovaeOn = supernovae;
     this.supernovae.visible = supernovae && !this.standalone;
     this.snSchedule = createSupernovaSchedule(seed);
     this.snSlot = 0;
@@ -144,6 +145,11 @@ export class Galaxy {
 
     this.discMap = null;
     this.lodCount = Infinity; // star LOD; Infinity = no LOD limit
+    // Collision (scene/CollisionSim.js): the sim moves the group and may
+    // own the star positions; homePosition is where the store puts it.
+    this.colliding = false;
+    this.simCount = Infinity;
+    this.homePosition = [0, 0, 0];
     this.rebakeTimer = null;
 
     this.setShape(shape, seed);
@@ -238,7 +244,9 @@ export class Galaxy {
   setLook(look) {
     const l = applyLookUniforms(this.uniforms, look);
     this.radius = l.radius;
-    this.group.position.fromArray(l.position);
+    this.homePosition = l.position;
+    // A collision moves the group itself (and never lets radius/tilt change).
+    if (!this.colliding) this.group.position.fromArray(l.position);
     this.group.rotation.set(THREE.MathUtils.degToRad(l.tiltX), 0, THREE.MathUtils.degToRad(l.tiltZ));
     this.group.scale.setScalar(l.radius);
   }
@@ -350,9 +358,56 @@ export class Galaxy {
     return true;
   }
 
-  /** Settings → Supernovae (never in a black hole's star cloud). */
+  /** Settings → Supernovae (never in a black hole's star cloud, nor while colliding). */
   setSupernovae(on) {
-    this.supernovae.visible = on && !this.standalone;
+    this.supernovaeOn = on;
+    this.supernovae.visible = on && !this.standalone && !this.colliding;
+  }
+
+  /** Start of a collision: the sim moves the group from now on. */
+  beginCollision() {
+    this.colliding = true;
+    // Flashes follow analytic orbits, which no longer match the stars.
+    this.setSupernovae(this.supernovaeOn);
+  }
+
+  /** End of a collision: back home, analytic stars, full gas. */
+  endCollision() {
+    this.colliding = false;
+    this.group.position.fromArray(this.homePosition);
+    this.setStarSimulation(null);
+    this.setGasFade(1);
+    this.setSupernovae(this.supernovaeOn);
+  }
+
+  /** Gas fade 0–1 (collision.js gasFade): volume, H II and dust. */
+  setGasFade(f) {
+    this.uniforms.uGasFade.value = f;
+    this.volume.visible = !this.standalone && f > 0;
+  }
+
+  /**
+   * Draw the stars from a simulated position texture (world space, one
+   * texel per star), or analytic again with null. Only the first `count`
+   * stars are simulated, so only those draw.
+   * @param {import('three').Texture | null} texture
+   * @param {number} [count]
+   */
+  setStarSimulation(texture, count = Infinity) {
+    const u = this.uniforms;
+    u.uSim.value = texture ? 1 : 0;
+    u.uSimPos.value = texture;
+    this.simCount = texture ? count : Infinity;
+    // Tidal tails reach far outside the fixed bounding sphere.
+    this.stars.frustumCulled = !texture;
+    this.applyStarCap();
+  }
+
+  /** Per frame while simulated: the texture to read (ping-pong) and world → unit space. */
+  updateStarSimulation(texture) {
+    this.uniforms.uSimPos.value = texture;
+    this.group.updateMatrixWorld();
+    this.uniforms.uSimToLocal.value.copy(this.group.matrixWorld).invert();
   }
 
   /**
@@ -407,7 +462,7 @@ export class Galaxy {
    */
   applyStarCap() {
     if (!this.quality) return;
-    const drawn = Math.min(this.count, this.quality.starCap, this.lodCount);
+    const drawn = Math.min(this.count, this.quality.starCap, this.lodCount, this.simCount);
     this.stars.geometry.setDrawRange(0, drawn);
     const hiiCap = Math.ceil(this.hiiCount * Math.min(1, drawn / Math.max(this.count, 1)));
     this.hii.geometry.setDrawRange(0, hiiCap);
@@ -425,7 +480,7 @@ export class Galaxy {
     const distance = camera.position.distanceTo(this.group.position);
     const footprint = screenFootprint(this.radius * 1.3, distance, camera.fov, width, height);
     this.uniforms.uSteps.value = adaptiveSteps(this.baseSteps, footprint);
-    const lod = starLod(Math.min(this.count, this.quality.starCap), footprint);
+    const lod = starLod(Math.min(this.count, this.quality.starCap, this.simCount), footprint);
     this.uniforms.uLodGain.value = lod.gain;
     const lodCount = lod.gain === 1 ? Infinity : lod.count;
     if (lodCount !== this.lodCount) {

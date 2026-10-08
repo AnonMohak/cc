@@ -9,6 +9,7 @@ import { debounce } from '../util/debounce.js';
 import { BAND_OPTIONS, BANDS } from '../galaxy/bands.js';
 import { formatCount } from '../util/formatCount.js';
 import { createPanelToggle } from './panelToggle.js';
+import { COLLISION_LIMITS, DEFAULT_COLLISION } from '../galaxy/collision.js';
 
 const LABELS = {
   // Stars (rebuild)
@@ -81,9 +82,10 @@ const catalogueOptions = Object.fromEntries(CATALOGUE_IDS.map((id) => [CATALOGUE
  *   onToggleVideo?: () => void,
  *   onRecordGif?: () => void,
  *   onGenerateUniverse?: (layout: string, count: number) => void,
+ *   collision?: { supported: boolean, start: (idA: string, idB: string, options: { pass: number, speed: number }) => void, stop: () => void, pair: () => string[] | null, subscribe: (fn: () => void) => () => void },
  * }} options
  */
-export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport, onTour, onFly, onResetView, onToggleVideo, onRecordGif, onGenerateUniverse }) {
+export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport, onTour, onFly, onResetView, onToggleVideo, onRecordGif, onGenerateUniverse, collision }) {
   const narrow = window.innerWidth < NARROW_SCREEN;
   // On phones the width comes from style.css (a narrow panel); an inline
   // width from lil-gui would override it.
@@ -172,11 +174,18 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   let proxy = null;
   let lastEntry = null;
   let pendingShape = null;
+  // Controllers that move or reshape the galaxy: locked while it collides.
+  let lockable = [];
+  let collisionFolder = null;
+  // Collide settings are UI state only (a collision is never saved).
+  const collideProxy = { target: '', ...DEFAULT_COLLISION };
 
   function buildSelectedFolder(entry) {
     pendingShape?.cancel();
     selectedFolder?.destroy();
     selectedFolder = null;
+    collisionFolder = null;
+    lockable = [];
     lastEntry = entry;
     if (!entry) return;
 
@@ -206,64 +215,124 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       .add(proxy, 'name')
       .name('Name')
       .onFinishChange((name) => dispatch(actions.updateGalaxy(id, { name })));
-    folder
+    const presetController = folder
       .add(proxy, 'preset', presetOptions)
       .name('Apply preset')
       .onChange((name) => dispatch(actions.applyPreset(store.getState().galaxies.find((g) => g.id === id), name)));
     if (onFocus) folder.add(proxy, 'focus').name('Focus camera');
-    folder.add(proxy, 'reseed').name('New random layout');
+    lockable.push(presetController, folder.add(proxy, 'reseed').name('New random layout'));
     folder.add(proxy, 'remove').name('Delete galaxy');
+    if (collision) buildCollisionFolder(folder, entry);
 
     // Shape changes rebuild geometry, so debounce while dragging.
     pendingShape = debounce((patch) => dispatch(actions.updateGalaxy(id, { shape: patch })), SHAPE_DEBOUNCE_MS);
     const structureFolder = folder.addFolder('Structure');
     for (const key of Object.keys(LIMITS.structure)) {
       const l = LIMITS.structure[key];
-      structureFolder
-        .add(proxy.structure, key, l.min, l.max, l.step)
-        .name(LABELS[key])
-        .onChange((v) => dispatch(actions.updateGalaxy(id, { structure: { [key]: v } })));
+      lockable.push(
+        structureFolder
+          .add(proxy.structure, key, l.min, l.max, l.step)
+          .name(LABELS[key])
+          .onChange((v) => dispatch(actions.updateGalaxy(id, { structure: { [key]: v } }))),
+      );
     }
 
     const shapeFolder = folder.addFolder('Stars (rebuild)').close();
     for (const key of SHAPE_KEYS) {
       const l = LIMITS.shape[key];
-      shapeFolder
-        .add(proxy.shape, key, l.min, l.max, l.step)
-        .name(LABELS[key])
-        .onChange((v) => pendingShape({ [key]: v }))
-        .onFinishChange(() => pendingShape.flush());
+      lockable.push(
+        shapeFolder
+          .add(proxy.shape, key, l.min, l.max, l.step)
+          .name(LABELS[key])
+          .onChange((v) => pendingShape({ [key]: v }))
+          .onFinishChange(() => pendingShape.flush()),
+      );
     }
 
     const lookFolder = folder.addFolder('Look');
     const look = (patch) => dispatch(actions.updateGalaxy(id, { look: patch }));
     for (const key of ['radius', 'starSize', 'brightness', 'physicalColor']) {
       const l = LIMITS.look[key];
-      lookFolder.add(proxy.look, key, l.min, l.max, l.step).name(LABELS[key]).onChange((v) => look({ [key]: v }));
+      const c = lookFolder.add(proxy.look, key, l.min, l.max, l.step).name(LABELS[key]).onChange((v) => look({ [key]: v }));
+      if (key === 'radius') lockable.push(c);
     }
     lookFolder.addColor(proxy.look, 'colorInner').name('Core color').onChange((v) => look({ colorInner: v }));
     lookFolder.addColor(proxy.look, 'colorOuter').name('Edge color').onChange((v) => look({ colorOuter: v }));
     for (const key of ['tiltX', 'tiltZ']) {
       const l = LIMITS.look[key];
-      lookFolder.add(proxy.look, key, l.min, l.max, l.step).name(LABELS[key]).onChange((v) => look({ [key]: v }));
+      lockable.push(lookFolder.add(proxy.look, key, l.min, l.max, l.step).name(LABELS[key]).onChange((v) => look({ [key]: v })));
     }
 
     const posFolder = folder.addFolder('Position').close();
     const setPosition = () => look({ position: [proxy.position.x, proxy.position.y, proxy.position.z] });
     for (const axis of ['x', 'y', 'z']) {
-      posFolder.add(proxy.position, axis, -POSITION_RANGE, POSITION_RANGE, 0.1).onChange(setPosition);
+      lockable.push(posFolder.add(proxy.position, axis, -POSITION_RANGE, POSITION_RANGE, 0.1).onChange(setPosition));
     }
 
     const motionFolder = folder.addFolder('Motion');
     for (const key of ['speed', 'differential', 'patternSpeed']) {
       const l = LIMITS.motion[key];
-      motionFolder
-        .add(proxy.motion, key, l.min, l.max, l.step)
-        .name(LABELS[key])
-        .onChange((v) => dispatch(actions.updateGalaxy(id, { motion: { [key]: v } })));
+      lockable.push(
+        motionFolder
+          .add(proxy.motion, key, l.min, l.max, l.step)
+          .name(LABELS[key])
+          .onChange((v) => dispatch(actions.updateGalaxy(id, { motion: { [key]: v } }))),
+      );
     }
-    motionFolder.add(proxy, 'reverse').name('Reverse direction');
+    lockable.push(motionFolder.add(proxy, 'reverse').name('Reverse direction'));
+    applyCollisionLock();
   }
+
+  /**
+   * Collision: pick a partner and collide, or stop the running collision.
+   * Rebuilt when the galaxy list or the collision changes.
+   */
+  function buildCollisionFolder(parent, entry) {
+    const open = collisionFolder ? !collisionFolder._closed : false;
+    // Rebuilt in place (addFolder appends at the end).
+    const next = collisionFolder?.domElement.nextSibling ?? null;
+    collisionFolder?.destroy();
+    const folder = parent.addFolder('Collision');
+    if (next) parent.$children.insertBefore(folder.domElement, next);
+    collisionFolder = folder;
+    if (!open) folder.close();
+    const id = entry.id;
+    const pair = collision.pair();
+    if (pair?.includes(id)) {
+      folder.add({ stop: () => collision.stop() }, 'stop').name('Stop collision (back to start)');
+      return;
+    }
+    if (!collision.supported) {
+      folder.add({ note: 'Not supported on this device' }, 'note').name('Collide').disable();
+      return;
+    }
+    const partners = store.getState().galaxies.filter((g) => g.id !== id && g.kind !== 'blackhole');
+    if (partners.length === 0) {
+      folder.add({ note: 'Add another galaxy first' }, 'note').name('Collide').disable();
+      return;
+    }
+    if (!partners.some((g) => g.id === collideProxy.target)) collideProxy.target = partners[0].id;
+    folder.add(collideProxy, 'target', Object.fromEntries(partners.map((g) => [g.name, g.id]))).name('Collide with');
+    const L = COLLISION_LIMITS;
+    folder.add(collideProxy, 'pass', L.pass.min, L.pass.max, L.pass.step).name('Pass distance');
+    folder.add(collideProxy, 'speed', L.speed.min, L.speed.max, L.speed.step).name('Approach speed');
+    folder
+      .add({ go: () => collision.start(id, collideProxy.target, { pass: collideProxy.pass, speed: collideProxy.speed }) }, 'go')
+      .name(pair ? 'Collide (stops the other one)' : 'Collide');
+  }
+
+  /** Lock the controls that move or reshape a colliding galaxy. */
+  function applyCollisionLock() {
+    const locked = Boolean(lastEntry && collision?.pair()?.includes(lastEntry.id));
+    for (const c of lockable) c.enable(!locked);
+  }
+
+  function refreshCollision() {
+    if (!selectedFolder || !lastEntry || lastEntry.kind === 'blackhole' || !collision) return;
+    buildCollisionFolder(selectedFolder, lastEntry);
+    applyCollisionLock();
+  }
+  const unsubscribeCollision = collision?.subscribe(refreshCollision);
 
   /** The selected standalone black hole: the hole and its star cloud. */
   function buildHoleFolder(entry) {
@@ -465,6 +534,8 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     } else if (entry && entry !== lastEntry) {
       refreshSelectedFolder(entry);
     }
+    // New or renamed galaxies: refresh the collision partner list.
+    if (prev && galaxyListKey(state) !== galaxyListKey(prev)) refreshCollision();
 
     if (!prev || state.settings !== prev.settings) {
       Object.assign(settingsProxy, state.settings);
@@ -491,6 +562,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     isOpen: () => visibility.isOpen(),
     dispose() {
       unsubscribe();
+      unsubscribeCollision?.();
       visibility.dispose();
       pendingShape?.cancel();
       gui.destroy();

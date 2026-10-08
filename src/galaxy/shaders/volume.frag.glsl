@@ -193,7 +193,7 @@ void main() {
 
   float alpha = dot(T, vec3(0.2126, 0.7152, 0.0722));
   vec3 light = uBandLightColor * L + uBandGasColor * G;
-  gl_FragColor = vec4(light * uGlow * uBrightness * uEmphasis, alpha);
+  gl_FragColor = vec4(light * uGlow * uBrightness * uEmphasis * uGasFade, mix(1.0, alpha, uGasFade));
 
   #include <colorspace_fragment>
 }

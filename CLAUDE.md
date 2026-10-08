@@ -23,6 +23,7 @@ Additional:
 - **Selection**: click or tap a galaxy to select it; the selected galaxy brightens ×1.15 and the others dim to ×0.75 (no overlay). Double-click / double-tap or "Focus" flies the camera to it.
 - **Realistic rendering** (researched against real galaxies): density-wave spiral arms, black-body star colours, young blue stars that light up on arm crests, pink H II nebulae, a Sérsic bulge, an exponential × sech² disc and dust lanes on the inner arm edges (edge-on: a midplane dust lane).
 - **Globular clusters**: 4–40 per galaxy (more in bulge-rich galaxies), dense Plummer balls of old stars on slow halo orbits. They are star kind `CLUSTER` (4) inside the normal star geometry (~2–6% of the count): `aOrbit` holds the cluster centre orbit and the `position` attribute holds the star's offset from the centre (`stars.vert.glsl` adds it only for this kind).
+- **Galaxy collisions** (`galaxy/collision.js` pure physics, `scene/CollisionSim.js` GPU, `shaders/collisionStep.glsl`; Selected galaxy → Collision: partner, Pass distance in mean radii, Approach speed × escape speed at contact, Collide / Stop collision). Restricted N-body (Toomre & Toomre): each galaxy is a Plummer sphere (`G_SIM`, mass ∝ R², softening 0.3 R) and its stars are test particles. The centres move on the CPU (leapfrog, zero total momentum, so the barycentre and the camera framing stay put) with a drag while they overlap that fades ∝ 1/v³ (slow passes merge, fast wide ones fly by). Far apart the centres fast-forward (`warpFactor`) and the stars stay analytic; at contact (`CONTACT` × (rA + rB)) one GPU pass (`collisionInit.glsl`, the star shader's own `gs_position`; JS mirror `initialStarState`, so no CPU loop over 200k stars at contact) hands each galaxy's first min(count, tier `starCap`) stars to two RGBA32F ping-pong textures (`GPUComputationRenderer`; position + crest, velocity; semi-implicit Euler mirrored by `stepStar`, ≤ 8 substeps of 1/30 s). `stars.vert.glsl` reads them by `gl_VertexID` (`uSim`, `uSimPos`, `uSimToLocal`; frustum culling off). Tidal disruption fades the volume, H II and dust (`uGasFade`); supernovae are hidden while colliding. One collision at a time; transient: never in the store, saves or shares, no undo. The pair's move/reshape controls are locked (colours and brightness still work); any store change that moves, reshapes or removes either galaxy stops it (`collisionBroken`), as does a lost context. Needs `EXT_color_buffer_float` (`collisionSupported`); galaxies only (no black holes). The HUD reads live positions (`getPosition`).
 - **Supernovae** (`galaxy/supernovae.js`, Settings → Supernovae): a seeded Poisson schedule (mean 9 s of simulation time per galaxy; nothing while paused) picks a star (young/arm stars preferred, never the bright core or cluster stars) and lights one of 4 reused flash points. The flash copies the star's `aOrbit`, so `gs_position` moves it with the star; light curve: fast rise, ~5 s fade, peak above the bloom threshold. The GLSL light curve mirrors `supernovaLight`.
 - **Live structure controls**: arm count, winding, density wave, arm contrast, flocculence, dust, diffuse glow and bulge profile change instantly (shader uniforms).
 - **Bloom**: lifts only bright cores and stars (threshold 0.45).
@@ -114,6 +115,7 @@ src/
 │   ├── Galaxy.js            # Owns group + volume Mesh + stars Points + H II Points; set{Shape,Structure,Look,Motion}, tick, dispose
 │   ├── emphasis.js          # PURE: selection brightness targets + frame-rate independent ease
 │   ├── supernovae.js        # PURE: supernova light curve, Poisson schedule, site choice
+│   ├── collision.js         # PURE: collision physics (orbit design, centres, star init + step mirrors of collisionInit/collisionStep.glsl)
 │   ├── bands.js             # PURE: wavelength view modes (gains + colour matrices per band)
 │   ├── blackHole.js         # PURE: light deflection, geodesic traceRay, lens selection
 │   ├── photonLut.js         # PURE: exact Schwarzschild light paths as a lookup table (Binet's equation) for the BlackHolePass lens
@@ -127,6 +129,7 @@ src/
 ├── scene/
 │   ├── GalaxyManager.js     # Map<id, Galaxy>; applies store diffs to the scene
 │   ├── diffGalaxies.js      # PURE: prev/next galaxy lists → { added, removed, shapeChanged, lookChanged }
+│   ├── CollisionSim.js      # One running collision: centres + GPU star simulation (ping-pong textures)
 │   ├── starfield.js         # Static background stars (denser along the band)
 │   ├── sky.js               # Milky Way sky sphere; texture from skyWorker.js
 │   ├── skyMap.js            # PURE sky model + equirect bake (no three.js: runs in the worker)
