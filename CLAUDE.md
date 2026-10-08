@@ -47,7 +47,7 @@ Additional:
 - **Keyboard**: Space pause · N add · F focus · Delete remove · Esc leave camera mode / deselect · H show/hide panel · P screenshot · R record video · T tour · G free-fly · V next view mode · M sound on / off · Ctrl+Z / Ctrl+Shift+Z undo/redo (`ui/keyboard.js`).
 - **Start box** (`index.html` + `ui/startScreen.js`): static HTML with inline CSS, so the first paint is dark and styled before the JS loads. It blurs the live scene (`backdrop-filter`), shows touch or mouse controls via `(pointer: coarse)`, and says "Loading…" until the first frame renders, then "Click/Tap anywhere to start". On every load. While open it swallows pointer and key input (window capture listener), so the start click never selects/orbits and Space never pauses; Auto quality skips those frames (the blur costs GPU). Removed from the DOM after a 0.3 s fade.
 - **Panel visibility** (`ui/panelToggle.js`): the lil-gui panel starts hidden on every load (desktop and phone) behind a "Controls" button in the top-right corner; "Hide" in the panel title bar (a separate absolutely-positioned button: the title is itself a `<button>`) puts it away. H toggles the same state. The root title no longer collapses (`gui.openAnimated` is a no-op). Both fade with opacity + visibility (150 ms, none with reduced motion); the hidden one is `inert`. UI state only, never saved. Hide-button CSS is scoped under `.lil-gui` because lil-gui's `.lil-gui button` rule loads later and would win.
-- **Look**: UI font JetBrains Mono (`public/fonts/`, Latin woff2 400/600, OFL), `--mono` in `index.html`. The lil-gui panel is translucent glass (`style.css`); on phones it is 220 px wide and its width comes from CSS, not the GUI `width` option (inline wins).
+- **Look**: UI font JetBrains Mono (`public/fonts/`, Latin woff2 400/600, OFL), `--mono` in `index.html`. The lil-gui panel is translucent glass (`style.css`); on phones it is up to 250 px wide and its width comes from CSS, not the GUI `width` option (inline wins). Every row uses one grid: labels left-aligned (ellipsis when too long), widgets in one fixed column flush right (`--widget-column`, a share of the panel width, so nested folders line up), buttons full width and centred, numbers and hex codes right-aligned in same-width value boxes. Dropdowns fill the column; where `appearance: base-select` is supported the real select is the widget and its list is drawn in the panel glass and font (elsewhere: dark option colours). `color-scheme: dark` for native popups. Overlays (toast, notice, info card, HUD, badges) use `--mono` too. Confirm and copy boxes are in-app (`ui/dialog.js`: `confirmDialog`, `copyDialog`; on `<body>`, above the panel, they take every key: Esc cancels, Enter confirms), never `window.confirm`/`prompt`. Only the OS file picker and colour picker stay native.
 - **Robustness**: a notice when WebGL 2 is missing; WebGL context loss pauses and restores.
 
 ## Tech stack
@@ -162,6 +162,7 @@ src/
     ├── wakeLock.js          # Screen Wake Lock while the intro fall runs
     ├── fileIO.js            # Download text / pick a file
     ├── notice.js            # Centred message overlay
+    ├── dialog.js            # In-app confirm / copy dialogs (no window.confirm)
     └── startScreen.js       # Start box: pure loading → ready → closed state + DOM wiring
 ```
 

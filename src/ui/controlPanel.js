@@ -18,10 +18,10 @@ const LABELS = {
   bulgeSize: 'Bulge size',
   bulgeFlatten: 'Bulge flatness',
   barLength: 'Bar length',
-  discScale: 'Disc scale length',
+  discScale: 'Disc scale',
   discThickness: 'Disc thickness',
-  youngFraction: 'Young blue stars',
-  clumps: 'Star-forming clumps',
+  youngFraction: 'Young stars',
+  clumps: 'Clumps',
   haloFraction: 'Halo share',
   hiiAmount: 'Nebulae (H II)',
   // Structure (live)
@@ -32,7 +32,7 @@ const LABELS = {
   flocculence: 'Flocculence',
   dustStrength: 'Dust',
   glow: 'Diffuse glow',
-  bulgeSersic: 'Bulge profile (n)',
+  bulgeSersic: 'Bulge profile',
   // Look
   radius: 'Size',
   starSize: 'Star size',
@@ -256,8 +256,8 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       const c = lookFolder.add(proxy.look, key, l.min, l.max, l.step).name(LABELS[key]).onChange((v) => look({ [key]: v }));
       if (key === 'radius') lockable.push(c);
     }
-    lookFolder.addColor(proxy.look, 'colorInner').name('Core color').onChange((v) => look({ colorInner: v }));
-    lookFolder.addColor(proxy.look, 'colorOuter').name('Edge color').onChange((v) => look({ colorOuter: v }));
+    lookFolder.addColor(proxy.look, 'colorInner').name('Core colour').onChange((v) => look({ colorInner: v }));
+    lookFolder.addColor(proxy.look, 'colorOuter').name('Edge colour').onChange((v) => look({ colorOuter: v }));
     for (const key of ['tiltX', 'tiltZ']) {
       const l = LIMITS.look[key];
       lockable.push(lookFolder.add(proxy.look, key, l.min, l.max, l.step).name(LABELS[key]).onChange((v) => look({ [key]: v })));
@@ -455,7 +455,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   const setting = (patch) => dispatch(actions.updateSettings(patch));
   settingsFolder.add(settingsProxy, 'paused').name('Pause').onChange((v) => setting({ paused: v }));
   settingsFolder
-    .add(settingsProxy, 'quality', Object.fromEntries(QUALITY_OPTIONS.map((k) => [k === 'auto' ? 'Auto (adapts to your device)' : QUALITY[k].label, k])))
+    .add(settingsProxy, 'quality', Object.fromEntries(QUALITY_OPTIONS.map((k) => [k === 'auto' ? 'Auto' : QUALITY[k].label, k])))
     .name('Quality')
     .onChange((v) => setting({ quality: v }));
   settingsFolder
@@ -473,14 +473,14 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .add(settingsProxy, 'timeScale', SETTINGS_LIMITS.timeScale.min, SETTINGS_LIMITS.timeScale.max, SETTINGS_LIMITS.timeScale.step)
     .name('Time scale')
     .onChange((v) => setting({ timeScale: v }));
-  settingsFolder.add(settingsProxy, 'autoRotate').name('Auto-rotate camera').onChange((v) => setting({ autoRotate: v }));
+  settingsFolder.add(settingsProxy, 'autoRotate').name('Auto-rotate').onChange((v) => setting({ autoRotate: v }));
   settingsFolder
     .add(settingsProxy, 'bloomStrength', SETTINGS_LIMITS.bloomStrength.min, SETTINGS_LIMITS.bloomStrength.max, SETTINGS_LIMITS.bloomStrength.step)
     .name('Glow (bloom)')
     .onChange((v) => setting({ bloomStrength: v }));
   settingsFolder
     .add(settingsProxy, 'flare', SETTINGS_LIMITS.flare.min, SETTINGS_LIMITS.flare.max, SETTINGS_LIMITS.flare.step)
-    .name('Lens flare (needs glow)')
+    .name('Lens flare')
     .onChange((v) => setting({ flare: v }));
   settingsFolder.add(settingsProxy, 'dust').name('Dust lanes').onChange((v) => setting({ dust: v }));
   settingsFolder
@@ -495,7 +495,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .name('Star spikes')
     .onChange((v) => setting({ spikes: v }));
   const cineFolder = settingsFolder.addFolder('Cinematic (Medium/High)').close();
-  for (const [key, name] of [['vignette', 'Vignette'], ['grain', 'Film grain'], ['aberration', 'Chromatic aberration']]) {
+  for (const [key, name] of [['vignette', 'Vignette'], ['grain', 'Film grain'], ['aberration', 'Aberration']]) {
     const limit = SETTINGS_LIMITS[key];
     cineFolder
       .add(settingsProxy, key, limit.min, limit.max, limit.step)

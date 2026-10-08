@@ -53,6 +53,188 @@ canvas {
   }
 }
 
+/* ── One grid for every row ───────────────────────────────────────────
+   Labels left-aligned on the left, widgets in one fixed column flush with
+   the right edge. The column width comes from the panel width, so it is the
+   same in nested folders (their indent only shortens the label). Doubled
+   classes beat lil-gui's sheet, which loads after this one. */
+.lil-gui.lil-root {
+  --widget-column: calc(var(--width, 300px) * 0.54);
+  color-scheme: dark; /* native popups (colour picker, scrollbars) in dark */
+}
+
+/* One width for every value box (numbers and colour hex codes). On every
+   folder level: lil-gui sets these on each .lil-gui. */
+.lil-gui.lil-gui {
+  --slider-input-width: 56px;
+  --slider-input-min-width: 56px;
+  --color-input-width: 56px;
+  --color-input-min-width: 56px;
+}
+
+.lil-gui .lil-controller.lil-controller > .lil-name {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lil-gui .lil-controller.lil-controller > .lil-widget {
+  flex: 0 0 var(--widget-column);
+  width: var(--widget-column);
+  min-width: 0;
+}
+
+/* Buttons have no label: the full row, text centred. */
+.lil-gui .lil-controller.lil-function > .lil-widget {
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+.lil-gui .lil-controller.lil-function button {
+  text-align: center;
+}
+
+/* Values sit at the right edge, like the column they end. */
+.lil-gui .lil-controller.lil-number input,
+.lil-gui .lil-controller.lil-color input[type='text'] {
+  text-align: right;
+  padding-right: 0.55em;
+}
+
+/* Read-only values (Stars in scene, Active tier): plain text colour. */
+.lil-gui .lil-controller.lil-string.lil-disabled input {
+  color: var(--text-color);
+}
+
+/* Dropdowns fill the column; a long choice ends in an ellipsis. */
+.lil-gui .lil-controller.lil-option .lil-display {
+  flex: 1 1 auto;
+  width: 100%;
+  box-sizing: border-box;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  word-break: normal;
+}
+
+/* Checkboxes: the same column start as every other widget. */
+.lil-gui .lil-controller.lil-boolean input {
+  margin-left: 0;
+}
+
+/* The dropdown list itself. Browsers with customisable selects draw it in
+   the panel's glass and type; the rest at least get dark colours. */
+.lil-gui select,
+.lil-gui option {
+  font-family: var(--mono);
+  font-size: var(--input-font-size);
+  color: #dfe6ff;
+  background-color: #10142a;
+}
+
+@supports (appearance: base-select) {
+  /* The real select is the visible widget (lil-gui hides it behind a
+     display div), so its picker opens styled and in sync. */
+  .lil-gui .lil-controller.lil-option select,
+  .lil-gui .lil-controller.lil-option ::picker(select) {
+    appearance: base-select;
+  }
+
+  .lil-gui .lil-controller.lil-option select {
+    opacity: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: var(--widget-height);
+    min-height: 0;
+    box-sizing: border-box;
+    padding: 0 0.55em;
+    border: 0;
+    border-radius: var(--widget-border-radius);
+    background: var(--widget-color);
+    color: var(--text-color);
+    font: inherit;
+    font-size: var(--input-font-size);
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lil-gui .lil-controller.lil-option select > button,
+  .lil-gui .lil-controller.lil-option select selectedcontent {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lil-gui .lil-controller.lil-option .lil-display {
+    display: none;
+  }
+
+  .lil-gui .lil-controller.lil-option select:hover {
+    background: var(--hover-color);
+  }
+
+  .lil-gui .lil-controller.lil-option select:focus-visible,
+  .lil-gui .lil-controller.lil-option select:open {
+    background: var(--focus-color);
+    outline: none;
+  }
+
+  .lil-gui .lil-controller.lil-option select::picker-icon {
+    color: rgba(223, 230, 255, 0.7);
+    font-size: 0.9em;
+  }
+
+  .lil-gui .lil-controller.lil-option ::picker(select) {
+    margin-top: 4px;
+    padding: 4px;
+    border: 1px solid rgba(160, 180, 255, 0.16);
+    border-radius: 8px;
+    background: rgba(12, 15, 32, 0.96);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    color: #dfe6ff;
+    font-family: var(--mono);
+    font-size: var(--input-font-size);
+  }
+
+  .lil-gui .lil-controller.lil-option option {
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: transparent;
+    color: #dfe6ff;
+    white-space: nowrap;
+  }
+
+  .lil-gui .lil-controller.lil-option option:hover,
+  .lil-gui .lil-controller.lil-option option:focus-visible {
+    background: rgba(160, 180, 255, 0.18);
+    outline: none;
+  }
+
+  .lil-gui .lil-controller.lil-option option:checked {
+    background: rgba(160, 180, 255, 0.26);
+    color: #eef2ff;
+  }
+
+  .lil-gui .lil-controller.lil-option option::checkmark {
+    display: none;
+  }
+}
+
+/* Text selection and scrollbars in the panel colours, not the browser's. */
+.lil-gui ::selection {
+  background: rgba(160, 180, 255, 0.35);
+  color: #fff;
+}
+
+.lil-gui.lil-root > .lil-children {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(160, 180, 255, 0.26) transparent;
+}
+
 .lil-gui.lil-root > .lil-title {
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -180,11 +362,17 @@ canvas {
 /* Phones: a narrow panel that leaves most of the scene visible. */
 @media (max-width: 640px) {
   .lil-gui.lil-root {
-    --width: min(220px, calc(100vw - 140px));
+    --width: min(250px, calc(100vw - 110px));
     --font-size: 10.5px;
     --input-font-size: 10.5px;
-    --name-width: 42%;
+    --widget-column: calc(var(--width) * 0.5); /* labels get half the row */
     max-height: 65vh;
+  }
+  .lil-gui.lil-gui {
+    --slider-input-width: 48px;
+    --slider-input-min-width: 48px;
+    --color-input-width: 48px;
+    --color-input-min-width: 48px;
   }
 }
 
@@ -210,7 +398,7 @@ canvas {
   border-radius: 8px;
   background: rgba(10, 12, 24, 0.9);
   color: #dfe6ff;
-  font: 14px/1.5 system-ui, sans-serif;
+  font: 14px/1.5 var(--mono);
   text-align: center;
 }
 
@@ -223,7 +411,7 @@ canvas {
   border-radius: 4px;
   background: rgba(10, 12, 24, 0.75);
   color: #9fc0ff;
-  font: 12px/1.4 ui-monospace, monospace;
+  font: 12px/1.4 var(--mono);
   pointer-events: none;
 }
 
@@ -238,7 +426,7 @@ canvas {
   background: rgba(10, 12, 24, 0.82);
   backdrop-filter: blur(6px);
   color: #dfe6ff;
-  font: 12px/1.45 system-ui, sans-serif;
+  font: 12px/1.45 var(--mono);
 }
 
 .info-card[hidden] {
@@ -291,7 +479,7 @@ canvas {
   border-radius: 6px;
   background: rgba(10, 12, 24, 0.9);
   color: #dfe6ff;
-  font: 13px/1.4 system-ui, sans-serif;
+  font: 13px/1.4 var(--mono);
   pointer-events: none;
   animation: toast-fade 2.2s ease forwards;
 }
@@ -323,7 +511,7 @@ canvas {
   border-radius: 3px;
   background: rgba(10, 12, 24, 0.45);
   color: rgba(220, 228, 255, 0.85);
-  font: 11px/1.4 system-ui, sans-serif;
+  font: 11px/1.4 var(--mono);
   white-space: nowrap;
   cursor: pointer;
   pointer-events: auto;
@@ -345,7 +533,7 @@ canvas {
   align-items: flex-end;
   gap: 3px;
   color: rgba(220, 228, 255, 0.8);
-  font: 11px/1.2 system-ui, sans-serif;
+  font: 11px/1.2 var(--mono);
   pointer-events: none;
 }
 
@@ -380,7 +568,7 @@ canvas {
   border-radius: 6px;
   background: rgba(10, 12, 24, 0.82);
   color: #dfe6ff;
-  font: 12px/1.4 system-ui, sans-serif;
+  font: 12px/1.4 var(--mono);
   text-align: center;
   pointer-events: none;
 }
@@ -397,7 +585,7 @@ canvas {
   border-radius: 4px;
   background: rgba(40, 6, 10, 0.85);
   color: #ff8a8a;
-  font: 600 12px/1.4 ui-monospace, monospace;
+  font: 600 12px/1.4 var(--mono);
   pointer-events: none;
 }
 
@@ -434,4 +622,107 @@ canvas {
 
 .fall-black {
   background: #000;
+}
+
+/* In-app dialogs (ui/dialog.js): the start box glass and type. */
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1002; /* above the panel (1001) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+  background: rgba(2, 3, 10, 0.45);
+}
+
+.dialog {
+  width: min(360px, 100%);
+  box-sizing: border-box;
+  padding: 18px 18px 14px;
+  border: 1px solid rgba(160, 180, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(12, 15, 32, 0.92);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #dfe6ff;
+  font: 12px/1.55 var(--mono);
+  text-align: center;
+}
+
+.dialog-text {
+  margin: 0 0 14px;
+}
+
+.dialog-field {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 14px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(160, 180, 255, 0.1);
+  color: #b8f0c8;
+  font: 11px/1.4 var(--mono);
+  color-scheme: dark;
+}
+
+.dialog-field:focus {
+  outline: 1px solid rgba(160, 180, 255, 0.45);
+}
+
+.dialog-field::selection {
+  background: rgba(160, 180, 255, 0.35);
+  color: #fff;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.dialog-button {
+  flex: 1 1 0;
+  max-width: 150px;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(160, 180, 255, 0.1);
+  color: #dfe6ff;
+  font: 600 11px/1 var(--mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dialog-button:hover {
+  background: rgba(160, 180, 255, 0.18);
+}
+
+.dialog-primary {
+  background: rgba(160, 180, 255, 0.24);
+  color: #eef2ff;
+}
+
+.dialog-primary:hover {
+  background: rgba(160, 180, 255, 0.34);
+}
+
+.dialog-button:focus-visible {
+  outline: 2px solid rgba(160, 180, 255, 0.6);
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .dialog-button {
+    min-height: 38px;
+  }
+  .dialog-field {
+    font-size: 16px; /* no iOS zoom on focus */
+  }
 }

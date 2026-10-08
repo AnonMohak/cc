@@ -22,6 +22,7 @@ import { attachKeyboard } from './ui/keyboard.js';
 import { debounce } from './util/debounce.js';
 import { PRESETS } from './galaxy/presets.js';
 import { showNotice, showToast } from './ui/notice.js';
+import { confirmDialog, copyDialog } from './ui/dialog.js';
 import { createHistory } from './state/history.js';
 import { shareUrl, decodeScene, codeFromHash } from './state/shareCodec.js';
 import { downloadText, downloadBlob, fileStamp, pickTextFile } from './ui/fileIO.js';
@@ -793,9 +794,10 @@ export function startApp(container, { startScreen } = {}) {
       downloadBlob(await capture, `galaxy-${fileStamp()}.gif`);
       showToast(container, `GIF saved (${total} frames)`);
     },
-    generateUniverse(layout = 'cluster', count = 8) {
+    async generateUniverse(layout = 'cluster', count = 8) {
       const hasGalaxies = store.getState().galaxies.length > 0;
-      if (hasGalaxies && !window.confirm(`Replace the scene with a generated ${LAYOUTS[layout].label.toLowerCase()}? (Ctrl+Z undoes it)`)) return;
+      const question = `Replace the scene with a generated ${LAYOUTS[layout].label.toLowerCase()}? Ctrl+Z undoes it.`;
+      if (hasGalaxies && !(await confirmDialog(question, { ok: 'Replace' }))) return;
       setCameraMode('orbit');
       store.dispatch(actions.generateUniverse(layout, count));
       const { galaxies: list } = store.getState();
@@ -815,7 +817,7 @@ export function startApp(container, { startScreen } = {}) {
         showToast(container, 'Share link copied');
       } catch {
         // Clipboard needs a secure context and permission; let the user copy.
-        window.prompt('Copy this share link:', url);
+        copyDialog('Copy this share link:', url);
       }
     },
     exportJson() {
@@ -829,8 +831,8 @@ export function startApp(container, { startScreen } = {}) {
       if (state) loadScene(state, 'Scene imported');
       else showToast(container, 'That file is not a valid Galaxy Sandbox scene');
     },
-    reset() {
-      if (!window.confirm('Delete everything and start again with one black hole?')) return;
+    async reset() {
+      if (!(await confirmDialog('Delete everything and start again with one black hole?', { ok: 'Delete all' }))) return;
       interruptFall(false);
       setCameraMode('orbit');
       store.dispatch(actions.resetScene());
