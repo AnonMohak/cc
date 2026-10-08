@@ -69,10 +69,14 @@ Do not add other runtime dependencies (no React, no UI framework, no state libra
 npm install          # install dependencies
 npm run dev          # start the Vite dev server (http://localhost:5173)
 npm run build        # production build to dist/
-npm run preview      # serve the production build
+npm run preview      # serve the production build (at /three/galaxy-sandbox/)
 npm test             # run Vitest once
 npm run test:watch   # run Vitest in watch mode
 ```
+
+## Deploy
+
+Production: `https://me-momo.co.in/three/galaxy-sandbox/` on Cloudflare Pages. `vite.config.js` sets `base` to `/three/galaxy-sandbox/` for `vite build` only (`BASE_PATH` overrides; dev stays at `/`), so every runtime URL to a `public/` file must use `import.meta.env.BASE_URL` (as `FALL_MUSIC_URL` does), never a leading `/`. `deploy/router-worker/` is the Worker on `me-momo.co.in` that maps project paths to Pages projects (`src/routes.js`, tested; routes in `wrangler.toml`).
 
 ## Architecture
 

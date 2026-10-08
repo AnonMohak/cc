@@ -1,6 +1,12 @@
 import { defineConfig } from 'vite';
 
-export default defineConfig({
+// The production site lives under a path on me-momo.co.in (deploy/router-worker
+// forwards it to the Pages project). BASE_PATH overrides it, e.g. BASE_PATH=/
+// for a build served at a domain root. The dev server always uses /.
+const PROD_BASE = process.env.BASE_PATH ?? '/three/galaxy-sandbox/';
+
+export default defineConfig(({ command }) => ({
+  base: command === 'build' ? PROD_BASE : '/',
   build: {
     rolldownOptions: {
       output: {
@@ -16,6 +22,6 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.js'],
+    include: ['src/**/*.test.js', 'deploy/**/*.test.js'],
   },
-});
+}));

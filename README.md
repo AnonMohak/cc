@@ -71,7 +71,7 @@ Production build:
 
 ```sh
 npm run build      # outputs to dist/
-npm run preview    # serve the build locally
+npm run preview    # serve the build locally (at /three/galaxy-sandbox/)
 ```
 
 ## Controls
@@ -124,6 +124,14 @@ src/
 Data flows one way: **UI → store → scene**. The physics model lives in `src/galaxy/densityModel.js` and is mirrored in `src/galaxy/shaders/chunks/model.glsl`; change both together.
 
 See [`CLAUDE.md`](CLAUDE.md) for the full architecture, design decisions, conventions and constraints, and [`future-suggestions.md`](future-suggestions.md) for planned ideas.
+
+## Deploy
+
+The live site is `https://me-momo.co.in/three/galaxy-sandbox/`:
+
+- The production build uses that path as its base (`vite.config.js`). Set `BASE_PATH=/` to build for a domain root. The dev server always runs at `/`.
+- The build is a Cloudflare Pages project (build command `npm run build`, output `dist`).
+- A router Worker on `me-momo.co.in` (`deploy/router-worker/`) sends each project path to its own Pages project, so more projects can live under the same domain (`/three/abc`, `/my-new-project`, …). To add one, add a line to `src/routes.js`, add a route to `wrangler.toml`, and run `npx wrangler deploy` in that folder.
 
 ## Tech stack
 

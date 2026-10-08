@@ -1,0 +1,10 @@
+# Router Worker for me-momo.co.in (deploy: npx wrangler deploy, from this folder).
+# Each route sends one project path to this Worker; src/routes.js maps the
+# path to its Pages project. Add a route line for every new project.
+name = "me-momo-router"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+routes = [
+  { pattern = "me-momo.co.in/three/galaxy-sandbox*", zone_name = "me-momo.co.in" },
+]
