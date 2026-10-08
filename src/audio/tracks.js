@@ -14,9 +14,12 @@ export const FALL_MUSIC_URL = `${import.meta.env.BASE_URL}audio/interstellar.mp3
 
 /**
  * Where the fall music starts (s): chosen so the plunge lands on the peak.
- * The fall lasts 60 s and goes black in its last ~4 s. In this file the first
- * build peaks at about 2:13-2:21 (-13 dB), then drops to about -37 dB at
- * 2:24. Starting at 1:23 puts the black on the peak and holds it over the
- * quiet part. (The first ~22 s of the track are near silent.)
+ * The file is only the part the intro uses: 1:13-2:33 of the full theme
+ * (80 s, 1.3 MB), so the music starts 10 s in (1:23 of the original). The
+ * fall lasts 60 s and goes black in its last ~4 s. The first build peaks at
+ * about 1:00-1:08 of this file (-13 dB), then drops to about -37 dB at 1:11,
+ * so the black lands on the peak and holds over the quiet part. The track
+ * starts 5 s early in the wait (0:05) and fades out 5 s after the black
+ * (~1:15), leaving 5 s of margin at both ends.
  */
-export const FALL_MUSIC_START = 83;
+export const FALL_MUSIC_START = 10;
