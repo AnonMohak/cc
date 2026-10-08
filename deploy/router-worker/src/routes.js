@@ -1,7 +1,8 @@
 /**
  * Which Cloudflare Pages project serves each path on me-momo.co.in.
  * To add a project: deploy it to Pages (built with its path as Vite `base`),
- * add a line here, add a Worker route for the path, and redeploy the Worker.
+ * add a line here and push (the Worker redeploys). The Worker owns the
+ * whole domain, so no new route is needed.
  */
 export const PROJECTS = {
   '/three/galaxy-sandbox': 'galaxy-sandbox.pages.dev',

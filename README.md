@@ -131,7 +131,7 @@ The live site is `https://me-momo.co.in/three/galaxy-sandbox/`:
 
 - The production build uses that path as its base (`vite.config.js`). Set `BASE_PATH=/` to build for a domain root. The dev server always runs at `/`.
 - The build is a Cloudflare Pages project (build command `npm run build`, output `dist`).
-- A router Worker on `me-momo.co.in` (`deploy/router-worker/`) sends each project path to its own Pages project, so more projects can live under the same domain (`/three/abc`, `/my-new-project`, …). To add one, add a line to `src/routes.js`, add a route to `wrangler.toml`, and run `npx wrangler deploy` in that folder.
+- A router Worker owns `me-momo.co.in` and `www` (`deploy/router-worker/`). It sends each project path to its own Pages project and everything else to the main site Worker (`my-site-temp`, a service binding), so more projects can live under the same domain (`/three/abc`, `/my-new-project`, …). To add one, add a line to `src/routes.js` and push.
 
 ## Tech stack
 

@@ -1,10 +1,13 @@
 # Router Worker for me-momo.co.in (deploy: npx wrangler deploy, from this folder).
-# Each route sends one project path to this Worker; src/routes.js maps the
-# path to its Pages project. Add a route line for every new project.
+#
+# It owns the whole domain: attach me-momo.co.in and www.me-momo.co.in to this
+# Worker as Custom Domains (dashboard: Settings -> Domains & Routes). Project
+# paths go to their Pages projects (src/routes.js); every other request goes
+# to the main site Worker through the SITE service binding below.
 name = "me-momo-router"
 main = "src/index.js"
 compatibility_date = "2026-09-01"
 
-routes = [
-  { pattern = "me-momo.co.in/three/galaxy-sandbox*", zone_name = "me-momo.co.in" },
-]
+[[services]]
+binding = "SITE"
+service = "my-site-temp"

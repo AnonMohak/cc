@@ -76,7 +76,7 @@ npm run test:watch   # run Vitest in watch mode
 
 ## Deploy
 
-Production: `https://me-momo.co.in/three/galaxy-sandbox/` on Cloudflare Pages. `vite.config.js` sets `base` to `/three/galaxy-sandbox/` for `vite build` only (`BASE_PATH` overrides; dev stays at `/`), so every runtime URL to a `public/` file must use `import.meta.env.BASE_URL` (as `FALL_MUSIC_URL` does), never a leading `/`. `deploy/router-worker/` is the Worker on `me-momo.co.in` that maps project paths to Pages projects (`src/routes.js`, tested; routes in `wrangler.toml`).
+Production: `https://me-momo.co.in/three/galaxy-sandbox/` on Cloudflare Pages. `vite.config.js` sets `base` to `/three/galaxy-sandbox/` for `vite build` only (`BASE_PATH` overrides; dev stays at `/`), so every runtime URL to a `public/` file must use `import.meta.env.BASE_URL` (as `FALL_MUSIC_URL` does), never a leading `/`. `deploy/router-worker/` is the Worker that owns `me-momo.co.in` and `www` (custom domains): project paths go to their Pages projects (`src/routes.js`, tested), everything else to the main site Worker `my-site-temp` (service binding `SITE`).
 
 ## Architecture
 
