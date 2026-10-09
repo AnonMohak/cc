@@ -43,8 +43,8 @@ import { bandFor, nextBand } from './galaxy/bands.js';
 import { meterFrame, targetFactor, adapt } from './core/autoExposure.js';
 import { CollisionSim, collisionSupported } from './scene/CollisionSim.js';
 import { collisionBroken } from './galaxy/collision.js';
-import { consumeResult, GROWTH } from './galaxy/consumption.js';
-import { consumeDistance, raiseDirection, easeValue, MIN_ELEVATION_DEG, TARGET_RATE, DISTANCE_RATE, DIRECTION_RATE } from './core/consumeCamera.js';
+import { consumeResult } from './galaxy/consumption.js';
+import { frameRadius, framingDistance, raiseDirection, easeValue, MIN_ELEVATION_DEG, TARGET_RATE, DISTANCE_RATE, DIRECTION_RATE } from './core/consumeCamera.js';
 import { rumbleLevel, rumbleCutoff } from './audio/soundMix.js';
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -840,21 +840,13 @@ export function startApp(container, { startScreen } = {}) {
   // The simulation textures do not survive a lost context.
   renderer.domElement.addEventListener('webglcontextlost', stopCollision);
 
-  // Auto camera: the winner is the target; it moves in as the victim closes in.
+  // Auto camera: close on the pair; the winner once it starts eating, moving
+  // in as the victim spirals in (core/consumeCamera.js).
   let consumeCam = null;
   function startConsumeCamera() {
-    const st = collision.status(_consumeStatus);
     const winner = galaxies.get(collision.pair()[0]);
-    const victim = galaxies.get(collision.pair()[1]);
-    const span = st.startDistance + winner.radius + victim.radius;
-    const startDistance = THREE.MathUtils.clamp(span * 1.4, CAMERA_LIMITS.minDistance * 2, CAMERA_LIMITS.maxDistance * 0.9);
-    let endDistance;
-    const shot = filmShot(winner.id);
-    if (shot) endDistance = shot.position.distanceTo(shot.center) * GROWTH;
-    else endDistance = winner.radius * GROWTH * 2.6;
-    endDistance = THREE.MathUtils.clamp(endDistance, CAMERA_LIMITS.minDistance, CAMERA_LIMITS.maxDistance);
     const { normal } = winner.pickTarget();
-    consumeCam = { startDistance, endDistance, startSeparation: st.startDistance, normal: normal.toArray(), distance: camera.position.distanceTo(controls.target) };
+    consumeCam = { normal: normal.toArray(), distance: camera.position.distanceTo(controls.target) };
     setCameraMode('consume');
   }
   function updateConsumeCamera(realDt) {
@@ -866,7 +858,12 @@ export function startApp(container, { startScreen } = {}) {
     const cam = consumeCam;
     collision.centre(_consumeTarget);
     controls.target.lerp(_consumeTarget, 1 - Math.exp(-TARGET_RATE * realDt));
-    const want = consumeDistance(cam.startDistance, cam.endDistance, st.distance, cam.startSeparation);
+    const tanY = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const want = THREE.MathUtils.clamp(
+      framingDistance(frameRadius(st), Math.min(tanY, tanY * camera.aspect)),
+      CAMERA_LIMITS.minDistance,
+      CAMERA_LIMITS.maxDistance * 0.9,
+    );
     cam.distance = easeValue(cam.distance, want, DISTANCE_RATE, realDt);
     _consumeVec.subVectors(camera.position, controls.target).normalize().toArray(_consumeDir);
     raiseDirection(_consumeDir, cam.normal, MIN_ELEVATION_DEG, _consumeRaised);

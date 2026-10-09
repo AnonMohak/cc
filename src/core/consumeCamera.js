@@ -1,11 +1,18 @@
 /**
- * PURE: the auto camera of a consumption (app.js camera mode 'consume'). It
- * keeps the winner as the target and moves in as the victim closes in: from
- * a view of both objects to the winner's end view (the film shot for a black
- * hole, a framing of the remnant for a galaxy). It keeps the current side
- * and raises the view to at least MIN_ELEVATION_DEG above the winner's disc,
- * so the streams and the disc read. Frame-rate independent eases.
+ * PURE: the auto camera of a collision (app.js camera mode 'consume'). It
+ * flies in close on the pair and keeps them filling most of the view: in
+ * the opening pass it frames both (around their common centre); after the
+ * handover it frames the victim's orbit around the winner and moves in as
+ * the victim spirals in, down to the winner's end view (a hole's disc, the
+ * remnant galaxy). It keeps the current side and raises the view to at
+ * least MIN_ELEVATION_DEG above the winner's disc, so the streams and the
+ * disc read. Frame-rate independent eases.
  */
+
+/** How much of the half view the framed radius fills (close: most of it). */
+export const FILL = 0.85;
+// Share of an object's radius kept in view around its centre.
+const BODY_SHARE = 0.6;
 
 export const MIN_ELEVATION_DEG = 15;
 /** Ease rates (1/s): the target, the distance and the direction. */
@@ -13,16 +20,22 @@ export const TARGET_RATE = 3;
 export const DISTANCE_RATE = 1.2;
 export const DIRECTION_RATE = 1;
 
-const clamp01 = (x) => Math.min(1, Math.max(0, x));
-
 /**
- * Wanted camera distance: from `startDistance` (both objects in view) to
- * `endDistance` as the victim goes from `startSeparation` to the winner.
+ * The radius to keep in view (world units) for a collision status
+ * (CollisionSim.status): the pair in the opening pass; the victim's orbit
+ * after the handover, shrinking to the winner's end size (a hole's disc ×
+ * 1.2, or the winning galaxy × 0.9) as the victim is eaten.
  */
-export function consumeDistance(startDistance, endDistance, victimDistance, startSeparation) {
-  const k = clamp01(1 - victimDistance / Math.max(startSeparation, 1e-6));
-  const s = k * k * (3 - 2 * k);
-  return startDistance + (endDistance - startDistance) * s;
+export function frameRadius(st) {
+  const end = st.winnerHole ? 1.2 * st.winnerDisc : 0.9 * st.winnerRadius;
+  if (st.stage === 'pass') return Math.max(0.5 * st.distance + BODY_SHARE * Math.max(st.winnerRadius, st.victimRadius), end);
+  const victim = BODY_SHARE * st.victimRadius * (1 - st.progress);
+  return Math.max(st.distance + victim, end);
+}
+
+/** Camera distance that shows `radius` filling FILL of the half view (tanHalf: the smaller of tan(fov/2) across and up). */
+export function framingDistance(radius, tanHalf, fill = FILL) {
+  return radius / (tanHalf * fill);
 }
 
 /**

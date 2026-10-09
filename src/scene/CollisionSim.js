@@ -270,6 +270,10 @@ export class CollisionSim {
     out.afterTime = this.afterTime;
     out.merged = spiral && p.stage === 'merged';
     out.turnsDone = spiral ? p.turnsDone : 0;
+    out.winnerRadius = this.wb.radius;
+    out.victimRadius = this.vb.radius;
+    out.winnerHole = this.wb.hole;
+    out.winnerDisc = this.wb.discOuter * (this.winner.holeScale || 1);
     return out;
   }
 

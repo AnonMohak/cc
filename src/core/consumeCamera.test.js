@@ -1,15 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { consumeDistance, raiseDirection, easeValue, MIN_ELEVATION_DEG } from './consumeCamera.js';
+import { frameRadius, framingDistance, raiseDirection, easeValue, MIN_ELEVATION_DEG, FILL } from './consumeCamera.js';
 
 describe('consumeCamera', () => {
-  it('moves from the pair view to the end view as the victim closes in', () => {
-    expect(consumeDistance(100, 20, 50, 50)).toBe(100);
-    expect(consumeDistance(100, 20, 0, 50)).toBe(20);
-    const mid = consumeDistance(100, 20, 25, 50);
-    expect(mid).toBeLessThan(100);
-    expect(mid).toBeGreaterThan(20);
-    // Farther than the start (the approach) keeps the start view.
-    expect(consumeDistance(100, 20, 80, 50)).toBe(100);
+  it('frames the pair in the opening pass, then the shrinking orbit, down to the winner', () => {
+    const base = { winnerRadius: 6, victimRadius: 5, winnerHole: false, winnerDisc: 0 };
+    const pass = frameRadius({ ...base, stage: 'pass', distance: 30, progress: 0 });
+    expect(pass).toBeCloseTo(15 + 0.6 * 6);
+    const early = frameRadius({ ...base, stage: 'spiral', distance: 10, progress: 0.1 });
+    const late = frameRadius({ ...base, stage: 'spiral', distance: 2, progress: 0.9 });
+    expect(late).toBeLessThan(early);
+    expect(frameRadius({ ...base, stage: 'fade', distance: 0.1, progress: 1 })).toBeCloseTo(0.9 * 6);
+    const hole = frameRadius({ winnerRadius: 4, victimRadius: 4, winnerHole: true, winnerDisc: 2.16, stage: 'drain', distance: 0.2, progress: 1 });
+    expect(hole).toBeCloseTo(1.2 * 2.16);
+  });
+
+  it('fits the radius in the view', () => {
+    expect(framingDistance(10, 0.5, 1)).toBe(20);
+    expect(framingDistance(10, 0.5)).toBeCloseTo(20 / FILL);
   });
 
   it('raises a low view to the minimum elevation on the same side, and keeps a high one', () => {
