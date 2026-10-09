@@ -848,6 +848,8 @@ export function startApp(container, { startScreen } = {}) {
     const { normal } = winner.pickTarget();
     consumeCam = { normal: normal.toArray(), distance: camera.position.distanceTo(controls.target) };
     setCameraMode('consume');
+    // Cinema mode: the controls get out of the way (the Controls button brings them back).
+    if (panel.isOpen()) panel.toggle();
   }
   function updateConsumeCamera(realDt) {
     if (!collision || !consumeCam) {
