@@ -495,7 +495,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     .name('Star spikes')
     .onChange((v) => setting({ spikes: v }));
   const cineFolder = settingsFolder.addFolder('Cinematic (Medium/High)').close();
-  for (const [key, name] of [['vignette', 'Vignette'], ['grain', 'Film grain'], ['aberration', 'Aberration'], ['dof', 'Depth of field']]) {
+  for (const [key, name] of [['vignette', 'Vignette'], ['grain', 'Film grain'], ['aberration', 'Aberration'], ['depthOfField', 'Depth of field']]) {
     const limit = SETTINGS_LIMITS[key];
     cineFolder
       .add(settingsProxy, key, limit.min, limit.max, limit.step)

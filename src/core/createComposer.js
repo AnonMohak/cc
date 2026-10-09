@@ -145,9 +145,9 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       dof.setAmount(amount);
       dof.enabled = enabled;
     },
-    /** Depth of field focus distance (view depth, world units). */
-    setDofFocus(distance) {
-      dof.setFocus(distance);
+    /** Depth of field focus distance (view depth, world units) and sharp half-depth. */
+    setDofFocus(distance, range = 0) {
+      dof.setFocus(distance, range);
     },
     /** `source()` says whether any jet is visible (JetPass is skipped otherwise). */
     setJetSource(source) {

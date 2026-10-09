@@ -27,7 +27,7 @@ export const SETTINGS_LIMITS = {
   vignette: { min: 0, max: 1, step: 0.01 },
   grain: { min: 0, max: 1, step: 0.01 },
   aberration: { min: 0, max: 1, step: 0.01 },
-  dof: { min: 0, max: 1, step: 0.01 }, // depth of field strength (core/DepthOfFieldPass.js)
+  depthOfField: { min: 0, max: 1, step: 0.01 }, // depth of field strength (core/DepthOfFieldPass.js)
   flare: { min: 0, max: 1, step: 0.01 }, // lens-flare ghosts (core/LensFlarePass.js)
 };
 
@@ -50,7 +50,9 @@ export const DEFAULT_SETTINGS = {
   vignette: 0.3,
   grain: 0.1,
   aberration: 0.15,
-  dof: 0, // depth of field: off by default
+  // Depth of field (Medium/High only). Saved as depthOfField: older saves
+  // stored 'dof' (default 0 then), so they get this default too.
+  depthOfField: 0.35,
   flare: 0.5,
   band: 'visible', // wavelength view mode (galaxy/bands.js)
   // HUD

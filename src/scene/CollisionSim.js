@@ -61,6 +61,11 @@ export class CollisionSim {
     this.apply();
   }
 
+  /** The objects in the collision (depth of field keeps them all sharp). */
+  members() {
+    return this.galaxies;
+  }
+
   /** The two galaxy ids. */
   pair() {
     return this.ids;

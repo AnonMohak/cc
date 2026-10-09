@@ -31,7 +31,7 @@ import { createFpsMeter } from './ui/fpsMeter.js';
 import { createGpuTimer, formatTimings, gpuName } from './core/gpuTimer.js';
 import { createInfoCard } from './ui/infoCard.js';
 import { createFallOverlay } from './ui/fallOverlay.js';
-import { easeFocus } from './core/dof.js';
+import { easeFocus, easeRange, focusSpan } from './core/dof.js';
 import { createWakeLock } from './ui/wakeLock.js';
 import { createSoundscape } from './audio/soundscape.js';
 import { createHud } from './ui/hud.js';
@@ -62,6 +62,7 @@ const _fallOffset = new THREE.Vector3();
 // Depth-of-field focus scratch (no per-frame allocation).
 const _focusForward = new THREE.Vector3();
 const _focusPoint = new THREE.Vector3();
+const _focusOther = new THREE.Vector3();
 
 /**
  * Build the scene, state, UI and loop inside `container`.
@@ -213,8 +214,8 @@ export function startApp(container, { startScreen } = {}) {
   function applyCinematic() {
     const settings = store.getState().settings;
     post.setCinematic(settings, cinematicEnabled(settings, currentTier));
-    dofOn = dofEnabled(settings.dof, currentTier);
-    post.setDof(settings.dof, dofOn);
+    dofOn = dofEnabled(settings.depthOfField, currentTier);
+    post.setDof(settings.depthOfField, dofOn);
   }
 
   function applySpikes() {
@@ -483,17 +484,32 @@ export function startApp(container, { startScreen } = {}) {
   }
 
   // Depth of field: focus on the selected object (else the orbit target), as
-  // a view depth to match the proxies, with a smooth focus pull.
+  // a view depth to match the proxies, with a smooth focus pull. During a
+  // collision every object in it stays sharp (a focus range over their depths).
   let focus = 0;
   let focusTarget = 0;
+  let focusRange = 0;
+  let focusRangeTarget = 0;
+  const _focusDepths = new Float32Array(4);
+  const _focusSpan = { focus: 0, range: 0 };
+  const viewDepth = (point) => Math.max(_focusPoint.copy(point).sub(camera.position).dot(_focusForward), CAMERA_LIMITS.near);
   function updateFocus(realDt) {
-    const selected = galaxies.get(store.getState().selectedId);
-    if (selected) selected.group.getWorldPosition(_focusPoint);
-    else _focusPoint.copy(controls.target);
     camera.getWorldDirection(_focusForward);
-    focusTarget = Math.max(_focusPoint.sub(camera.position).dot(_focusForward), CAMERA_LIMITS.near);
+    const members = collision?.members() ?? null;
+    if (members && members.length > 0) {
+      let n = 0;
+      for (const g of members) if (n < _focusDepths.length) _focusDepths[n++] = viewDepth(g.group.getWorldPosition(_focusOther));
+      focusSpan(_focusDepths, n, _focusSpan);
+      focusTarget = _focusSpan.focus;
+      focusRangeTarget = _focusSpan.range;
+    } else {
+      const selected = galaxies.get(store.getState().selectedId);
+      focusTarget = viewDepth(selected ? selected.group.getWorldPosition(_focusOther) : controls.target);
+      focusRangeTarget = 0;
+    }
     focus = easeFocus(focus, focusTarget, realDt);
-    post.setDofFocus(focus);
+    focusRange = easeRange(focusRange, focusRangeTarget, focus, realDt);
+    post.setDofFocus(focus, focusRange);
   }
 
   let currentBand = null;
@@ -670,7 +686,7 @@ export function startApp(container, { startScreen } = {}) {
       cameraMode !== 'orbit' ||
       fovEase !== null ||
       warpEase !== null ||
-      (dofOn && focus !== focusTarget) ||
+      (dofOn && (focus !== focusTarget || focusRange !== focusRangeTarget)) ||
       controls.autoRotate ||
       galaxies.isEasing() ||
       autoFactor !== autoTarget ||

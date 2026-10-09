@@ -172,6 +172,12 @@ describe('reducer: settings and scene', () => {
     expect(clampSettings({}).aberration).toBe(DEFAULT_SETTINGS.aberration);
   });
 
+  it('turns depth of field on by default, also for saves from before (old key dof)', () => {
+    expect(DEFAULT_SETTINGS.depthOfField).toBe(0.35);
+    expect(clampSettings({ dof: 0 }).depthOfField).toBe(0.35);
+    expect(clampSettings({ depthOfField: 0 }).depthOfField).toBe(0);
+  });
+
   it('keeps a known wavelength band and falls back to visible', () => {
     expect(clampSettings({ band: 'radio' }).band).toBe('radio');
     expect(clampSettings({ band: 'gamma' }).band).toBe('visible');

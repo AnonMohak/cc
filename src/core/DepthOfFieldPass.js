@@ -17,11 +17,12 @@ const vertexShader = /* glsl */ `
 const COC_GLSL = /* glsl */ `
   uniform sampler2D tDepth;
   uniform float uFocus;
+  uniform float uFocusRange;
   uniform float uAmount;
   uniform float uMaxCoc;
   float cocAt(vec2 uv) {
     float d = max(texture2D(tDepth, uv).r, 1e-3);
-    return min(uMaxCoc, uAmount * uMaxCoc * abs(d - uFocus) / d);
+    return min(uMaxCoc, uAmount * uMaxCoc * max(0.0, abs(d - uFocus) - uFocusRange) / d);
   }
 `;
 
@@ -104,6 +105,7 @@ export class DepthOfFieldPass extends Pass {
     const coc = {
       tDepth: { value: this.depthTarget.texture },
       uFocus: { value: 10 },
+      uFocusRange: { value: 0 },
       uAmount: { value: 0 },
       uMaxCoc: { value: DOF_MAX_COC_PX },
     };
@@ -144,9 +146,10 @@ export class DepthOfFieldPass extends Pass {
     u.uStreaks.value = on ? 1 : 0;
   }
 
-  /** Focus distance (world units, along the view axis). */
-  setFocus(distance) {
+  /** Focus distance (world units, along the view axis) and the sharp half-depth around it. */
+  setFocus(distance, range = 0) {
     this.coc.uFocus.value = distance;
+    this.coc.uFocusRange.value = range;
   }
 
   render(renderer, writeBuffer, readBuffer) {
