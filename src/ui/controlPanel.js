@@ -10,6 +10,7 @@ import { BAND_OPTIONS, BANDS } from '../galaxy/bands.js';
 import { formatCount } from '../util/formatCount.js';
 import { createPanelToggle } from './panelToggle.js';
 import { pickWinner, bodyFromEntry, KIND as CONSUME_KIND } from '../galaxy/consumption.js';
+import { COLLISION_LIMITS, DEFAULT_COLLISION } from '../galaxy/collision.js';
 
 const LABELS = {
   // Stars (rebuild)
@@ -82,7 +83,7 @@ const catalogueOptions = Object.fromEntries(CATALOGUE_IDS.map((id) => [CATALOGUE
  *   onToggleVideo?: () => void,
  *   onRecordGif?: () => void,
  *   onGenerateUniverse?: (layout: string, count: number) => void,
- *   collision?: { supported: boolean, start: (starterId: string, partnerId: string) => void, stop: () => void, pair: () => string[] | null, subscribe: (fn: () => void) => () => void },
+ *   collision?: { supported: boolean, start: (starterId: string, partnerId: string, options: { pass: number, speed: number }) => void, stop: () => void, pair: () => string[] | null, subscribe: (fn: () => void) => () => void },
  * }} options
  */
 export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport, onTour, onFly, onResetView, onToggleVideo, onRecordGif, onGenerateUniverse, collision }) {
@@ -177,8 +178,8 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   // Controllers that move or reshape the galaxy: locked while it collides.
   let lockable = [];
   let collisionFolder = null;
-  // The chosen partner is UI state only (a running collision is never saved).
-  const collideProxy = { target: '' };
+  // The chosen partner and the opening pass are UI state only (a running collision is never saved).
+  const collideProxy = { target: '', ...DEFAULT_COLLISION };
 
   function buildSelectedFolder(entry) {
     pendingShape?.cancel();
@@ -332,8 +333,12 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     // The result line goes under the partner choice.
     targetRow.domElement.after(resultRow.domElement);
     describe();
+    // The opening pass (the old free collision) before the consumption.
+    const L = COLLISION_LIMITS;
+    folder.add(collideProxy, 'pass', L.pass.min, L.pass.max, L.pass.step).name('Pass distance');
+    folder.add(collideProxy, 'speed', L.speed.min, L.speed.max, L.speed.step).name('Approach speed');
     folder
-      .add({ go: () => collision.start(id, collideProxy.target) }, 'go')
+      .add({ go: () => collision.start(id, collideProxy.target, { pass: collideProxy.pass, speed: collideProxy.speed }) }, 'go')
       .name(pair ? 'Collide (stops the other one)' : 'Collide');
   }
 
