@@ -219,6 +219,20 @@ export function reducer(state, action) {
       return { ...state, galaxies };
     }
 
+    // One object eats another (galaxy/consumption.js): the victim goes and the
+    // winner takes its patch, in one change (so one undo step). A selected
+    // victim hands the selection to the winner.
+    case 'galaxy/consume': {
+      const { winnerId, victimId, patch } = action;
+      if (winnerId === victimId || !state.galaxies.some((g) => g.id === winnerId) || !state.galaxies.some((g) => g.id === victimId)) return state;
+      const without = {
+        ...state,
+        galaxies: state.galaxies.filter((g) => g.id !== victimId),
+        selectedId: state.selectedId === victimId ? winnerId : state.selectedId,
+      };
+      return reducer(without, { type: 'galaxy/update', id: winnerId, patch: patch ?? {} });
+    }
+
     case 'galaxy/select': {
       const id = state.galaxies.some((g) => g.id === action.id) ? action.id : null;
       return id === state.selectedId ? state : { ...state, selectedId: id };

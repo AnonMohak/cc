@@ -373,3 +373,43 @@ describe('animation black hole (intro)', () => {
     expect(sanitizeGalaxy({ ...galaxy, intro: true }).intro).toBeUndefined();
   });
 });
+
+describe('galaxy/consume', () => {
+  it('removes the victim and patches the winner in one change; a selected victim hands over', () => {
+    const { store, actions, add } = setup();
+    add();
+    add();
+    const [a, b] = store.getState().galaxies;
+    store.dispatch(actions.selectGalaxy(b.id));
+    const fn = vi.fn();
+    store.subscribe(fn);
+    store.dispatch(actions.consumeGalaxy(a.id, b.id, { look: { radius: a.look.radius * 1.2 }, shape: { count: a.shape.count + b.shape.count } }));
+    expect(fn).toHaveBeenCalledOnce();
+    const s = store.getState();
+    expect(s.galaxies.map((g) => g.id)).toEqual([a.id]);
+    expect(s.galaxies[0].look.radius).toBeCloseTo(a.look.radius * 1.2);
+    expect(s.galaxies[0].shape.count).toBe(a.shape.count + b.shape.count);
+    expect(s.selectedId).toBe(a.id);
+  });
+
+  it('ignores missing ids and self-consumption', () => {
+    const { store, actions, add } = setup();
+    add();
+    const [a] = store.getState().galaxies;
+    const before = store.getState();
+    store.dispatch(actions.consumeGalaxy(a.id, 'missing', {}));
+    store.dispatch(actions.consumeGalaxy(a.id, a.id, {}));
+    expect(store.getState()).toBe(before);
+  });
+
+  it('a black hole winner takes its hole patch', () => {
+    const { store, actions } = setup();
+    store.dispatch(actions.addBlackHole(store.getState()));
+    store.dispatch(actions.addBlackHole(store.getState(), [50, 0, 0]));
+    const [h1, h2] = store.getState().galaxies;
+    store.dispatch(actions.consumeGalaxy(h1.id, h2.id, { hole: { size: h1.hole.size * 1.2 } }));
+    const [w] = store.getState().galaxies;
+    expect(w.hole.size).toBeCloseTo(h1.hole.size * 1.2);
+    expect(w.kind).toBe('blackhole');
+  });
+});

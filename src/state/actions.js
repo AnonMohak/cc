@@ -98,6 +98,13 @@ export function createActions({ makeId = defaultId, makeSeed = randomSeed } = {}
       return { type: 'galaxies/replace', galaxies };
     },
     removeGalaxy: (id) => ({ type: 'galaxy/remove', id }),
+    /**
+     * The end of a consumption: remove the victim, patch the winner (one step).
+     * @param {string} winnerId
+     * @param {string} victimId
+     * @param {object} patch galaxy/consumption.js consumeResult
+     */
+    consumeGalaxy: (winnerId, victimId, patch) => ({ type: 'galaxy/consume', winnerId, victimId, patch }),
     updateGalaxy: (id, patch) => ({ type: 'galaxy/update', id, patch }),
     reseedGalaxy: (id) => ({ type: 'galaxy/update', id, patch: { seed: makeSeed() } }),
     /** Reset shape, look colours and motion to the preset, keeping position. */

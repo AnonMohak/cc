@@ -119,3 +119,24 @@ describe('animation black hole', () => {
     expect(store.getState().galaxies[0].intro).toBe(true);
   });
 });
+
+describe('consumption', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('one undo step brings both objects back', () => {
+    const { store, actions, history, add, ids } = setup();
+    add();
+    add();
+    vi.advanceTimersByTime(500);
+    const [a, b] = store.getState().galaxies;
+    store.dispatch(actions.consumeGalaxy(a.id, b.id, { look: { radius: 7 } }));
+    vi.advanceTimersByTime(500);
+    expect(ids()).toEqual([a.id]);
+    history.undo();
+    expect(ids()).toEqual([a.id, b.id]);
+    expect(store.getState().galaxies[0].look.radius).toBe(a.look.radius);
+    history.redo();
+    expect(ids()).toEqual([a.id]);
+  });
+});
