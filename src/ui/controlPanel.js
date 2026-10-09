@@ -9,7 +9,7 @@ import { debounce } from '../util/debounce.js';
 import { BAND_OPTIONS, BANDS } from '../galaxy/bands.js';
 import { formatCount } from '../util/formatCount.js';
 import { createPanelToggle } from './panelToggle.js';
-import { COLLISION_LIMITS, DEFAULT_COLLISION } from '../galaxy/collision.js';
+import { pickWinner, bodyFromEntry, KIND as CONSUME_KIND } from '../galaxy/consumption.js';
 
 const LABELS = {
   // Stars (rebuild)
@@ -82,7 +82,7 @@ const catalogueOptions = Object.fromEntries(CATALOGUE_IDS.map((id) => [CATALOGUE
  *   onToggleVideo?: () => void,
  *   onRecordGif?: () => void,
  *   onGenerateUniverse?: (layout: string, count: number) => void,
- *   collision?: { supported: boolean, start: (idA: string, idB: string, options: { pass: number, speed: number }) => void, stop: () => void, pair: () => string[] | null, subscribe: (fn: () => void) => () => void },
+ *   collision?: { supported: boolean, start: (starterId: string, partnerId: string) => void, stop: () => void, pair: () => string[] | null, subscribe: (fn: () => void) => () => void },
  * }} options
  */
 export function createControlPanel({ store, actions, getTarget, onFocus, onReset, onScreenshot, history, onShare, onExport, onImport, onTour, onFly, onResetView, onToggleVideo, onRecordGif, onGenerateUniverse, collision }) {
@@ -177,8 +177,8 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   // Controllers that move or reshape the galaxy: locked while it collides.
   let lockable = [];
   let collisionFolder = null;
-  // Collide settings are UI state only (a collision is never saved).
-  const collideProxy = { target: '', ...DEFAULT_COLLISION };
+  // The chosen partner is UI state only (a running collision is never saved).
+  const collideProxy = { target: '' };
 
   function buildSelectedFolder(entry) {
     pendingShape?.cancel();
@@ -285,7 +285,10 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
 
   /**
    * Collision: pick a partner and collide, or stop the running collision.
-   * Rebuilt when the galaxy list or the collision changes.
+   * Black holes and galaxies alike (galaxy/consumption.js): a black hole eats
+   * a galaxy, the bigger hole eats the smaller, the smaller galaxy merges
+   * into the bigger (a tie: the one selected here wins). A note says which.
+   * Rebuilt when the object list or the collision changes.
    */
   function buildCollisionFolder(parent, entry) {
     const open = collisionFolder ? !collisionFolder._closed : false;
@@ -299,25 +302,38 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     const id = entry.id;
     const pair = collision.pair();
     if (pair?.includes(id)) {
-      folder.add({ stop: () => collision.stop() }, 'stop').name('Stop collision (back to start)');
+      // After the result is in the store only the winner's after-effects run.
+      if (pair.length > 1) folder.add({ stop: () => collision.stop() }, 'stop').name('Stop collision (back to start)');
+      else folder.add({ note: 'Settling down' }, 'note').name('Collision').disable();
       return;
     }
     if (!collision.supported) {
       folder.add({ note: 'Not supported on this device' }, 'note').name('Collide').disable();
       return;
     }
-    const partners = store.getState().galaxies.filter((g) => g.id !== id && g.kind !== 'blackhole');
+    const partners = store.getState().galaxies.filter((g) => g.id !== id);
     if (partners.length === 0) {
-      folder.add({ note: 'Add another galaxy first' }, 'note').name('Collide').disable();
+      folder.add({ note: 'Add another object first' }, 'note').name('Collide').disable();
       return;
     }
     if (!partners.some((g) => g.id === collideProxy.target)) collideProxy.target = partners[0].id;
-    folder.add(collideProxy, 'target', Object.fromEntries(partners.map((g) => [g.name, g.id]))).name('Collide with');
-    const L = COLLISION_LIMITS;
-    folder.add(collideProxy, 'pass', L.pass.min, L.pass.max, L.pass.step).name('Pass distance');
-    folder.add(collideProxy, 'speed', L.speed.min, L.speed.max, L.speed.step).name('Approach speed');
+    // Who eats whom, as a full-width line (a value box is too narrow for it).
+    const resultRow = folder.add({ result() {} }, 'result').disable();
+    const describe = () => {
+      const partner = partners.find((g) => g.id === collideProxy.target);
+      const { winner, victim, kind } = pickWinner(bodyFromEntry(entry), bodyFromEntry(partner));
+      const name = (b) => (b.id === id ? entry.name : partner.name);
+      resultRow.name(kind === CONSUME_KIND.GALAXY_GALAXY ? `${name(victim)} merges into ${name(winner)}` : `${name(winner)} consumes ${name(victim)}`);
+    };
+    const targetRow = folder
+      .add(collideProxy, 'target', Object.fromEntries(partners.map((g) => [g.name, g.id])))
+      .name('Collide with')
+      .onChange(describe);
+    // The result line goes under the partner choice.
+    targetRow.domElement.after(resultRow.domElement);
+    describe();
     folder
-      .add({ go: () => collision.start(id, collideProxy.target, { pass: collideProxy.pass, speed: collideProxy.speed }) }, 'go')
+      .add({ go: () => collision.start(id, collideProxy.target) }, 'go')
       .name(pair ? 'Collide (stops the other one)' : 'Collide');
   }
 
@@ -328,7 +344,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
   }
 
   function refreshCollision() {
-    if (!selectedFolder || !lastEntry || lastEntry.kind === 'blackhole' || !collision) return;
+    if (!selectedFolder || !lastEntry || !collision) return;
     buildCollisionFolder(selectedFolder, lastEntry);
     applyCollisionLock();
   }
@@ -355,12 +371,15 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       .onFinishChange((name) => dispatch(actions.updateGalaxy(id, { name })));
     if (onFocus) folder.add(proxy, 'focus').name('Focus camera');
     folder.add(proxy, 'remove').name('Delete black hole');
+    if (collision) buildCollisionFolder(folder, entry);
 
     const holeFolder = folder.addFolder('Black hole');
     const hole = (patch) => dispatch(actions.updateGalaxy(id, { hole: patch }));
     for (const key of Object.keys(LIMITS.hole)) {
       const l = LIMITS.hole[key];
-      holeFolder.add(proxy.hole, key, l.min, l.max, l.step).name(HOLE_LABELS[key]).onChange((v) => hole({ [key]: v }));
+      const c = holeFolder.add(proxy.hole, key, l.min, l.max, l.step).name(HOLE_LABELS[key]).onChange((v) => hole({ [key]: v }));
+      // Resizing the hole is locked while it collides (collision.js LOCKED_HOLE_KEYS).
+      if (key === 'size' || key === 'discSize') lockable.push(c);
     }
     holeFolder.addColor(proxy.hole, 'colorHot').name('Inner (hot) colour').onChange((v) => hole({ colorHot: v }));
     holeFolder.addColor(proxy.hole, 'colorCool').name('Outer (cool) colour').onChange((v) => hole({ colorCool: v }));
@@ -370,23 +389,27 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     const starsFolder = folder.addFolder('Star cloud').close();
     pendingShape = debounce((patch) => dispatch(actions.updateGalaxy(id, { shape: patch })), SHAPE_DEBOUNCE_MS);
     const count = LIMITS.shape.count;
-    starsFolder
-      .add(proxy.shape, 'count', count.min, 50_000, count.step)
-      .name(LABELS.count)
-      .onChange((v) => pendingShape({ count: v }))
-      .onFinishChange(() => pendingShape.flush());
+    lockable.push(
+      starsFolder
+        .add(proxy.shape, 'count', count.min, 50_000, count.step)
+        .name(LABELS.count)
+        .onChange((v) => pendingShape({ count: v }))
+        .onFinishChange(() => pendingShape.flush()),
+    );
     const look = (patch) => dispatch(actions.updateGalaxy(id, { look: patch }));
     for (const [key, name] of [['radius', 'Size (whole object)'], ['brightness', 'Star brightness'], ['starSize', LABELS.starSize]]) {
       const l = LIMITS.look[key];
-      starsFolder.add(proxy.look, key, l.min, l.max, l.step).name(name).onChange((v) => look({ [key]: v }));
+      const c = starsFolder.add(proxy.look, key, l.min, l.max, l.step).name(name).onChange((v) => look({ [key]: v }));
+      if (key === 'radius') lockable.push(c);
     }
-    starsFolder.add(proxy, 'reseed').name('New random stars');
+    lockable.push(starsFolder.add(proxy, 'reseed').name('New random stars'));
 
     const posFolder = folder.addFolder('Position').close();
     const setPosition = () => look({ position: [proxy.position.x, proxy.position.y, proxy.position.z] });
     for (const axis of ['x', 'y', 'z']) {
-      posFolder.add(proxy.position, axis, -POSITION_RANGE, POSITION_RANGE, 0.1).onChange(setPosition);
+      lockable.push(posFolder.add(proxy.position, axis, -POSITION_RANGE, POSITION_RANGE, 0.1).onChange(setPosition));
     }
+    applyCollisionLock();
   }
 
   /** Copy changed groups from the store into the proxy and refresh widgets. */
@@ -520,6 +543,11 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     return state.galaxies.map((g) => `${g.id}:${g.name}`).join('|');
   }
 
+  /** The partner list and who eats whom (sizes) for the Collision folder. */
+  function collisionKey(state) {
+    return state.galaxies.map((g) => `${g.id}:${g.name}:${g.look.radius}:${g.hole?.size ?? ''}`).join('|');
+  }
+
   function render(state, prev) {
     if (!prev || galaxyListKey(state) !== galaxyListKey(prev) || state.selectedId !== prev.selectedId) {
       rebuildSelector(state);
@@ -535,7 +563,7 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
       refreshSelectedFolder(entry);
     }
     // New or renamed galaxies: refresh the collision partner list.
-    if (prev && galaxyListKey(state) !== galaxyListKey(prev)) refreshCollision();
+    if (prev && collisionKey(state) !== collisionKey(prev)) refreshCollision();
 
     if (!prev || state.settings !== prev.settings) {
       Object.assign(settingsProxy, state.settings);

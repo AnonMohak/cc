@@ -24,6 +24,10 @@ export class GalaxyManager {
     this.GalaxyClass = GalaxyClass;
     /** @type {Map<string, Galaxy>} */
     this.galaxies = new Map();
+    // Galaxies outside the store (a merger's remnant preview, scene/CollisionSim.js):
+    // configured, ticked and lit like the others, but never picked or saved.
+    /** @type {Set<Galaxy>} */
+    this.detached = new Set();
 
     this.selectedId = null;
     this.sync(store.getState().galaxies, []);
@@ -49,15 +53,9 @@ export class GalaxyManager {
       this.galaxies.delete(id);
     }
     for (const entry of diff.added) {
-      const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio, dustScale: this.dustScale, supernovae: this.supernovae });
-      galaxy.id = entry.id;
-      galaxy.onBaked = () => this.onChange?.();
-      galaxy.setQuality(this.quality);
-      galaxy.setSpikeStyle(this.spikeStyle);
-      galaxy.setBand(this.band);
+      const galaxy = this.build(entry, this.supernovae);
       galaxy.setEmphasis(emphasisTarget(entry.id, this.selectedId), true);
       this.galaxies.set(entry.id, galaxy);
-      this.scene.add(galaxy.group);
     }
     for (const entry of diff.shapeChanged) {
       this.galaxies.get(entry.id)?.setShape(entry.shape, entry.seed);
@@ -69,6 +67,36 @@ export class GalaxyManager {
       galaxy?.setMotion(entry.motion);
       if (entry.hole) galaxy?.setHole(entry.hole);
     }
+  }
+
+  /** A configured Galaxy in the scene (quality, spikes, band like the rest). */
+  build(entry, supernovae) {
+    const galaxy = new this.GalaxyClass({ ...entry, pixelRatio: this.pixelRatio, dustScale: this.dustScale, supernovae });
+    galaxy.id = entry.id;
+    galaxy.onBaked = () => this.onChange?.();
+    galaxy.setQuality(this.quality);
+    galaxy.setSpikeStyle(this.spikeStyle);
+    galaxy.setBand(this.band);
+    this.scene.add(galaxy.group);
+    return galaxy;
+  }
+
+  /** A galaxy outside the store (no supernovae); removeDetached disposes it. */
+  createDetached(entry) {
+    const galaxy = this.build(entry, false);
+    this.detached.add(galaxy);
+    return galaxy;
+  }
+
+  removeDetached(galaxy) {
+    if (!this.detached.delete(galaxy)) return;
+    galaxy.dispose();
+  }
+
+  /** Every galaxy in the scene: the store's and the detached ones. */
+  *all() {
+    yield* this.galaxies.values();
+    yield* this.detached;
   }
 
   /** Selection is shown by brightness: see emphasisTarget(). */
@@ -85,7 +113,7 @@ export class GalaxyManager {
 
   setSpikeStyle(style) {
     this.spikeStyle = style;
-    for (const galaxy of this.galaxies.values()) galaxy.setSpikeStyle(style);
+    for (const galaxy of this.all()) galaxy.setSpikeStyle(style);
   }
 
   /**
@@ -102,25 +130,25 @@ export class GalaxyManager {
     return n;
   }
 
-  /** Whether JetPass has anything to draw this frame. */
+  /** Whether JetPass has anything to draw this frame (jets, or stars after the lens). */
   hasVisibleJets() {
-    for (const galaxy of this.galaxies.values()) if (galaxy.jets.visible) return true;
+    for (const galaxy of this.galaxies.values()) if (galaxy.jets.visible || galaxy.starsAfterLens?.visible) return true;
     return false;
   }
 
   setBand(name) {
     this.band = name;
-    for (const galaxy of this.galaxies.values()) galaxy.setBand(name);
+    for (const galaxy of this.all()) galaxy.setBand(name);
   }
 
   setDustScale(scale) {
     this.dustScale = scale;
-    for (const galaxy of this.galaxies.values()) galaxy.setDustScale(scale);
+    for (const galaxy of this.all()) galaxy.setDustScale(scale);
   }
 
   setQuality(quality) {
     this.quality = quality;
-    for (const galaxy of this.galaxies.values()) galaxy.setQuality(quality);
+    for (const galaxy of this.all()) galaxy.setQuality(quality);
   }
 
   /**
@@ -128,7 +156,7 @@ export class GalaxyManager {
    * the volume step budget from each galaxy's on-screen size.
    */
   updateCamera(camera, width, height) {
-    for (const galaxy of this.galaxies.values()) {
+    for (const galaxy of this.all()) {
       galaxy.updateCamera(camera.position);
       if (height) galaxy.uniforms.uViewHeight.value = height;
       if (width && height) galaxy.updateLod(camera, width, height);
@@ -144,17 +172,18 @@ export class GalaxyManager {
   }
 
   tick(dt, realDt = dt) {
-    for (const galaxy of this.galaxies.values()) galaxy.tick(dt, realDt);
+    for (const galaxy of this.all()) galaxy.tick(dt, realDt);
   }
 
   setPixelRatio(value) {
     this.pixelRatio = value;
-    for (const galaxy of this.galaxies.values()) galaxy.setPixelRatio(value);
+    for (const galaxy of this.all()) galaxy.setPixelRatio(value);
   }
 
   dispose() {
     this.unsubscribe();
-    for (const galaxy of this.galaxies.values()) galaxy.dispose();
+    for (const galaxy of this.all()) galaxy.dispose();
     this.galaxies.clear();
+    this.detached.clear();
   }
 }

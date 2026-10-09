@@ -34,3 +34,18 @@ describe('intro music modes', () => {
     expect(MUSIC_MIN).toBeLessThan(MUSIC_LEVEL / 10);
   });
 });
+
+describe('consumption rumble', () => {
+  it('is off without a consumption, rises with the turns, is full at the merge and dies away after', async () => {
+    const { rumbleLevel, rumbleCutoff, RUMBLE_MAX, RUMBLE_CUTOFF_MIN, RUMBLE_CUTOFF_MAX } = await import('./soundMix.js');
+    expect(rumbleLevel(null)).toBe(0);
+    expect(rumbleLevel({ stage: 'done' })).toBe(0);
+    const early = rumbleLevel({ stage: 'run', progress: 0.1, turnsDone: 0 });
+    const late = rumbleLevel({ stage: 'run', progress: 0.9, turnsDone: 0 });
+    expect(late).toBeGreaterThan(early);
+    expect(rumbleLevel({ stage: 'drain', progress: 1, merged: true })).toBe(RUMBLE_MAX);
+    expect(rumbleLevel({ stage: 'after', afterTime: 10 })).toBeLessThan(0.01);
+    expect(rumbleCutoff(0)).toBe(RUMBLE_CUTOFF_MIN);
+    expect(rumbleCutoff(100)).toBe(RUMBLE_CUTOFF_MAX);
+  });
+});

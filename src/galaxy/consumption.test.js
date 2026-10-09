@@ -213,7 +213,8 @@ describe('release', () => {
     expect(r2).toBeLessThan(r1);
     expect(releaseRadius(KIND.HOLE_GALAXY, 4)).toBe(0);
     expect(releaseRadius(KIND.HOLE_HOLE, 3.5)).toBe(0);
-    expect(releaseRadius(KIND.GALAXY_GALAXY, 0)).toBe(0);
+    expect(releaseRadius(KIND.GALAXY_GALAXY, 0)).toBeGreaterThan(1.4);
+    expect(releaseRadius(KIND.GALAXY_GALAXY, 3)).toBe(0);
     expect(releasedShare(KIND.HOLE_GALAXY, 0)).toBe(0);
     expect(releasedShare(KIND.HOLE_GALAXY, 4)).toBe(1);
   });

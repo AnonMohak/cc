@@ -6,12 +6,12 @@ import {
   circularSpeed,
   addPlummerAccel,
   spinAxis,
-  designOrbit,
-  createCentres,
-  separation,
-  warpFactor,
-  stepCentres,
   gasFade,
+  indirectAccel,
+  packState,
+  unpackState,
+  accretionSlow,
+  STATE,
   localStarPosition,
   initialStarState,
   stepStar,
@@ -24,22 +24,6 @@ import { starPosition } from './densityModel.js';
 import { generateGalaxy, KIND } from './generateGalaxy.js';
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-
-function run(input, seconds) {
-  const orbit = designOrbit(input);
-  const s = createCentres({ ...input, ...orbit });
-  const dt = 1 / 60;
-  let minSep = Infinity;
-  for (let t = 0; t < seconds; t += dt) {
-    stepCentres(s, dt * warpFactor(s));
-    minSep = Math.min(minSep, separation(s));
-  }
-  return { s, minSep };
-}
-
-function momentum(s) {
-  return [0, 1, 2].map((k) => s.mass[0] * s.vel[0][k] + s.mass[1] * s.vel[1][k]);
-}
 
 describe('collision physics', () => {
   it('scales mass with area and gives a Plummer circular speed', () => {
@@ -59,71 +43,64 @@ describe('collision physics', () => {
     expect(spinAxis([0, 1, 0], 0)).toEqual([-0, -1, -0]);
   });
 
-  it('designs an orbit with zero total momentum and the asked pericentre', () => {
-    const input = { posA: [0, 0, 0], posB: [60, 0, 10], radiusA: 6, radiusB: 4, spinA: [0, -1, 0], pass: 1.5, speed: 1.8 };
-    const { velA, velB } = designOrbit(input);
-    const mA = galaxyMass(6);
-    const mB = galaxyMass(4);
-    for (let k = 0; k < 3; k++) expect(mA * velA[k] + mB * velB[k]).toBeCloseTo(0, 10);
-    // Fast and wide: little friction, so the closest approach is near the design.
-    const { minSep } = run(input, 40);
-    expect(minSep).toBeGreaterThan(0.8 * 1.5 * 5);
-    expect(minSep).toBeLessThan(1.3 * 1.5 * 5);
+  it('packs the star state with the arm crest', () => {
+    for (const state of Object.values(STATE)) {
+      for (const c of [0, 0.25, 1]) expect(unpackState(packState(state, c))).toEqual({ state, crest: c });
+    }
   });
 
-  it('orbits in the sense of galaxy A’s spin', () => {
-    const input = { posA: [0, 0, 0], posB: [40, 0, 0], radiusA: 6, radiusB: 6, spinA: [0, -1, 0], pass: 1, speed: 1 };
-    const { velA, velB } = designOrbit(input);
-    const rel = [0, 1, 2].map((k) => velB[k] - velA[k]);
-    // L = r × v points along the spin axis (−y): (r × v)_y = r_z v_x − r_x v_z.
-    const Ly = 0 * rel[0] - 40 * rel[2];
-    expect(Ly).toBeLessThan(0);
-    expect(rel[0]).toBeLessThan(0); // approaching
+  it('the indirect term cancels the victim pull on the winner', () => {
+    const a = indirectAccel([0, 0, 0], [0, 0, 0], [5, 0, 0], 2, 0.5);
+    const pull = addPlummerAccel([0, 0, 0], [0, 0, 0], [5, 0, 0], 2, 0.5);
+    for (let k = 0; k < 3; k++) expect(a[k]).toBeCloseTo(-pull[k]);
+    // A star at the winner's centre then feels no net pull from the victim.
+    const field = { pos: [[0, 0, 0], [5, 0, 0]], gm: [0, 2], eps2: [0.1, 0.5], indirect: a };
+    const star = { pos: [0, 0, 0], vel: [0, 0, 0], state: STATE.FREE, spin: 1 };
+    stepStar(star, field, 0.1);
+    for (let k = 0; k < 3; k++) expect(star.vel[k]).toBeCloseTo(0, 9);
   });
 
-  it('keeps momentum, and the barycentre stays put', () => {
-    const input = { posA: [0, 0, 0], posB: [30, 5, 0], radiusA: 8, radiusB: 5, spinA: [0, -1, 0], pass: 0.8, speed: 0.9 };
-    const { s } = run(input, 30);
-    for (const p of momentum(s)) expect(p).toBeCloseTo(0, 6);
-    const M = s.mass[0] + s.mass[1];
-    const bary = [0, 1, 2].map((k) => (s.mass[0] * s.pos[0][k] + s.mass[1] * s.pos[1][k]) / M);
-    const start = [0, 1, 2].map((k) => (s.mass[0] * input.posA[k] + s.mass[1] * input.posB[k]) / M);
-    for (let k = 0; k < 3; k++) expect(bary[k]).toBeCloseTo(start[k], 4);
+  it('drag pulls free matter in around a black-hole winner, then it accretes and is gone', () => {
+    const gm = 200;
+    const field = {
+      pos: [[0, 0, 0], [1e6, 0, 0]], gm: [gm, 0], eps2: [0.01, 1], drag: 0.3,
+      hole: true, normal: [0, 1, 0], accRadius: 2, capture: 0.2, accRate: 0.3, spinMax: 12, settle: 2, timeLeft: 20,
+    };
+    const r0 = 5;
+    const v0 = Math.sqrt(gm / r0);
+    // Circular orbit about +y (counter-clockwise seen from +y: L along +y).
+    const star = { pos: [r0, 0.3, 0], vel: [0, 0, -v0], state: STATE.FREE, spin: 1 };
+    let last = r0;
+    let accreted = false;
+    for (let i = 0; i < 60 * 40 && star.state !== STATE.GONE; i++) {
+      stepStar(star, field, 1 / 60);
+      const r = Math.hypot(star.pos[0], star.pos[2]);
+      if (star.state === STATE.ACCRETE) {
+        if (!accreted) expect(star.spin).toBe(1);
+        accreted = true;
+        // The accretion spiral never moves out, and settles onto the disc.
+        expect(r).toBeLessThanOrEqual(last + 1e-9);
+      }
+      last = r;
+    }
+    expect(accreted).toBe(true);
+    expect(star.state).toBe(STATE.GONE);
+    expect(Math.abs(star.pos[1])).toBeLessThan(0.3);
   });
 
-  it('merges a slow close pass and lets a fast wide pass fly by', () => {
-    const base = { posA: [0, 0, 0], posB: [30, 0, 0], radiusA: 6, radiusB: 6, spinA: [0, -1, 0] };
-    const slow = run({ ...base, pass: 0.8, speed: 0.9 }, 60).s;
-    expect(separation(slow)).toBeLessThan(1.5);
-    const fast = run({ ...base, pass: 1.5, speed: 2 }, 60).s;
-    expect(separation(fast)).toBeGreaterThan(60);
-  });
-
-  it('fast-forwards the approach only while far apart', () => {
-    const far = createCentres({ posA: [0, 0, 0], posB: [80, 0, 0], velA: [0, 0, 0], velB: [0, 0, 0], radiusA: 6, radiusB: 6 });
-    expect(warpFactor(far)).toBeGreaterThan(5);
-    const near = createCentres({ posA: [0, 0, 0], posB: [15, 0, 0], velA: [0, 0, 0], velB: [0, 0, 0], radiusA: 6, radiusB: 6 });
-    expect(warpFactor(near)).toBe(1);
-    stepCentres(near, 0.01);
-    expect(near.interacting).toBe(true);
-    // Once interacting, never warped again (the stars run in real time).
-    near.pos[1][0] = 200;
-    expect(warpFactor(near)).toBe(1);
-  });
-
-  it('disrupts gas only near the partner, monotonic and capped', () => {
-    const s = createCentres({ posA: [0, 0, 0], posB: [100, 0, 0], velA: [0, 0, 0], velB: [0, 0, 0], radiusA: 6, radiusB: 6 });
-    stepCentres(s, 1);
-    expect(s.disruption[0]).toBeLessThan(0.001);
-    const close = createCentres({ posA: [0, 0, 0], posB: [3, 0, 0], velA: [0, 0, 0], velB: [0, 0, 0], radiusA: 6, radiusB: 2 });
-    stepCentres(close, 2);
-    // The small galaxy suffers more.
-    expect(close.disruption[1]).toBeGreaterThan(close.disruption[0]);
-    stepCentres(close, 60);
-    expect(close.disruption[1]).toBe(1);
-    expect(gasFade(0)).toBe(1);
-    expect(gasFade(1)).toBe(0);
-    expect(gasFade(0.5)).toBeCloseTo(0.5);
+  it('the accretion deadline: matter reaches the capture radius by timeLeft', () => {
+    const field = { pos: [[0, 0, 0], [1e6, 0, 0]], gm: [100, 0], eps2: [0.01, 1], hole: true, normal: [0, 1, 0], accRadius: 3, capture: 0.2, accRate: 0.05, spinMax: 12, settle: 2, timeLeft: 2 };
+    const star = { pos: [2.5, 0, 0], vel: [0, 0, 0], state: STATE.ACCRETE, spin: -1 };
+    let t = 0;
+    while (star.state !== STATE.GONE && t < 30) {
+      stepStar(star, field, 1 / 60);
+      field.timeLeft = Math.max(0, field.timeLeft - 1 / 60);
+      t += 1 / 60;
+    }
+    // Slower near the horizon, but gone soon after the deadline.
+    expect(t).toBeLessThan(6);
+    expect(accretionSlow(0.2, 0.2)).toBe(0.15);
+    expect(accretionSlow(10, 0.2)).toBe(1);
   });
 
   it('mirrors the shader star position (disc stars match densityModel)', () => {
@@ -158,6 +135,7 @@ describe('collision physics', () => {
     const gm = G_SIM * galaxyMass(radius);
     const eps2 = (SOFTENING * radius) ** 2;
     const single = { pos: [centre, [1e9, 0, 0]], gm: [gm, 0], eps2: [eps2, 0] };
+    const star = { pos: null, vel: null, state: STATE.FREE, spin: 1 };
     let checked = 0;
     for (let i = 0; i < data.count && checked < 50; i++) {
       if (data.orbit[i * 4 + 3] !== KIND.DISC) continue;
@@ -168,7 +146,9 @@ describe('collision physics', () => {
       // Disc stars turn about −y: (r × v)_y < 0.
       const ly = p[2] * v[0] - (p[0] - 10) * v[2];
       expect(ly).toBeLessThan(1e-6);
-      for (let s = 0; s < 600; s++) stepStar(p, v, single, 1 / 60);
+      star.pos = p;
+      star.vel = v;
+      for (let s = 0; s < 600; s++) stepStar(star, single, 1 / 60);
       const r1 = Math.hypot(p[0] - 10, p[1], p[2]);
       expect(Math.abs(r1 - r0) / r0).toBeLessThan(0.08);
       checked++;
@@ -184,7 +164,7 @@ describe('collision physics', () => {
       matrix: IDENTITY, radius: 1, spin: [0, -1, 0], centre: [0, 0, 0], centreVel: [1, 2, 3],
     });
     expect(position[0]).toBeCloseTo(0.5);
-    expect(position[3]).toBe(0.5); // no arms: crest 0.5
+    expect(unpackState(position[3])).toEqual({ state: STATE.FREE, crest: 0.5 }); // no arms: crest 0.5
     const vc = circularSpeed(0.5, G_SIM * galaxyMass(1), SOFTENING ** 2);
     expect(velocity[0]).toBeCloseTo(1);
     expect(velocity[1]).toBeCloseTo(2);
@@ -212,5 +192,10 @@ describe('collision physics', () => {
     expect(collisionBroken(prev, [{ ...a, look: { ...a.look, position: [1, 0, 0] } }, b], ['a', 'b'])).toBe(true);
     expect(collisionBroken(prev, [{ ...a, shape: { count: 2 } }, b], ['a', 'b'])).toBe(true);
     expect(collisionBroken(prev, [a, b, { id: 'c' }], ['a', 'b'])).toBe(false);
+    // Black holes: a resize breaks it, a new colour or brightness does not.
+    const h = { ...a, id: 'h', kind: 'blackhole', hole: { size: 0.03, discSize: 18, brightness: 1, colorHot: '#fff' } };
+    expect(collisionBroken([h, b], [{ ...h, hole: { ...h.hole, brightness: 2, colorHot: '#f00' } }, b], ['h', 'b'])).toBe(false);
+    expect(collisionBroken([h, b], [{ ...h, hole: { ...h.hole, size: 0.04 } }, b], ['h', 'b'])).toBe(true);
+    expect(collisionBroken([h, b], [{ ...h, hole: { ...h.hole, discSize: 20 } }, b], ['h', 'b'])).toBe(true);
   });
 });

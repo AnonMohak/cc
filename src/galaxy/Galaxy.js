@@ -18,6 +18,7 @@ import { LAYERS } from '../core/layers.js';
 import { screenFootprint, adaptiveSteps, starLod } from './lod.js';
 import { createDiscMapTexture } from './discMap.js';
 import { createDofProxy, setDofProxyHole, disposeDofProxy } from './dofProxy.js';
+import { cachedGalaxyData, cachedDiscFields } from './generationCache.js';
 
 const UP = new THREE.Vector3(0, 1, 0);
 // Stars move on orbits up to a·(1 + e) and the halo reaches 1.4; one fixed
@@ -26,6 +27,17 @@ const BOUND_RADIUS = 1.7;
 const _inverse = new THREE.Matrix4();
 const _quaternion = new THREE.Quaternion();
 const JET_SEGMENTS = 8;
+// Jet brightness at full feeding flare (consumption.js feedLevel).
+const JET_FEED_GAIN = 1.5;
+
+/** Whether two shapes differ only in the star count (or not at all). */
+function sameExceptCount(a, b) {
+  if (!a || !b) return false;
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    if (key !== 'count' && a[key] !== b[key]) return false;
+  }
+  return true;
+}
 
 /** Two strips (north/south jet), x ∈ [−0.5, 0.5] across, y ∈ [0, 1] along. */
 function createJetGeometry() {
@@ -125,6 +137,13 @@ export class Galaxy {
     this.holeSpin = 1;
     // Intro-fall lens warp 0–1 (BlackHolePass; blackHole.js WARP_*).
     this.holeWarp = 0;
+    // Consumption (scene/CollisionSim.js), all transient: the hole's Rs and
+    // disc gain/glow multipliers, the feeding flare 0–1 and the merger ripple.
+    this.holeScale = 1;
+    this.holeGain = 1;
+    this.holeGlow = 1;
+    this.feed = 0;
+    this.holeRipple = { radius: 0, amp: 0 };
 
     this.jetMaterial = createJetMaterial(this.uniforms);
     this.jets = new THREE.Mesh(createJetGeometry(), this.jetMaterial);
@@ -149,6 +168,12 @@ export class Galaxy {
 
     this.discMap = null;
     this.lodCount = Infinity; // star LOD; Infinity = no LOD limit
+    // Consumption: a fade 0–1 over the whole object (uEmphasis × fade), a
+    // time-lapse factor (galaxy merger) and the stars drawn after the lens
+    // pass (created on first use, see setConsumeView).
+    this.fade = 1;
+    this.timeScale = 1;
+    this.starsAfterLens = null;
     // Collision (scene/CollisionSim.js): the sim moves the group and may
     // own the star positions; homePosition is where the store puts it.
     this.colliding = false;
@@ -167,7 +192,8 @@ export class Galaxy {
   bakeDiscMap() {
     clearTimeout(this.rebakeTimer);
     this.rebakeTimer = null;
-    const map = createDiscMapTexture(this.shape, this.structure);
+    // A remnant built ahead in a worker (generationCache.js) needs no bake here.
+    const map = createDiscMapTexture(this.shape, this.structure, undefined, cachedDiscFields(this.shape, this.structure));
     this.discMap?.dispose();
     this.discMap = map;
     this.uniforms.uDiscMap.value = map;
@@ -183,7 +209,8 @@ export class Galaxy {
 
   /** Rebuild the star geometry. The old geometry is disposed first. */
   setShape(shape, seed) {
-    const data = generateGalaxy(shape, seed);
+    const data = cachedGalaxyData(shape, seed) ?? generateGalaxy(shape, seed);
+    const prevShape = this.shape;
     const sphere = new THREE.Sphere(new THREE.Vector3(), BOUND_RADIUS);
 
     const stars = new THREE.BufferGeometry();
@@ -203,6 +230,7 @@ export class Galaxy {
     this.hii.geometry.dispose();
     this.stars.geometry = stars;
     this.hii.geometry = hii;
+    if (this.starsAfterLens) this.starsAfterLens.geometry = stars;
     this.count = data.count;
     this.hiiCount = data.hii.count;
     this.shape = shape;
@@ -210,8 +238,9 @@ export class Galaxy {
     this.applyStarCap();
     applyShapeUniforms(this.uniforms, shape);
     this.updateVolumeBounds();
-    // Shape edits are already debounced by the panel and rebuild geometry anyway.
-    if (this.discMap) this.bakeDiscMap();
+    // Shape edits are already debounced by the panel and rebuild geometry
+    // anyway. The bake does not depend on the star count (a merger only adds stars).
+    if (this.discMap && !sameExceptCount(prevShape, shape)) this.bakeDiscMap();
   }
 
   /** Fit the volume box to the current shape and bulge profile. */
@@ -265,14 +294,21 @@ export class Galaxy {
    * eases while paused. Accumulating phase means a speed change never jumps.
    */
   tick(dt, realDt = dt) {
-    this.phase += dt * this.speed;
+    // timeScale: the time-lapse of a galaxy merger (1 otherwise).
+    this.phase += dt * this.speed * this.timeScale;
     this.uniforms.uPhase.value = this.phase;
     this.holeTime += dt * this.holeSpin;
     this.tickSupernovae(dt);
     if (this.emphasis !== this.emphasisTarget) {
       this.emphasis = approach(this.emphasis, this.emphasisTarget, realDt);
-      this.uniforms.uEmphasis.value = this.emphasis;
+      this.uniforms.uEmphasis.value = this.emphasis * this.fade;
     }
+  }
+
+  /** Fade 0–1 over the whole object (consumption: the victim and a merger's stars go, the remnant comes). */
+  setFade(k) {
+    this.fade = k;
+    this.uniforms.uEmphasis.value = this.emphasis * k;
   }
 
   /** Fire scheduled explosions (simulation time: nothing happens while paused). */
@@ -310,7 +346,76 @@ export class Galaxy {
   }
 
   updateJets() {
-    this.jets.visible = this.standalone && this.hole.jets && this.rsUnit > 0;
+    // The feeding flare of a consumption brings jets out even when they are off.
+    const on = this.standalone && this.hole.jets;
+    this.jets.visible = this.standalone && this.rsUnit > 0 && (on || this.feed > 0.01);
+    // Squared: the jets come in late in the feed, at full flare only near the merge.
+    this.uniforms.uJetGain.value = (on ? 1 : 0) + JET_FEED_GAIN * this.feed * this.feed;
+  }
+
+  /**
+   * Consumption, black-hole look (all transient; clearConsumeEffects resets):
+   * Rs × scale (a victim shrinks, a winner grows), disc gain and glow
+   * multipliers (the flare, the merger flash).
+   */
+  setHoleLook(scale, gain = 1, glow = 1) {
+    this.holeScale = scale;
+    this.holeGain = gain;
+    this.holeGlow = glow;
+  }
+
+  /** Feeding flare 0–1: brighter jets (shown even when off). */
+  setFeeding(f) {
+    if (f === this.feed) return;
+    this.feed = f;
+    if (this.standalone) this.updateJets();
+  }
+
+  /** Gravitational-wave ripple after a merger (consumption.js rippleState): radius (Rs), bend (rad). */
+  setHoleRipple(radius, amp) {
+    this.holeRipple.radius = radius;
+    this.holeRipple.amp = amp;
+  }
+
+  /** Starburst 0–1 after a galaxy merger (young stars and H II brighter). */
+  setStarburst(s) {
+    this.uniforms.uStarburst.value = s;
+  }
+
+  /** Reset every transient consumption effect. */
+  clearConsumeEffects() {
+    this.setHoleLook(1, 1, 1);
+    this.setFeeding(0);
+    this.setHoleRipple(0, 0);
+    this.setStarburst(0);
+  }
+
+  /**
+   * Stars near a winning black hole (consume.glsl): redshift toward its
+   * capture radius, and the lens split: the stars in front of the hole and
+   * inside its lens reach draw after the lens pass (layer JETS). null = off.
+   * @param {{ center: ArrayLike<number>, capture: number, reach: number } | null} view world units
+   */
+  setConsumeView(view) {
+    const u = this.uniforms;
+    if (!view) {
+      u.uHoleWorld.value.set(0, 0, 0, 0);
+      u.uSplit.value.set(0, 0, 0, 0);
+      if (this.starsAfterLens) this.starsAfterLens.visible = false;
+      return;
+    }
+    if (!this.starsAfterLens) {
+      this.starsAfterLensMaterial = createStarMaterial(this.uniforms, { afterLens: true });
+      this.starsAfterLens = new THREE.Points(this.stars.geometry, this.starsAfterLensMaterial);
+      this.starsAfterLens.renderOrder = 5;
+      this.starsAfterLens.frustumCulled = false;
+      this.starsAfterLens.layers.set(LAYERS.JETS);
+      this.group.add(this.starsAfterLens);
+    }
+    const c = view.center;
+    u.uHoleWorld.value.set(c[0], c[1], c[2], view.capture);
+    u.uSplit.value.set(c[0], c[1], c[2], view.reach);
+    this.starsAfterLens.visible = true;
   }
 
   /** Disc spin multiplier (core/blackHoleFall.js fallPose spin); 1 = normal. */
@@ -351,13 +456,16 @@ export class Galaxy {
     this.group.getWorldPosition(slot.center);
     this.group.getWorldQuaternion(_quaternion);
     slot.normal.copy(UP).applyQuaternion(_quaternion);
-    slot.rsWorld = this.rsUnit * this.radius;
+    slot.rsWorld = this.rsUnit * this.radius * this.holeScale;
+    if (slot.rsWorld <= 0) return false;
     slot.time = this.holeTime;
     const h = this.hole;
     slot.discOuter = h.discSize;
     // The hole is the whole object, so it follows the selection emphasis.
-    slot.gain = h.brightness * this.emphasis;
-    slot.glow = h.glow;
+    slot.gain = h.brightness * this.emphasis * this.fade * this.holeGain;
+    slot.glow = h.glow * this.holeGlow;
+    slot.rippleRadius = this.holeRipple.radius;
+    slot.rippleAmp = this.holeRipple.amp;
     slot.streak = h.streak ? 1 : 0;
     slot.warp = this.holeWarp;
     slot.hot.copy(this.holeHot);
@@ -378,12 +486,15 @@ export class Galaxy {
     this.setSupernovae(this.supernovaeOn);
   }
 
-  /** End of a collision: back home, analytic stars, full gas. */
+  /** End of a collision: back home, analytic stars, full gas, no fade or time-lapse. */
   endCollision() {
     this.colliding = false;
     this.group.position.fromArray(this.homePosition);
     this.setStarSimulation(null);
     this.setGasFade(1);
+    this.setFade(1);
+    this.timeScale = 1;
+    this.setConsumeView(null);
     this.setSupernovae(this.supernovaeOn);
   }
 
@@ -437,7 +548,7 @@ export class Galaxy {
     this.emphasisTarget = target;
     if (immediate) {
       this.emphasis = target;
-      this.uniforms.uEmphasis.value = target;
+      this.uniforms.uEmphasis.value = target * this.fade;
     }
   }
 
@@ -512,6 +623,7 @@ export class Galaxy {
     this.volumeMaterial.dispose();
     this.jets.geometry.dispose();
     this.jetMaterial.dispose();
+    this.starsAfterLensMaterial?.dispose();
     disposeDofProxy(this.dofProxy);
     clearTimeout(this.rebakeTimer);
     this.discMap?.dispose();

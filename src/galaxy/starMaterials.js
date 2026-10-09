@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { glsl, CHUNKS } from './shaders/glsl.js';
 import starsChunk from './shaders/chunks/stars.glsl?raw';
+import consumeChunk from './shaders/chunks/consume.glsl?raw';
+import streamVert from './shaders/stream.vert.glsl?raw';
 import starsVert from './shaders/stars.vert.glsl?raw';
 import starsFrag from './shaders/stars.frag.glsl?raw';
 import hiiVert from './shaders/hii.vert.glsl?raw';
@@ -18,12 +20,34 @@ const additive = {
   transparent: true,
 };
 
-/** @param {ReturnType<typeof import('./galaxyUniforms.js').createGalaxyUniforms>} uniforms shared, by reference */
-export function createStarMaterial(uniforms) {
+/**
+ * @param {ReturnType<typeof import('./galaxyUniforms.js').createGalaxyUniforms>} uniforms shared, by reference
+ * @param {{ afterLens?: boolean }} [options] afterLens: the stars in front of a
+ *   winning black hole, drawn after the lens pass (consume.glsl cs_afterLens)
+ */
+export function createStarMaterial(uniforms, { afterLens = false } = {}) {
   return new THREE.ShaderMaterial({
-    vertexShader: glsl(CHUNKS.model, starsChunk, starsVert),
+    vertexShader: glsl(CHUNKS.model, starsChunk, consumeChunk, starsVert),
     fragmentShader: starsFrag,
     uniforms,
+    defines: afterLens ? { AFTER_LENS: '' } : {},
+    ...additive,
+  });
+}
+
+/**
+ * The gold stream off a victim black hole (stream.vert.glsl). `uniforms`:
+ * uStreamPos, uHot, uCool, uGain, uPixelRatio, uMaxPointPx, uHoleWorld,
+ * uSplit (the caller shares them between the two layers).
+ * @param {object} uniforms
+ * @param {{ afterLens?: boolean }} [options]
+ */
+export function createStreamMaterial(uniforms, { afterLens = false } = {}) {
+  return new THREE.ShaderMaterial({
+    vertexShader: glsl(consumeChunk, streamVert),
+    fragmentShader: starsFrag,
+    uniforms,
+    defines: afterLens ? { AFTER_LENS: '' } : {},
     ...additive,
   });
 }

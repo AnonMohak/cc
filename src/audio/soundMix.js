@@ -53,3 +53,31 @@ export function mixFades(mode, waitLeft = 0) {
   if (mode === 'end') return { music: MUSIC_END_FADE, ambient: AMBIENT_RETURN, ambientDelay: MUSIC_END_FADE, rise: false };
   return { music: MUSIC_FADE_OUT, ambient: MUSIC_FADE_OUT, ambientDelay: 0, rise: false };
 }
+
+/** Consumption rumble (scene/CollisionSim.js status): its loudest level. */
+export const RUMBLE_MAX = 0.35;
+/** Seconds for the rumble to die away after the merge. */
+export const RUMBLE_DECAY = 1.5;
+/** Low-pass cutoff (Hz) of the rumble, from a slow to a fast orbit. */
+export const RUMBLE_CUTOFF_MIN = 45;
+export const RUMBLE_CUTOFF_MAX = 170;
+
+/**
+ * Rumble level 0–RUMBLE_MAX during a consumption: quiet in the approach,
+ * louder with each turn (with a pulse once per orbit), full at the merge,
+ * then it dies away. 0 without one.
+ * @param {{ stage?: string, progress?: number, turnsDone?: number, afterTime?: number, merged?: boolean } | null} status
+ */
+export function rumbleLevel(status) {
+  if (!status || !status.stage || status.stage === 'done') return 0;
+  if (status.stage === 'after') return RUMBLE_MAX * Math.exp(-status.afterTime / RUMBLE_DECAY);
+  if (status.merged) return RUMBLE_MAX;
+  const rise = 0.15 + 0.85 * Math.min(1, status.progress) ** 1.5;
+  const pulse = 0.85 + 0.15 * Math.cos(2 * Math.PI * (status.turnsDone ?? 0));
+  return RUMBLE_MAX * rise * pulse;
+}
+
+/** Rumble cutoff (Hz): it rises with the orbit frequency, so the chirp is heard. */
+export function rumbleCutoff(orbitHz) {
+  return Math.min(RUMBLE_CUTOFF_MAX, RUMBLE_CUTOFF_MIN + 40 * Math.max(0, orbitHz));
+}

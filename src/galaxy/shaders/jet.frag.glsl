@@ -3,6 +3,7 @@ uniform float uBrightness;
 uniform float uEmphasis;
 uniform float uBandJetGain;
 uniform float uJetDiscOuter; // Rs
+uniform float uJetGain; // 1 normally; the feeding flare of a consumption raises it (or shows jets that are off)
 
 varying vec2 vJet;
 varying float vEnergy;
@@ -45,7 +46,7 @@ void main() {
       a *= 1.0 - DISC_OPACITY * disc;
     }
   }
-  gl_FragColor = vec4(JET_COLOR * a * JET_INTENSITY * uBandJetGain * uBrightness * uEmphasis, 1.0);
+  gl_FragColor = vec4(JET_COLOR * a * JET_INTENSITY * uJetGain * uBandJetGain * uBrightness * uEmphasis, 1.0);
 
   #include <tonemapping_fragment>
   #include <colorspace_fragment>

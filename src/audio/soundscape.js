@@ -16,7 +16,8 @@ const NOISE_SECONDS = 6;
  * @param {AudioContext} ctx
  * @param {AudioNode} out
  */
-function buildDrone(ctx, out) {
+/** A looped stereo brown-noise buffer (NOISE_SECONDS long). */
+function brownNoise(ctx) {
   const length = Math.floor(ctx.sampleRate * NOISE_SECONDS);
   const buffer = ctx.createBuffer(2, length, ctx.sampleRate);
   for (let c = 0; c < 2; c++) {
@@ -28,6 +29,10 @@ function buildDrone(ctx, out) {
       data[i] = last * 3.5;
     }
   }
+  return buffer;
+}
+
+function buildDrone(ctx, out, buffer) {
   const noise = ctx.createBufferSource();
   noise.buffer = buffer;
   noise.loop = true;
@@ -73,6 +78,36 @@ function buildDrone(ctx, out) {
     osc.start();
     swell.start();
   });
+}
+
+/**
+ * The consumption rumble: the same brown noise, low-passed hard (its cutoff
+ * follows the orbit, see soundMix.js rumbleCutoff) with a 31 Hz sub tone
+ * under it. Returns the gain and the filter to drive.
+ * @param {AudioContext} ctx
+ * @param {AudioNode} out
+ * @param {AudioBuffer} buffer
+ */
+function buildRumble(ctx, out, buffer) {
+  const gain = ctx.createGain();
+  gain.gain.value = 0;
+  gain.connect(out);
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  noise.loop = true;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = 60;
+  filter.Q.value = 1.2;
+  noise.connect(filter).connect(gain);
+  const sub = ctx.createOscillator();
+  sub.frequency.value = 31;
+  const subGain = ctx.createGain();
+  subGain.gain.value = 0.5;
+  sub.connect(subGain).connect(gain);
+  noise.start();
+  sub.start();
+  return { gain, filter };
 }
 
 /**
@@ -130,6 +165,11 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
   let waitEndsAt = 0; // performance.now() ms when the wait ends (fall starts)
   let stopTimer = null;
   let suspendTimer = null;
+  // Consumption rumble: the wanted level and cutoff, and the nodes.
+  let rumble = null;
+  let rumbleLevel = 0;
+  let rumbleCutoff = 60;
+  let rumbleSent = { level: -1, cutoff: -1 };
 
   function build() {
     ctx = new AudioCtx();
@@ -138,7 +178,9 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
     ambientGain = ctx.createGain();
     ambientGain.gain.value = 0;
     ambientGain.connect(master);
-    buildDrone(ctx, ambientGain);
+    const noise = brownNoise(ctx);
+    buildDrone(ctx, ambientGain, noise);
+    rumble = buildRumble(ctx, master, noise);
     if (hasMusic) {
       music = new Audio();
       music.crossOrigin = 'anonymous';
@@ -232,6 +274,19 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
     apply(fades);
   }
 
+  /** Send the rumble to the nodes when it moved enough (called every frame). */
+  function sendRumble(force = false) {
+    if (!ctx || !rumble) return;
+    const level = enabled ? rumbleLevel : 0;
+    if (!force && Math.abs(level - rumbleSent.level) < 0.005 && Math.abs(rumbleCutoff - rumbleSent.cutoff) < 2) return;
+    rumbleSent = { level, cutoff: rumbleCutoff };
+    const t = ctx.currentTime;
+    rumble.gain.gain.cancelScheduledValues(t);
+    rumble.gain.gain.setTargetAtTime(level, t, 0.12);
+    rumble.filter.frequency.cancelScheduledValues(t);
+    rumble.filter.frequency.setTargetAtTime(rumbleCutoff, t, 0.2);
+  }
+
   function onVisibility() {
     if (!ctx) return;
     if (doc.visibilityState === 'hidden') ctx.suspend().catch(() => {});
@@ -265,6 +320,7 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
       clearTimeout(suspendTimer);
       if (on) ctx.resume().catch(() => {});
       apply(TOGGLE_FADE);
+      sendRumble(true);
       // Off: fade, then stop the audio thread (saves battery on phones).
       if (!on) suspendTimer = setTimeout(() => ctx.suspend().catch(() => {}), TOGGLE_FADE * 1000 + 50);
     },
@@ -281,6 +337,15 @@ export function createSoundscape({ fallMusicUrl = FALL_MUSIC_URL, fallMusicStart
       if (ctx) enter();
     },
     isRunning: () => ctx?.state === 'running',
+    /**
+     * The consumption rumble (soundMix.js rumbleLevel, rumbleCutoff); 0 = off.
+     * Cheap to call every frame: the nodes change only when it moves.
+     */
+    setRumble(level, cutoff) {
+      rumbleLevel = level;
+      rumbleCutoff = cutoff;
+      sendRumble();
+    },
     dispose() {
       doc.removeEventListener('visibilitychange', onVisibility);
       clearTimeout(stopTimer);

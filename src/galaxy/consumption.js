@@ -54,10 +54,10 @@ export const MAX_TIME_LAPSE = 12;
 // inside ACC_RADIUS × the disc radius it moves on to an analytic spiral in
 // the disc plane, and inside the capture radius (the disc's inner edge,
 // MARCH_INNER Rs) it is gone.
-export const FREE_DRAG = 0.07; // 1/s
+export const FREE_DRAG = 0.05; // 1/s
 export const MAX_FREE_DRAG = 1.5;
 export const ACC_RADIUS = 1;
-export const ACC_RATE = 0.3; // 1/s: e-fold time of the infall
+export const ACC_RATE = 0.25; // 1/s: e-fold time of the infall
 export const ACC_SPIN_MAX = 12; // rad/s: no strobing of the fastest inner orbits
 export const ACC_SETTLE = 2; // 1/s: the spiral flattens onto the disc plane
 /** Capture radius in Rs (the disc's inner edge). */
@@ -65,7 +65,9 @@ export const CAPTURE_RS = MARCH_INNER;
 
 // Bound stars of the victim come free from the outside in (unit-space orbit
 // radius aOrbit.x above the release radius), over these turns.
-const RELEASE_TURNS = { [KIND.HOLE_HOLE]: [0, 3.5], [KIND.HOLE_GALAXY]: [0.25, 4] };
+// A merging galaxy keeps its shape and sheds tidal tails: the scripted path
+// closes in faster than its softened pull could hold free stars.
+const RELEASE_TURNS = { [KIND.HOLE_HOLE]: [0, 3.5], [KIND.HOLE_GALAXY]: [0.25, 4], [KIND.GALAXY_GALAXY]: [0.3, 2.6] };
 const RELEASE_START = 1.6; // above every star's orbit radius (the halo reaches 1.4)
 
 // After-effects (seconds after the merge).
@@ -93,6 +95,12 @@ const smoothstep = (a, b, x) => {
  * @typedef {{ id: string, hole: boolean, radius: number, rs?: number }} Body
  *   radius: object radius (world); rs: a black hole's Schwarzschild radius (world)
  */
+
+/** A store entry as a Body (for who-eats-whom before anything runs). */
+export function bodyFromEntry(entry) {
+  const hole = entry.kind === 'blackhole';
+  return { id: entry.id, hole, radius: entry.look.radius, rs: hole ? entry.hole.size * entry.look.radius : 0 };
+}
 
 /** @param {Body} a @param {Body} b */
 export function consumeKind(a, b) {
@@ -304,7 +312,6 @@ export function winnerGrowth(progress) {
  */
 export function releaseRadius(kind, turnsDone) {
   const span = RELEASE_TURNS[kind];
-  if (!span) return 0; // two galaxies: every star is free from the entry
   const u = clamp01((turnsDone - span[0]) / (span[1] - span[0]));
   return u >= 1 ? 0 : RELEASE_START * (1 - u) ** 1.5;
 }

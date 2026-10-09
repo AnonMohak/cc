@@ -88,9 +88,12 @@ export function bakeDiscFields(shapeInput, structureInput, size = DISC_MAP_SIZE)
   return data;
 }
 
-/** GPU texture for the baked fields (half float: filterable on WebGL 2). */
-export function createDiscMapTexture(shape, structure, size = DISC_MAP_SIZE) {
-  const floats = bakeDiscFields(shape, structure, size);
+/**
+ * GPU texture for the baked fields (half float: filterable on WebGL 2).
+ * @param {Float32Array | null} [baked] fields already baked (bakeDiscFields, e.g. in a worker)
+ */
+export function createDiscMapTexture(shape, structure, size = DISC_MAP_SIZE, baked = null) {
+  const floats = baked ?? bakeDiscFields(shape, structure, size);
   const half = new Uint16Array(floats.length);
   for (let i = 0; i < floats.length; i++) half[i] = THREE.DataUtils.toHalfFloat(floats[i]);
   const tex = new THREE.DataTexture(half, size, size, THREE.RGBAFormat, THREE.HalfFloatType);

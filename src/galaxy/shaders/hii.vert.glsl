@@ -5,6 +5,8 @@ uniform float uBrightness;
 uniform float uEmphasis;
 uniform float uLodGain;
 uniform float uMaxPointPx; // per quality tier; nebulae may be 3× larger
+// Starburst after a galaxy merger (consumption.js starburstLevel): more H II light.
+uniform float uStarburst;
 
 attribute vec4 aOrbit;
 attribute float aSize;
@@ -26,6 +28,6 @@ void main() {
 
   float size = aSize * onArm * uSize * uScale * uPixelRatio * POINT_SCALE / max(-mvPosition.z, 0.001);
   gl_PointSize = clamp(size, 0.0, 3.0 * uMaxPointPx * uPixelRatio);
-  vGlow = onArm * uGasFade * uBandHiiGain * uBrightness * uEmphasis * uLodGain * clamp(size, 0.0, 1.0);
+  vGlow = (1.0 + 3.0 * uStarburst) * onArm * uGasFade * uBandHiiGain * uBrightness * uEmphasis * uLodGain * clamp(size, 0.0, 1.0);
   vExtinction = gs_extinction(gs_dustTau(p));
 }

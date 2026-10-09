@@ -54,6 +54,11 @@ export function createGalaxyUniforms() {
     uSim: { value: 0 },
     uSimPos: { value: null },
     uSimToLocal: { value: new THREE.Matrix4() },
+    // Consumption (consume.glsl): a winning black hole (xyz, capture radius)
+    // and the lens split (xyz, lens reach); w 0 = off. Starburst 0–1.
+    uHoleWorld: { value: new THREE.Vector4() },
+    uSplit: { value: new THREE.Vector4() },
+    uStarburst: { value: 0 },
     // Baked textures for the volume (see discMap.js, noiseTexture.js)
     uDiscMap: { value: null },
     uNoise: { value: getNoiseTexture() },
@@ -81,6 +86,7 @@ export function createGalaxyUniforms() {
     uJetRs: { value: 0 },
     uJetLength: { value: 0.22 },
     uJetDiscOuter: { value: 18 }, // accretion disc outer radius (Rs), for jet occlusion
+    uJetGain: { value: 1 }, // Galaxy.updateJets (the feeding flare)
     uViewHeight: { value: 800 },
   };
   applyBandUniforms(u, 'visible');

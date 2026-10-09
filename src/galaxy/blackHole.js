@@ -178,3 +178,23 @@ export function pickLenses(candidates, count, max, out) {
   }
   return n;
 }
+
+/**
+ * Lens indices nearest first (by view depth), for the lens chain in
+ * BlackHolePass: a ray passes the near lens, then the far one. Allocation-
+ * free insertion sort into out (length ≥ count).
+ * @param {ArrayLike<number>} depths view depth per lens
+ * @param {number} count
+ * @param {number[]} out
+ */
+export function lensOrder(depths, count, out) {
+  for (let i = 0; i < count; i++) {
+    let j = i;
+    while (j > 0 && depths[out[j - 1]] > depths[i]) {
+      out[j] = out[j - 1];
+      j--;
+    }
+    out[j] = i;
+  }
+  return out;
+}

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deflection, traceRay, marchScaleFor, MARCH_SCALE_MIN, MARCH_SCALE_MAX, shadowPixels, lensFade, pickLenses, SHADOW_B, MAX_DEFLECTION, DISC_OUTER, MARCH_SPHERE_K } from './blackHole.js';
+import { deflection, traceRay, marchScaleFor, MARCH_SCALE_MIN, MARCH_SCALE_MAX, shadowPixels, lensFade, pickLenses, lensOrder, SHADOW_B, MAX_DEFLECTION, DISC_OUTER, MARCH_SPHERE_K } from './blackHole.js';
 
 describe('deflection', () => {
   it('matches the weak-field limit 2Rs/b far away', () => {
@@ -127,5 +127,14 @@ describe('marchDiscRadius', () => {
       expect(m).toBeGreaterThan(prev);
       prev = m;
     }
+  });
+});
+
+describe('lensOrder', () => {
+  it('puts the lenses nearest first', () => {
+    const out = [9, 9, 9, 9];
+    expect(lensOrder([30, 10, 20], 3, out).slice(0, 3)).toEqual([1, 2, 0]);
+    expect(lensOrder([5], 1, out)[0]).toBe(0);
+    expect(lensOrder([7, 7], 2, out).slice(0, 2)).toEqual([0, 1]);
   });
 });

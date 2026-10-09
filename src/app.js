@@ -10,7 +10,7 @@ import { createStarfield } from './scene/starfield.js';
 import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
-import { createStore, canAddGalaxy, isIntroScene, splitIntroStart, restorePending } from './state/store.js';
+import { createStore, canAddGalaxy, isIntroScene, splitIntroStart, restorePending, reducer } from './state/store.js';
 import { QUALITY, TIER_ORDER, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled, dofEnabled } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createRenderGate } from './core/renderGate.js';
@@ -43,6 +43,9 @@ import { bandFor, nextBand } from './galaxy/bands.js';
 import { meterFrame, targetFactor, adapt } from './core/autoExposure.js';
 import { CollisionSim, collisionSupported } from './scene/CollisionSim.js';
 import { collisionBroken } from './galaxy/collision.js';
+import { consumeResult, GROWTH } from './galaxy/consumption.js';
+import { consumeDistance, raiseDirection, easeValue, MIN_ELEVATION_DEG, TARGET_RATE, DISTANCE_RATE, DIRECTION_RATE } from './core/consumeCamera.js';
+import { rumbleLevel, rumbleCutoff } from './audio/soundMix.js';
 
 const SAVE_DEBOUNCE_MS = 500;
 // The film shot is this much closer than the "disc fills the view" distance.
@@ -63,6 +66,13 @@ const _fallOffset = new THREE.Vector3();
 const _focusForward = new THREE.Vector3();
 const _focusPoint = new THREE.Vector3();
 const _focusOther = new THREE.Vector3();
+// Consumption auto-camera scratch.
+const _consumeTarget = new THREE.Vector3();
+const _consumeVec = new THREE.Vector3();
+const _consumeVec2 = new THREE.Vector3();
+const _consumeDir = [0, 0, 0];
+const _consumeRaised = [0, 0, 0];
+const _consumeStatus = {};
 
 /**
  * Build the scene, state, UI and loop inside `container`.
@@ -208,7 +218,8 @@ export function startApp(container, { startScreen } = {}) {
 
   // Standalone black holes are objects in the scene: they draw on every tier.
   post.setBlackHoles((slots) => galaxies.blackHoleCandidates(slots), true);
-  post.setJetSource(() => galaxies.hasVisibleJets());
+  // Jets, and stars or stream matter in front of a consuming black hole.
+  post.setJetSource(() => galaxies.hasVisibleJets() || (collision?.drawsAfterLens() ?? false));
 
   let dofOn = false;
   function applyCinematic() {
@@ -230,7 +241,7 @@ export function startApp(container, { startScreen } = {}) {
   // Any user orbit/zoom takes over from an automatic camera move or a tour.
   controls.addEventListener('start', () => {
     cameraFly.cancel();
-    if (cameraMode === 'tour') setCameraMode('orbit');
+    if (cameraMode === 'tour' || cameraMode === 'consume') setCameraMode('orbit');
   });
 
   // ── Camera modes: orbit (default), free-fly, guided tour ─────────────
@@ -245,6 +256,7 @@ export function startApp(container, { startScreen } = {}) {
   const BADGE_TEXT = {
     fly: 'Free-fly · WASD move · Q/E down/up · Shift fast · drag to look · Esc or G to exit',
     tour: 'Guided tour · drag, scroll or Esc to stop',
+    consume: 'Auto camera · drag, scroll or Esc to take over',
   };
   let cameraMode = 'orbit';
 
@@ -268,6 +280,10 @@ export function startApp(container, { startScreen } = {}) {
       controls.autoRotateSpeed = 0.4;
       controls.autoRotate = store.getState().settings.autoRotate;
     }
+    if (cameraMode === 'consume') {
+      consumeCam = null;
+      controls.autoRotate = store.getState().settings.autoRotate;
+    }
     cameraMode = next;
     if (next === 'fly') {
       cameraFly.cancel();
@@ -278,6 +294,12 @@ export function startApp(container, { startScreen } = {}) {
     if (next === 'fall') {
       cameraFly.cancel();
       controls.enabled = false;
+      controls.autoRotate = false;
+    }
+    if (next === 'consume') {
+      // OrbitControls stays on (its 'start' event hands the camera back) but
+      // is not updated: the loop places the camera (updateConsumeCamera).
+      cameraFly.cancel();
       controls.autoRotate = false;
     }
     badge.hidden = !BADGE_TEXT[cameraMode];
@@ -545,7 +567,7 @@ export function startApp(container, { startScreen } = {}) {
   function applySettings(settings) {
     loop.setPaused(settings.paused);
     loop.setTimeScale(settings.timeScale);
-    if (cameraMode !== 'tour' && cameraMode !== 'fall') controls.autoRotate = settings.autoRotate;
+    if (cameraMode !== 'tour' && cameraMode !== 'fall' && cameraMode !== 'consume') controls.autoRotate = settings.autoRotate;
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
     applyAutoExposure(settings.autoExposure);
@@ -580,14 +602,21 @@ export function startApp(container, { startScreen } = {}) {
     galaxies.tick(dt, realDt);
     if (collision) {
       try {
-        collision.update(dt);
+        const event = collision.update(dt);
+        if (event) commitCollision(event);
+        if (collision?.isDone()) {
+          collision.dispose();
+          collision = null;
+          notifyCollision();
+        }
       } catch (error) {
-        // The GPU star simulation starts at contact; a driver may refuse it.
+        // A driver may refuse the GPU star simulation (it starts at the orbit entry).
         console.error(error);
         stopCollision();
         showToast(container, 'Collisions are not supported on this device');
       }
     }
+    soundscape.setRumble(rumbleLevel(collision ? collision.status(_consumeStatus) : null), rumbleCutoff(collision ? _consumeStatus.orbitHz : 0));
     if (cameraMode === 'tour') handleTourEvent(tour.tick(realDt));
     if (fall && fall.phase() !== 'done' && !(startScreen?.isOpen() ?? false)) {
       // Opening the controls panel is an interaction too.
@@ -624,6 +653,7 @@ export function startApp(container, { startScreen } = {}) {
     cameraFly.update(realDt);
     if (cameraMode === 'fly') fly.update(realDt);
     else if (cameraMode === 'fall') updateFallCamera(realDt, fallU, fallTau);
+    else if (cameraMode === 'consume') updateConsumeCamera(realDt);
     else controls.update();
     galaxies.updateCamera(camera, container.clientWidth, container.clientHeight);
     if (dofOn) updateFocus(realDt);
@@ -730,8 +760,12 @@ export function startApp(container, { startScreen } = {}) {
   }
   window.addEventListener('resize', resizeAll);
 
-  // ── Galaxy collisions (one at a time; transient: never in the store) ──
+  // ── Collisions: consumption (one at a time; galaxy/consumption.js) ────
+  // A black hole eats a black hole or a galaxy, or a galaxy merges into a
+  // galaxy. Transient until the end: then the result goes into the store in
+  // one change (one undo step); Stop part-way puts both back.
   let collision = null;
+  let committing = false;
   const collisionListeners = new Set();
   const collisionOk = collisionSupported(renderer);
   const notifyCollision = () => {
@@ -742,29 +776,100 @@ export function startApp(container, { startScreen } = {}) {
     if (!collision) return;
     collision.dispose();
     collision = null;
+    if (cameraMode === 'consume') setCameraMode('orbit');
     notifyCollision();
   }
-  function startCollision(idA, idB, options = {}) {
+  /** The winner's store patch and its entry after the commit (the remnant). */
+  function consumePlan(winnerId, victimId) {
+    const state = store.getState();
+    const winner = state.galaxies.find((g) => g.id === winnerId);
+    const victim = state.galaxies.find((g) => g.id === victimId);
+    const patch = consumeResult(winner, victim);
+    const next = reducer(state, actions.consumeGalaxy(winnerId, victimId, patch));
+    return { patch, remnant: next.galaxies.find((g) => g.id === winnerId) };
+  }
+  /** @param {string} starterId the object whose panel started it (wins a tie) */
+  function startCollision(starterId, partnerId) {
     stopCollision();
-    const a = galaxies.get(idA);
-    const b = galaxies.get(idB);
-    if (!collisionOk || !a || !b || a === b || a.standalone || b.standalone) return;
-    collision = new CollisionSim({ renderer, a, b, ...options });
-    // Frame the pair from the current direction; the barycentre stays put.
-    if (cameraMode !== 'orbit') setCameraMode('orbit');
-    const target = collision.centre();
-    const span = a.group.position.distanceTo(b.group.position) + a.radius + b.radius;
-    const distance = THREE.MathUtils.clamp(span * 1.4, CAMERA_LIMITS.minDistance * 2, CAMERA_LIMITS.maxDistance * 0.9);
-    const dir = camera.position.clone().sub(controls.target).normalize();
-    cameraFly.flyTo(target, target.clone().addScaledVector(dir, distance), 1.5);
+    const a = galaxies.get(starterId);
+    const b = galaxies.get(partnerId);
+    if (!collisionOk || !a || !b || a === b) return;
+    try {
+      collision = new CollisionSim({
+        renderer,
+        starter: a,
+        partner: b,
+        plan: consumePlan,
+        createPreview: (entry) => galaxies.createDetached(entry),
+        removePreview: (g) => galaxies.removeDetached(g),
+        streamCount: mobile ? 4000 : 12000,
+      });
+    } catch (error) {
+      console.error(error);
+      collision = null;
+      for (const g of [a, b]) {
+        g.endCollision();
+        g.clearConsumeEffects();
+      }
+      showToast(container, 'Collisions are not supported on this device');
+      return;
+    }
+    interruptFall(false);
+    startConsumeCamera();
     notifyCollision();
   }
-  // Any change that moves, reshapes or removes either galaxy ends it.
+  /** The end: the result goes into the store; the after-effects keep running. */
+  function commitCollision(event) {
+    committing = true;
+    store.dispatch(actions.consumeGalaxy(event.winnerId, event.victimId, event.patch));
+    committing = false;
+    collision.committed();
+    if (cameraMode === 'consume') setCameraMode('orbit');
+    notifyCollision();
+  }
+  // Any change that moves, reshapes or removes either object ends it.
   store.subscribe((next, prev) => {
-    if (collision && next.galaxies !== prev.galaxies && collisionBroken(prev.galaxies, next.galaxies, collision.pair())) stopCollision();
+    if (committing || !collision || next.galaxies === prev.galaxies) return;
+    if (collisionBroken(prev.galaxies, next.galaxies, collision.pair())) stopCollision();
   });
   // The simulation textures do not survive a lost context.
   renderer.domElement.addEventListener('webglcontextlost', stopCollision);
+
+  // Auto camera: the winner is the target; it moves in as the victim closes in.
+  let consumeCam = null;
+  function startConsumeCamera() {
+    const st = collision.status(_consumeStatus);
+    const winner = galaxies.get(collision.pair()[0]);
+    const victim = galaxies.get(collision.pair()[1]);
+    const span = st.startDistance + winner.radius + victim.radius;
+    const startDistance = THREE.MathUtils.clamp(span * 1.4, CAMERA_LIMITS.minDistance * 2, CAMERA_LIMITS.maxDistance * 0.9);
+    let endDistance;
+    const shot = filmShot(winner.id);
+    if (shot) endDistance = shot.position.distanceTo(shot.center) * GROWTH;
+    else endDistance = winner.radius * GROWTH * 2.6;
+    endDistance = THREE.MathUtils.clamp(endDistance, CAMERA_LIMITS.minDistance, CAMERA_LIMITS.maxDistance);
+    const { normal } = winner.pickTarget();
+    consumeCam = { startDistance, endDistance, startSeparation: st.startDistance, normal: normal.toArray(), distance: camera.position.distanceTo(controls.target) };
+    setCameraMode('consume');
+  }
+  function updateConsumeCamera(realDt) {
+    if (!collision || !consumeCam) {
+      setCameraMode('orbit');
+      return;
+    }
+    const st = collision.status(_consumeStatus);
+    const cam = consumeCam;
+    collision.centre(_consumeTarget);
+    controls.target.lerp(_consumeTarget, 1 - Math.exp(-TARGET_RATE * realDt));
+    const want = consumeDistance(cam.startDistance, cam.endDistance, st.distance, cam.startSeparation);
+    cam.distance = easeValue(cam.distance, want, DISTANCE_RATE, realDt);
+    _consumeVec.subVectors(camera.position, controls.target).normalize().toArray(_consumeDir);
+    raiseDirection(_consumeDir, cam.normal, MIN_ELEVATION_DEG, _consumeRaised);
+    const k = 1 - Math.exp(-DIRECTION_RATE * realDt);
+    _consumeVec.fromArray(_consumeDir).lerp(_consumeVec2.fromArray(_consumeRaised), k).normalize();
+    camera.position.copy(controls.target).addScaledVector(_consumeVec, cam.distance);
+    camera.lookAt(controls.target);
+  }
 
   // ── Commands ───────────────────────────────────────────────────────────
   const getTarget = () => controls.target.toArray().map((v) => Math.round(v * 100) / 100);
