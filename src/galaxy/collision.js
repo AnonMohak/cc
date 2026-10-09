@@ -442,7 +442,7 @@ function clusterCentre(orbit, i, m, out) {
 
 /**
  * The field the stars move in during one step (the GPU uniforms).
- * @typedef {{ pos: number[][], gm: number[], eps2: number[], indirect?: number[], drag?: number, winnerVel?: number[],
+ * @typedef {{ pos: number[][], gm: number[], eps2: number[], indirect?: number[], drag?: number, winnerVel?: number[], infall?: number,
  *   hole?: boolean, normal?: number[], accRadius?: number, capture?: number, accRate?: number,
  *   spinMax?: number, settle?: number, timeLeft?: number }} StarField
  *   pos/gm/eps2: [winner, victim]; hole: the winner is a black hole (accretion on)
@@ -468,6 +468,19 @@ export function stepStar(star, f, dt) {
     const a = [0, 0, 0];
     for (let b = 0; b < 2; b++) addPlummerAccel(a, pos, f.pos[b], f.gm[b], f.eps2[b]);
     const drag = f.drag ?? 0;
+    // A hole winner's extra inward pull (consumption.js infallPull): tails fall back.
+    if (f.hole && f.infall) {
+      const c = f.pos[0];
+      const rx = pos[0] - c[0];
+      const ry = pos[1] - c[1];
+      const rz = pos[2] - c[2];
+      const r = Math.hypot(rx, ry, rz);
+      if (r > 1e-6) {
+        a[0] -= (f.infall * rx) / r;
+        a[1] -= (f.infall * ry) / r;
+        a[2] -= (f.infall * rz) / r;
+      }
+    }
     // The drag works on the velocity relative to the winner (it may still be slowing down).
     for (let k = 0; k < 3; k++) {
       vel[k] += (a[k] + (f.indirect?.[k] ?? 0) - drag * (vel[k] - (f.winnerVel?.[k] ?? 0))) * dt;

@@ -16,6 +16,7 @@ uniform vec2 uEps2; // softening² of each
 uniform vec3 uIndirect; // winner frame: its own acceleration minus the victim's pull on it (0 in the opening pass)
 uniform vec3 uWinnerVel; // the drag works relative to the winner (it may still be slowing down)
 uniform float uDrag; // 1/s, toward a black-hole winner
+uniform float uInfall; // a hole winner's extra inward pull on free matter (consumption.js infallPull)
 uniform float uHole; // 1: the winner is a black hole (accretion on)
 uniform vec3 uHoleNormal;
 uniform float uAccRadius;
@@ -77,6 +78,9 @@ void main() {
 #endif
   } else if (state < 1.5) {
     vec3 a = plummer(p, uCentre0, uGm.x, uEps2.x) + plummer(p, uCentre1, uGm.y, uEps2.y) + uIndirect - uDrag * (v - uWinnerVel);
+    vec3 toHole = uCentre0 - p;
+    float dHole = length(toHole);
+    if (uHole > 0.5 && dHole > 1e-6) a += toHole * (uInfall / dHole);
     v += a * uDt;
     p += v * uDt;
     vec3 rel = p - uCentre0;

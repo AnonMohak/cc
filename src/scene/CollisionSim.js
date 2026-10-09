@@ -26,7 +26,6 @@ import {
 import {
   KIND,
   INSPIRAL_SECONDS,
-  DRAIN_SECONDS,
   MERGE_FADE_SECONDS,
   ACC_RADIUS,
   ACC_RATE,
@@ -52,6 +51,11 @@ import {
   starburstLevel,
   afterSeconds,
   captureRadius,
+  drainSeconds,
+  consumeReach,
+  infallPull,
+  DRAIN_DONE,
+  drainFade,
 } from '../galaxy/consumption.js';
 import { prepareGalaxy, isGalaxyReady, clearGalaxyCache } from '../galaxy/generationCache.js';
 
@@ -195,6 +199,7 @@ export class CollisionSim {
       uIndirect: { value: new THREE.Vector3() },
       uWinnerVel: { value: new THREE.Vector3() },
       uDrag: { value: 0 },
+      uInfall: { value: 0 },
       uHole: { value: this.holeWinner ? 1 : 0 },
       uHoleNormal: { value: new THREE.Vector3().fromArray(this.normal) },
       uAccRadius: { value: this.accRadius },
@@ -305,7 +310,7 @@ export class CollisionSim {
         } else {
           this.stageTime += dt;
         }
-        const end = this.stage === 'drain' ? DRAIN_SECONDS : MERGE_FADE_SECONDS;
+        const end = this.stage === 'drain' ? drainSeconds(this.kind) : MERGE_FADE_SECONDS;
         if (this.stageTime >= end && (this.stage === 'drain' || this.preview)) {
           this.stage = 'commit';
           this.applyLooks();
@@ -484,7 +489,7 @@ export class CollisionSim {
         v.setGasFade(gasFade(Math.max(disruption[1], eatenShare(this.kind, turnsDone, this.turns))));
       }
       // Whatever is left at the end of the drain goes with the victim.
-      if (this.stage === 'drain' || this.stage === 'commit') v.setFade(1 - smooth(this.stageTime / DRAIN_SECONDS));
+      if (this.stage === 'drain' || this.stage === 'commit') v.setFade(drainFade(this.stageTime, drainSeconds(this.kind)));
     } else {
       const fade = this.stage === 'fade' || this.stage === 'commit' ? smooth(this.stageTime / MERGE_FADE_SECONDS) : 0;
       v.setGasFade(gasFade(Math.max(disruption[1], eatenShare(this.kind, turnsDone, this.turns))) * (1 - fade));
@@ -523,10 +528,13 @@ export class CollisionSim {
     const p = this.pose;
     const pull = spiral ? victimPull(this.kind, p.turnsDone, this.turns) : 1;
     const gmVictim = this.gmVictim0 * pull;
+    // Mass is kept: what the victim loses, the winner gains, so the debris
+    // stays bound and spirals in (it escaped when the mass just vanished).
+    const gmWinner = this.gmWinner + this.gmVictim0 - gmVictim;
     f.uDt.value = h;
     f.uCentre0.value.fromArray(this.winnerPos);
     f.uCentre1.value.fromArray(this.victimPos);
-    f.uGm.value.set(this.gmWinner, gmVictim);
+    f.uGm.value.set(gmWinner, gmVictim);
     if (spiral) {
       for (let k = 0; k < 3; k++) _winnerAcc[k] /= L * L;
       indirectAccel(_indirect, this.winnerPos, this.victimPos, gmVictim, this.eps2Victim, _winnerAcc);
@@ -540,13 +548,18 @@ export class CollisionSim {
       const w = this.winner;
       const draining = this.stage === 'drain';
       f.uDrag.value = spiral ? freeDrag(p, this.seconds) / L : 0;
+      f.uInfall.value = spiral ? infallPull(p.progress) / (L * L) : 0;
       f.uCapture.value = captureRadius(w.rsUnit * w.radius * w.holeScale);
-      // Draining: everything left falls in.
-      f.uAccRadius.value = draining ? NO_RELEASE : this.accRadius;
+      // Late in the spiral and in the drain the capture zone grows slowly, so
+      // what is left spirals in over many seconds.
+      const drain = drainSeconds(this.kind);
+      f.uAccRadius.value = this.accRadius * (spiral ? consumeReach(p.progress, draining ? this.stageTime : 0, drain) : 1);
       f.uAccRate.value = ACC_RATE / L;
       f.uSpinMax.value = ACC_SPIN_MAX / L;
       f.uSettle.value = ACC_SETTLE / L;
-      const left = draining ? Math.max(0, DRAIN_SECONDS - this.stageTime) : spiral ? p.timeLeft + DRAIN_SECONDS : 1e3;
+      // The deadline is before the drain's end: all is in before the victim's last light fades.
+      const done = DRAIN_DONE * drain;
+      const left = draining ? Math.max(0, done - this.stageTime) : spiral ? p.timeLeft + done : 1e3;
       f.uTimeLeft.value = left * L;
     }
     for (const sim of this.sims) {

@@ -282,3 +282,17 @@ describe('opening pass without friction', () => {
     expect(separation(s)).toBeGreaterThan(2 * min);
   });
 });
+
+describe('infall pull', () => {
+  it('turns a star flying away from a hole winner back toward it', () => {
+    const field = { pos: [[0, 0, 0], [1e6, 0, 0]], gm: [0, 0], eps2: [1, 1], hole: true, normal: [0, 1, 0], accRadius: 1, capture: 0.1, accRate: 0.2, spinMax: 12, settle: 2, timeLeft: 100, infall: 1 };
+    const star = { pos: [50, 0, 0], vel: [5, 0, 0], state: STATE.FREE, spin: 1 };
+    let maxR = 0;
+    for (let i = 0; i < 60 * 30; i++) {
+      stepStar(star, field, 1 / 60);
+      maxR = Math.max(maxR, star.pos[0]);
+    }
+    expect(maxR).toBeLessThan(70);
+    expect(star.vel[0] < 0 || star.state !== STATE.FREE).toBe(true);
+  });
+});

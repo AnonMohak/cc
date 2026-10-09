@@ -13,6 +13,15 @@ import {
   blendFactor,
   victimPull,
   eatenShare,
+  drainSeconds,
+  consumeReach,
+  infallPull,
+  INFALL_ACC,
+  DRAIN_DONE,
+  DRAIN_FADE_SHARE,
+  drainFade,
+  DRAIN_REACH,
+  MAX_FREE_DRAG,
   victimHoleScale,
   winnerGrowth,
   freeDrag,
@@ -192,6 +201,37 @@ describe('spiral', () => {
     expect(blendFactor(0)).toBe(0);
     expect(blendFactor(BLEND_SECONDS / 2)).toBeCloseTo(0.5);
     expect(blendFactor(BLEND_SECONDS)).toBe(1);
+  });
+});
+
+describe('drain', () => {
+  it('lasts longer for a galaxy than for a hole, and none for a merger', () => {
+    expect(drainSeconds(KIND.HOLE_GALAXY)).toBeGreaterThan(drainSeconds(KIND.HOLE_HOLE));
+    expect(drainSeconds(KIND.HOLE_HOLE)).toBeGreaterThan(1.5);
+    expect(drainSeconds(KIND.GALAXY_GALAXY)).toBe(0);
+  });
+
+  it('grows the capture zone slowly from late in the spiral and fades the victim only at the end', () => {
+    expect(consumeReach(0.3, 0, 10)).toBe(1);
+    const late = consumeReach(1, 0, 10);
+    expect(late).toBeGreaterThan(consumeReach(0.7, 0, 10));
+    expect(late).toBeLessThan(DRAIN_REACH);
+    expect(consumeReach(1, 2, 10)).toBeGreaterThan(late);
+    expect(consumeReach(1, 5, 10)).toBe(DRAIN_REACH);
+    expect(drainFade(5, 10)).toBe(1);
+    expect(drainFade(10, 10)).toBe(0);
+  });
+
+  it('pulls free matter back from 15% of the spiral and is done before the last fade', () => {
+    expect(infallPull(0.1)).toBe(0);
+    expect(infallPull(0.6)).toBe(INFALL_ACC);
+    expect(DRAIN_DONE).toBeLessThanOrEqual(1 - DRAIN_FADE_SHARE);
+  });
+
+  it('keeps the drag on free matter low at the end of the spiral', () => {
+    const sp = makeSpiral({ kind: KIND.HOLE_GALAXY, turns: 11 });
+    expect(freeDrag(spiralPose(sp, sp.duration, createPose()), sp.seconds)).toBeLessThanOrEqual(MAX_FREE_DRAG);
+    expect(MAX_FREE_DRAG).toBeLessThanOrEqual(0.25);
   });
 });
 

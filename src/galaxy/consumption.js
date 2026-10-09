@@ -41,8 +41,21 @@ export const PASS_RATIO = 1.5;
 export const PASS_HOLD = 4;
 /** …or after this much time in contact (a head-on or a capture that never turns back). */
 export const PASS_MAX = 60;
-/** Black-hole winners: seconds after the merge for the last matter to fall in. */
-export const DRAIN_SECONDS = 1.5;
+/**
+ * Black-hole winners: seconds after the merge for the last matter to fall
+ * in, gradually (a galaxy's debris disc takes longer than a hole's stream).
+ */
+export const DRAIN_SECONDS = { [KIND.HOLE_HOLE]: 4, [KIND.HOLE_GALAXY]: 10 };
+/**
+ * Late in the spiral and in the drain the capture zone grows to this × its
+ * size, slowly, so even matter flung far out spirals in over many seconds
+ * rather than vanishing at the end.
+ */
+export const DRAIN_REACH = 40;
+// Share of the growth done by the end of the spiral (from 40% of it); the rest in the drain.
+const SPIRAL_REACH_SHARE = 0.6;
+/** The victim's last light fades over this final share of the drain. */
+export const DRAIN_FADE_SHARE = 0.3;
 /** Galaxy merger: seconds of the fade from the simulated stars to the remnant. */
 export const MERGE_FADE_SECONDS = 2.5;
 /** The winner's size after each object it eats (black hole: Rs; galaxy: radius). */
@@ -65,7 +78,8 @@ const SPIRAL_SAMPLES = 512;
 // the disc plane, and inside the capture radius (the disc's inner edge,
 // MARCH_INNER Rs) it is gone.
 export const FREE_DRAG = 0.03; // 1/s
-export const MAX_FREE_DRAG = 1.5;
+// Low: a strong drag at the end of the spiral made the debris drop in at once.
+export const MAX_FREE_DRAG = 0.25;
 export const ACC_RADIUS = 1;
 export const ACC_RATE = 0.25; // 1/s: e-fold time of the infall
 export const ACC_SPIN_MAX = 12; // rad/s: no strobing of the fastest inner orbits
@@ -290,6 +304,43 @@ export function spiralPose(sp, t, out) {
   out.timeLeft = Math.max(0, (sp.tauEnd - tau) * sp.seconds);
   out.radius = r;
   return out;
+}
+
+/** Drain seconds for a kind (0 for a galaxy merger: it fades instead). */
+export function drainSeconds(kind) {
+  return DRAIN_SECONDS[kind] ?? 0;
+}
+
+/**
+ * The capture zone's growth: ×1 until 40% of the spiral, SPIRAL_REACH_SHARE
+ * of the way by its end, then ×DRAIN_REACH by half the drain.
+ * @param {number} progress spiral progress 0–1
+ * @param {number} t seconds into the drain (0 before it)
+ * @param {number} seconds drain length
+ */
+export function consumeReach(progress, t, seconds) {
+  const u = SPIRAL_REACH_SHARE * smoothstep(0.4, 1, progress) + (1 - SPIRAL_REACH_SHARE) * smoothstep(0, 0.5 * seconds, t);
+  return 1 + (DRAIN_REACH - 1) * u;
+}
+
+/**
+ * A black-hole winner's extra inward pull on free matter (path units/s²):
+ * the tidal tails of the opening pass would fly away for good; this turns
+ * them around so they fall back and spiral in during the spiral.
+ */
+export const INFALL_ACC = 1.2;
+
+/** The inward pull 0 → INFALL_ACC over 15–60% of the spiral. */
+export function infallPull(progress) {
+  return INFALL_ACC * smoothstep(0.15, 0.6, progress);
+}
+
+/** The accretion deadline in the drain: everything is in by DRAIN_DONE of it, before the last fade. */
+export const DRAIN_DONE = 0.7;
+
+/** The victim's light in the drain: full, then out over the last DRAIN_FADE_SHARE. */
+export function drainFade(t, seconds) {
+  return 1 - smoothstep((1 - DRAIN_FADE_SHARE) * seconds, seconds, t);
 }
 
 /** Handover blend 0 → 1 (the physics path → the spiral) over BLEND_SECONDS. */
