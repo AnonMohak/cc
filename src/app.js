@@ -44,7 +44,7 @@ import { meterFrame, targetFactor, adapt } from './core/autoExposure.js';
 import { CollisionSim, collisionSupported } from './scene/CollisionSim.js';
 import { collisionBroken } from './galaxy/collision.js';
 import { consumeResult } from './galaxy/consumption.js';
-import { frameRadius, framingDistance, orbitViewTan, raiseDirection, easeValue, MIN_ELEVATION_DEG, TARGET_RATE, DISTANCE_RATE, DIRECTION_RATE } from './core/consumeCamera.js';
+import { frameRadius, framingDistance, orbitViewTan, raiseDirection, createSpring, springTo, MIN_ELEVATION_DEG, TARGET_RATE, DISTANCE_RATE, DIRECTION_RATE, LOOK_AHEAD } from './core/consumeCamera.js';
 import { rumbleLevel, rumbleCutoff } from './audio/soundMix.js';
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -69,7 +69,6 @@ const _focusOther = new THREE.Vector3();
 // Consumption auto-camera scratch.
 const _consumeTarget = new THREE.Vector3();
 const _consumeVec = new THREE.Vector3();
-const _consumeVec2 = new THREE.Vector3();
 const _consumeDir = [0, 0, 0];
 const _consumeRaised = [0, 0, 0];
 const _consumeStatus = {};
@@ -848,7 +847,7 @@ export function startApp(container, { startScreen } = {}) {
     store.dispatch(actions.consumeGalaxy(event.winnerId, event.victimId, event.patch));
     committing = false;
     collision.committed();
-    if (cameraMode === 'consume') setCameraMode('orbit');
+    // The auto camera glides on to the winner's end view, then hands over (updateConsumeCamera).
     notifyCollision();
   }
   // Any change that moves, reshapes or removes either object ends it.
@@ -865,7 +864,14 @@ export function startApp(container, { startScreen } = {}) {
   function startConsumeCamera() {
     const winner = galaxies.get(collision.pair()[0]);
     const { normal } = winner.pickTarget();
-    consumeCam = { normal: normal.toArray(), distance: camera.position.distanceTo(controls.target) };
+    // Soft springs, all from rest at the current view.
+    _consumeVec.subVectors(camera.position, controls.target).normalize();
+    consumeCam = {
+      normal: normal.toArray(),
+      distance: createSpring(camera.position.distanceTo(controls.target)),
+      target: controls.target.toArray().map((x) => createSpring(x)),
+      dir: _consumeVec.toArray().map((x) => createSpring(x)),
+    };
     setCameraMode('consume');
     // Cinema mode: the controls get out of the way (the Controls button brings them back).
     if (panel.isOpen()) panel.toggle();
@@ -875,11 +881,14 @@ export function startApp(container, { startScreen } = {}) {
       setCameraMode('orbit');
       return;
     }
-    const st = collision.status(_consumeStatus);
+    // Frame where the collision will be a little ahead: the camera moves early and slowly.
+    const st = collision.status(_consumeStatus, LOOK_AHEAD);
     const cam = consumeCam;
     collision.centre(_consumeTarget);
-    controls.target.lerp(_consumeTarget, 1 - Math.exp(-TARGET_RATE * realDt));
-    _consumeVec.subVectors(camera.position, controls.target).normalize().toArray(_consumeDir);
+    const t = _consumeTarget.toArray(_consumeDir);
+    for (let k = 0; k < 3; k++) springTo(cam.target[k], t[k], TARGET_RATE, realDt);
+    controls.target.set(cam.target[0].x, cam.target[1].x, cam.target[2].x);
+    for (let k = 0; k < 3; k++) _consumeDir[k] = cam.dir[k].x;
     raiseDirection(_consumeDir, cam.normal, MIN_ELEVATION_DEG, _consumeRaised);
     // The orbit lies near the winner's disc plane: fit it by how flat it looks from here.
     const n = cam.normal;
@@ -890,11 +899,16 @@ export function startApp(container, { startScreen } = {}) {
       CAMERA_LIMITS.minDistance,
       CAMERA_LIMITS.maxDistance * 0.9,
     );
-    cam.distance = easeValue(cam.distance, want, DISTANCE_RATE, realDt);
-    const k = 1 - Math.exp(-DIRECTION_RATE * realDt);
-    _consumeVec.fromArray(_consumeDir).lerp(_consumeVec2.fromArray(_consumeRaised), k).normalize();
-    camera.position.copy(controls.target).addScaledVector(_consumeVec, cam.distance);
+    springTo(cam.distance, want, DISTANCE_RATE, realDt);
+    for (let k = 0; k < 3; k++) springTo(cam.dir[k], _consumeRaised[k], DIRECTION_RATE, realDt);
+    _consumeVec.set(cam.dir[0].x, cam.dir[1].x, cam.dir[2].x).normalize();
+    camera.position.copy(controls.target).addScaledVector(_consumeVec, cam.distance.x);
     camera.lookAt(controls.target);
+    // After the commit, hand the camera to orbit once it has come to rest (no sudden stop).
+    if (st.stage === 'after') {
+      const still = Math.abs(cam.distance.v) < 0.01 * want && Math.abs(cam.distance.x - want) < 0.01 * want;
+      if (still && cam.dir.every((d) => Math.abs(d.v) < 0.005) && cam.target.every((d) => Math.abs(d.v) < 0.005 * want)) setCameraMode('orbit');
+    }
   }
 
   // ── Commands ───────────────────────────────────────────────────────────

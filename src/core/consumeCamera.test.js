@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { frameRadius, framingDistance, orbitViewTan, raiseDirection, easeValue, MIN_ELEVATION_DEG, FILL } from './consumeCamera.js';
+import { frameRadius, framingDistance, orbitViewTan, raiseDirection, easeValue, createSpring, springTo, MIN_ELEVATION_DEG, FILL } from './consumeCamera.js';
 
 describe('consumeCamera', () => {
   it('frames the pair in the opening pass, then the shrinking orbit, down to the winner', () => {
@@ -36,6 +36,25 @@ describe('consumeCamera', () => {
     expect(low[0]).toBeGreaterThan(0);
     const high = raiseDirection([0, 0.8, 0.6], n, MIN_ELEVATION_DEG, [0, 0, 0]);
     expect(high).toEqual([0, 0.8, 0.6]);
+  });
+
+  it('the spring starts from rest, speeds up gently, settles without overshoot, at any frame rate', () => {
+    const a = createSpring(0);
+    const speeds = [];
+    for (let i = 0; i < 60 * 20; i++) {
+      springTo(a, 10, 0.5, 1 / 60);
+      speeds.push(a.v);
+      expect(a.x).toBeLessThanOrEqual(10 + 1e-9);
+    }
+    // Soft start: the first frame barely moves, the speed then rises.
+    expect(speeds[0]).toBeLessThan(speeds[60]);
+    expect(a.x).toBeCloseTo(10, 2);
+    const b = createSpring(0);
+    for (let i = 0; i < 60 * 3; i++) springTo(b, 10, 0.5, 1 / 60);
+    const c = createSpring(0);
+    for (let i = 0; i < 30 * 3; i++) springTo(c, 10, 0.5, 1 / 30);
+    expect(b.x).toBeCloseTo(c.x, 9);
+    expect(b.v).toBeCloseTo(c.v, 9);
   });
 
   it('eases at any frame rate to the same place', () => {

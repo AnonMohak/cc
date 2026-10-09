@@ -6,7 +6,10 @@
  * the victim spirals in, down to the winner's end view (a hole's disc, the
  * remnant galaxy). It keeps the current side and raises the view to at
  * least MIN_ELEVATION_DEG above the winner's disc, so the streams and the
- * disc read. Frame-rate independent eases.
+ * disc read. Soft and slow: critically damped springs (they start from
+ * rest, speed up gently and settle without overshoot) that aim at the
+ * framing LOOK_AHEAD seconds ahead, so the camera starts moving early and
+ * never has to hurry. Frame-rate independent (closed form).
  */
 
 /** How much of the half view the framed radius fills (close: most of it). */
@@ -15,10 +18,12 @@ export const FILL = 0.85;
 const BODY_SHARE = 0.6;
 
 export const MIN_ELEVATION_DEG = 15;
-/** Ease rates (1/s): the target, the distance and the direction. */
-export const TARGET_RATE = 3;
-export const DISTANCE_RATE = 1.2;
-export const DIRECTION_RATE = 1;
+/** Spring rates (rad/s; settled in about 5 / rate seconds): the target, the distance and the direction. */
+export const TARGET_RATE = 0.9;
+export const DISTANCE_RATE = 0.5;
+export const DIRECTION_RATE = 0.45;
+/** The camera frames the collision this many simulation seconds ahead. */
+export const LOOK_AHEAD = 3;
 
 /**
  * The radius to keep in view (world units) for a collision status
@@ -87,4 +92,24 @@ export function raiseDirection(dir, normal, minDeg, out) {
 /** Exponential ease of a value toward a target (rate 1/s). */
 export function easeValue(current, target, rate, dt) {
   return target + (current - target) * Math.exp(-rate * dt);
+}
+
+/** A spring state for springTo: value and velocity. */
+export function createSpring(x = 0) {
+  return { x, v: 0 };
+}
+
+/**
+ * One step of a critically damped spring toward `target` (exact for a
+ * target held over the step, so the same at any frame rate). Mutates s.
+ * x(t) = T + (d + (v0 + ω d) t) e^(−ωt), d = x0 − T.
+ * @param {{ x: number, v: number }} s
+ */
+export function springTo(s, target, omega, dt) {
+  const d = s.x - target;
+  const b = s.v + omega * d;
+  const e = Math.exp(-omega * dt);
+  s.x = target + (d + b * dt) * e;
+  s.v = (b - omega * (d + b * dt)) * e;
+  return s;
 }

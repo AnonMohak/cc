@@ -82,6 +82,7 @@ const _indirect = [0, 0, 0];
 const _winnerAcc = [0, 0, 0];
 const _winnerVel = [0, 0, 0];
 const _ripple = { radius: 0, amp: 0 };
+const _ahead = createPose();
 
 /**
  * Whether this GPU can render to float textures (the star simulation needs
@@ -259,9 +260,12 @@ export class CollisionSim {
   /**
    * For the auto camera and the sound: the stage, progress 0–1 over the
    * spiral (0 in the opening pass), the distance between the centres, the
-   * orbit frequency (Hz) and the seconds since the merge.
+   * orbit frequency (Hz) and the seconds since the merge. lookAhead: the
+   * distance and progress that many simulation seconds ahead (the camera
+   * moves early and slowly): the spiral is closed form; the opening pass
+   * goes on at its current closing speed.
    */
-  status(out = {}) {
+  status(out = {}, lookAhead = 0) {
     const p = this.pose;
     const spiral = this.spiral !== null;
     out.stage = this.stage;
@@ -275,8 +279,20 @@ export class CollisionSim {
     out.afterTime = this.afterTime;
     out.merged = spiral && p.stage === 'merged';
     out.turnsDone = spiral ? p.turnsDone : 0;
+    if (lookAhead > 0 && this.stage === 'spiral') {
+      spiralPose(this.spiral, this.spiralTime + lookAhead, _ahead);
+      out.distance = Math.min(out.distance, _ahead.radius);
+      out.progress = _ahead.progress;
+    } else if (lookAhead > 0 && this.stage === 'pass') {
+      const s = this.centres;
+      let closing = 0;
+      for (let k = 0; k < 3; k++) closing += (s.pos[1][k] - s.pos[0][k]) * (s.vel[1][k] - s.vel[0][k]);
+      closing /= Math.max(out.distance, 1e-6);
+      out.distance = Math.max(0.3 * out.distance, out.distance + closing * lookAhead);
+    }
     // A black hole is framed by its disc, not by its sparse star cloud.
-    out.winnerRadius = this.wb.hole ? this.wb.discOuter : this.wb.radius;
+    // The live radius: a winning galaxy grows ×1.2 at the commit.
+    out.winnerRadius = this.wb.hole ? this.wb.discOuter : this.winner.radius;
     out.victimRadius = this.vb.hole ? this.vb.discOuter : this.vb.radius;
     out.winnerHole = this.wb.hole;
     out.winnerDisc = this.wb.discOuter * (this.winner.holeScale || 1);
