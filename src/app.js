@@ -222,11 +222,28 @@ export function startApp(container, { startScreen } = {}) {
   post.setJetSource(() => galaxies.hasVisibleJets() || (collision?.drawsAfterLens() ?? false));
 
   let dofOn = false;
+  // Depth of field is off during a collision (a cinema scene keeps every
+  // object sharp): this share of the setting fades to 0 and back (real time).
+  let dofShare = 1;
+  const DOF_FADE_SECONDS = 1;
+  function applyDof() {
+    const { depthOfField } = store.getState().settings;
+    post.setDof(depthOfField * dofShare, dofOn && dofShare > 0);
+  }
   function applyCinematic() {
     const settings = store.getState().settings;
     post.setCinematic(settings, cinematicEnabled(settings, currentTier));
     dofOn = dofEnabled(settings.depthOfField, currentTier);
-    post.setDof(settings.depthOfField, dofOn);
+    applyDof();
+  }
+  /** The depth-of-field share eased toward its target; true while it moves. */
+  function updateDofShare(realDt) {
+    const target = collision ? 0 : 1;
+    if (dofShare === target) return false;
+    const step = realDt / DOF_FADE_SECONDS;
+    dofShare = target > dofShare ? Math.min(target, dofShare + step) : Math.max(target, dofShare - step);
+    applyDof();
+    return true;
   }
 
   function applySpikes() {
@@ -656,6 +673,7 @@ export function startApp(container, { startScreen } = {}) {
     else if (cameraMode === 'consume') updateConsumeCamera(realDt);
     else controls.update();
     galaxies.updateCamera(camera, container.clientWidth, container.clientHeight);
+    updateDofShare(realDt);
     if (dofOn) updateFocus(realDt);
     starfield.update(camera.position);
     sky.update(camera.position);
@@ -717,6 +735,7 @@ export function startApp(container, { startScreen } = {}) {
       fovEase !== null ||
       warpEase !== null ||
       (dofOn && (focus !== focusTarget || focusRange !== focusRangeTarget)) ||
+      (dofOn && dofShare !== (collision ? 0 : 1)) ||
       controls.autoRotate ||
       galaxies.isEasing() ||
       autoFactor !== autoTarget ||
