@@ -9,7 +9,20 @@ import { createStreamMaterial } from '../galaxy/starMaterials.js';
 import { createRandom } from '../galaxy/random.js';
 import { LAYERS } from '../core/layers.js';
 import { LENS_REACH } from '../galaxy/blackHole.js';
-import { G_SIM, SOFTENING, galaxyMass, spinAxis, starSubsteps, simTextureSize, indirectAccel, gasFade } from '../galaxy/collision.js';
+import {
+  G_SIM,
+  spinAxis,
+  starSubsteps,
+  simTextureSize,
+  indirectAccel,
+  gasFade,
+  bodyPhysics,
+  designOrbit,
+  createCentres,
+  stepCentres,
+  separation,
+  warpFactor,
+} from '../galaxy/collision.js';
 import {
   KIND,
   INSPIRAL_SECONDS,
@@ -21,16 +34,17 @@ import {
   ACC_SETTLE,
   pickWinner,
   turnsFor,
-  orbitRadii,
-  designPath,
-  pathPose,
+  mergeRadius,
+  createPassWatch,
+  watchPass,
+  designSpiral,
+  spiralPose,
   createPose,
-  orbitGm,
-  timeLapse,
+  blendFactor,
+  victimPull,
+  eatenShare,
   victimHoleScale,
   winnerGrowth,
-  releaseRadius,
-  releasedShare,
   freeDrag,
   feedLevel,
   flashGain,
@@ -44,7 +58,8 @@ import { prepareGalaxy, isGalaxyReady, clearGalaxyCache } from '../galaxy/genera
 const STEP_GALAXY = glsl(CHUNKS.model, starsChunk, simInitChunk, stepShader);
 const STEP_STREAM = `#define STREAM\n${stepShader}`;
 const INIT_SHADER = glsl(CHUNKS.model, starsChunk, simInitChunk, initShader);
-// A release radius above every orbit: nothing comes free.
+// A release radius above every orbit: nothing comes free (every simulated
+// star starts FREE at contact; BOUND is only the empty texture before it).
 const NO_RELEASE = 1e9;
 // Disc brightness at full feeding flare (× 1 + this).
 const DISC_FEED_GAIN = 1.5;
@@ -53,11 +68,16 @@ const STREAM_GAIN = 2.5;
 const STREAM_BIRTHS_END = 0.92;
 // Share of stream matter born at L1 (toward the winner); the rest at L2.
 const STREAM_L1 = 0.7;
+// The opening pass counts as a head-on merge closer than this × the mean radius.
+const HEAD_ON = 0.05;
 
 const UP = new THREE.Vector3(0, 1, 0);
 const _normal = new THREE.Vector3();
 const _quaternion = new THREE.Quaternion();
 const _indirect = [0, 0, 0];
+const _winnerAcc = [0, 0, 0];
+const _winnerVel = [0, 0, 0];
+const _ripple = { radius: 0, amp: 0 };
 
 /**
  * Whether this GPU can render to float textures (the star simulation needs
@@ -68,7 +88,7 @@ export function collisionSupported(renderer) {
   return renderer.capabilities.maxVertexTextures > 0 && renderer.extensions.has('EXT_color_buffer_float');
 }
 
-/** A Galaxy as a consumption body (consumption.js Body). */
+/** A Galaxy as a consumption body (consumption.js Body, plus its disc radius). */
 function bodyOf(g) {
   const rs = g.standalone ? g.rsUnit * g.radius : 0;
   return { id: g.id, hole: g.standalone, radius: g.radius, rs, discOuter: g.standalone ? g.hole.discSize * rs : 0 };
@@ -81,37 +101,44 @@ function normalOf(g) {
 }
 
 /**
- * One running consumption (galaxy/consumption.js has the timeline,
- * galaxy/collision.js the physics): the winner stays put, the victim follows
- * its scripted path, and the stars are test particles on the GPU (two
- * RGBA32F ping-pong textures per body: position + state, velocity).
+ * One running collision (galaxy/consumption.js has the timeline,
+ * galaxy/collision.js the physics). Stars are test particles on the GPU
+ * (two RGBA32F ping-pong textures per body: position + state, velocity).
  *
- * - Black hole eats a galaxy: the galaxy's stars stay on their analytic
- *   orbits until tides release them (outside in), then fall, accrete and are
- *   gone; the gas fades as they go.
- * - Black hole eats a black hole: the victim shrinks every turn; its disc
- *   matter leaves in a gold stream (its own small simulation) and its star
- *   cloud is released the same way.
- * - Galaxy merges into a galaxy: both galaxies' stars are free from the
- *   orbit entry, in a time-lapse (the real masses are slow); at the end a
- *   preview of the remnant fades in over the simulated stars.
- *
- * update() returns { type: 'commit', … } once: the caller puts the result
- * in the store, then calls committed(); the after-effects (flare, flash,
- * ripple, starburst) run until isDone(). dispose() stops at any point
- * (before the commit, both objects go back to their start).
+ * 1. Opening pass (stage 'pass'): free physics, as a real encounter. Both
+ *    centres move (zero total momentum); far apart they fast-forward and
+ *    the stars stay analytic; at contact the stars come into the
+ *    simulation and react with tails and bridges.
+ * 2. Handover ('spiral'), after the first close pass: the winner comes to
+ *    rest and the victim's path blends from the physics path into the
+ *    scripted spiral (exact turns, slow). The victim loses its own pull as
+ *    it is eaten, so its stars come free and are stripped.
+ *    - Black hole eats a galaxy: free matter gets a drag toward the hole,
+ *      accretes and is gone; the gas fades.
+ *    - Black hole eats a black hole: the victim shrinks every turn and its
+ *      disc matter leaves in a gold stream (its own small simulation).
+ *    - Galaxy merges into a galaxy: at the end a preview of the remnant
+ *      fades in over the simulated stars.
+ * 3. update() returns { type: 'commit', … } once: the caller puts the result
+ *    in the store (with the winner where it came to rest), then calls
+ *    committed(); the after-effects (flare, flash, ripple, starburst) run
+ *    until isDone(). dispose() stops at any point (before the commit, both
+ *    objects go back to their start).
  */
 export class CollisionSim {
   /**
    * @param {{ renderer: THREE.WebGLRenderer, starter: import('../galaxy/Galaxy.js').Galaxy, partner: import('../galaxy/Galaxy.js').Galaxy,
    *   plan: (winnerId: string, victimId: string) => { patch: object, remnant: object },
-   *   createPreview?: (entry: object) => import('../galaxy/Galaxy.js').Galaxy, removePreview?: (g: object) => void, streamCount?: number }} options
+   *   createPreview?: (entry: object) => import('../galaxy/Galaxy.js').Galaxy, removePreview?: (g: object) => void,
+   *   streamCount?: number, pass?: number, speed?: number }} options
    *   plan: the store patch for the winner and its entry after the commit
+   *   pass, speed: the opening pass (collision.js COLLISION_LIMITS)
    */
-  constructor({ renderer, starter, partner, plan, createPreview, removePreview, streamCount = 12000 }) {
+  constructor({ renderer, starter, partner, plan, createPreview, removePreview, streamCount = 12000, pass, speed }) {
     this.renderer = renderer;
     this.createPreview = createPreview;
     this.removePreview = removePreview;
+    this.streamCount = streamCount;
     const pick = pickWinner(bodyOf(starter), bodyOf(partner));
     this.kind = pick.kind;
     this.winner = pick.winner.id === starter.id ? starter : partner;
@@ -125,61 +152,48 @@ export class CollisionSim {
     const w = this.winner;
     const v = this.victim;
     for (const g of [w, v]) g.beginCollision();
-    const wb = bodyOf(w);
-    const vb = bodyOf(v);
-    const { r0, rEnd } = orbitRadii(this.kind, wb, vb);
+    this.wb = bodyOf(w);
+    this.vb = bodyOf(v);
+    const wp = bodyPhysics(this.wb);
+    const vp = bodyPhysics(this.vb);
     this.normal = normalOf(w);
     this.victimNormal = normalOf(v);
-    this.path = designPath({
-      kind: this.kind,
-      winnerPos: w.group.position.toArray(),
-      victimPos: v.group.position.toArray(),
-      normal: this.normal,
-      spin: spinAxis(this.normal, w.speed),
-      r0,
-      rEnd,
-      turns: turnsFor(this.kind, v.radius),
-      seconds: INSPIRAL_SECONDS[this.kind],
-    });
-    this.pose = pathPose(this.path, 0, createPose());
-    this.startDistance = this.pose.radius;
-    this.t = 0;
-    /** 'run' → ('drain' | 'fade') → 'commit' → 'after' → 'done' */
-    this.stage = 'run';
+    this.turns = turnsFor(this.kind, v.radius);
+    this.seconds = INSPIRAL_SECONDS[this.kind];
+
+    // The opening pass: the old free collision (centres 0 = winner, 1 = victim).
+    const posA = w.group.position.toArray();
+    const posB = v.group.position.toArray();
+    const orbit = designOrbit({ posA, posB, a: wp, b: vp, spinA: spinAxis(this.normal, w.speed), pass, speed });
+    this.centres = createCentres({ posA, posB, velA: orbit.velA, velB: orbit.velB, a: wp, b: vp, friction: false });
+    this.watch = createPassWatch();
+    this.startDistance = separation(this.centres);
+    this.gmWinner = G_SIM * wp.mass;
+    this.gmVictim0 = G_SIM * vp.mass;
+    this.eps2Winner = wp.eps2;
+    this.eps2Victim = vp.eps2;
+    this.accRadius = this.holeWinner ? ACC_RADIUS * this.wb.discOuter : 0;
+
+    this.spiral = null;
+    this.pose = createPose();
+    this.spiralTime = 0;
+    this.lapseNow = 1;
+    /** 'pass' → 'spiral' → ('drain' | 'fade') → 'commit' → 'after' → 'done' */
+    this.stage = 'pass';
     this.stageTime = 0;
     this.afterTime = 0;
-
-    // Gravity. Black-hole winners get the mass that makes the path a Kepler
-    // orbit, softened inside the disc (accretion takes over there).
-    const gmOrbit = orbitGm(this.path);
-    this.accRadius = ACC_RADIUS * wb.discOuter;
-    if (this.kind === KIND.HOLE_HOLE) {
-      const q = Math.min(1, vb.rs / Math.max(wb.rs, 1e-9));
-      this.gmWinner = gmOrbit / (1 + q);
-      this.gmVictim0 = (gmOrbit * q) / (1 + q);
-      this.eps2Winner = (0.5 * this.accRadius) ** 2;
-      this.eps2Victim = (0.5 * vb.discOuter) ** 2;
-    } else if (this.kind === KIND.HOLE_GALAXY) {
-      this.gmWinner = gmOrbit;
-      this.gmVictim0 = G_SIM * galaxyMass(v.radius);
-      this.eps2Winner = (0.5 * this.accRadius) ** 2;
-      this.eps2Victim = (SOFTENING * v.radius) ** 2;
-    } else {
-      this.gmWinner = G_SIM * galaxyMass(w.radius);
-      this.gmVictim0 = G_SIM * galaxyMass(v.radius);
-      this.eps2Winner = (SOFTENING * w.radius) ** 2;
-      this.eps2Victim = (SOFTENING * v.radius) ** 2;
-      this.lapse = timeLapse(r0, this.path.omega0, w.radius, v.radius);
-    }
-    this.lapseNow = 1;
+    this.winnerPos = [...posA];
+    this.victimPos = [...posB];
+    this.victimVel = [...orbit.velB];
 
     this.field = {
       uDt: { value: 0 },
-      uCentre0: { value: new THREE.Vector3().fromArray(this.path.winnerPos) },
-      uCentre1: { value: new THREE.Vector3() },
-      uGm: { value: new THREE.Vector2() },
+      uCentre0: { value: new THREE.Vector3().fromArray(posA) },
+      uCentre1: { value: new THREE.Vector3().fromArray(posB) },
+      uGm: { value: new THREE.Vector2(this.gmWinner, this.gmVictim0) },
       uEps2: { value: new THREE.Vector2(this.eps2Winner, this.eps2Victim) },
       uIndirect: { value: new THREE.Vector3() },
+      uWinnerVel: { value: new THREE.Vector3() },
       uDrag: { value: 0 },
       uHole: { value: this.holeWinner ? 1 : 0 },
       uHoleNormal: { value: new THREE.Vector3().fromArray(this.normal) },
@@ -188,21 +202,16 @@ export class CollisionSim {
       uAccRate: { value: ACC_RATE },
       uSpinMax: { value: ACC_SPIN_MAX },
       uSettle: { value: ACC_SETTLE },
-      uTimeLeft: { value: 1 },
+      uTimeLeft: { value: 1e3 },
     };
 
-    /** @type {{ gpu: GPUComputationRenderer, pos: object, vel: object, galaxy?: object, uniforms?: object, textures?: THREE.Texture[] }[]} */
+    /** @type {{ gpu: GPUComputationRenderer, pos: object, vel: object, galaxy: object | null, uniforms: object | null, textures: THREE.Texture[] }[]} */
     this.sims = [];
     this.stream = null;
     this.preview = null;
     this.remnantReady = false;
-    this.winnerSim = null;
-    // The victim's stars start BOUND (zero textures): drawn analytic until released.
-    this.victimSim = this.createGalaxySim(v);
-    if (this.holeWinner) {
-      if (this.kind === KIND.HOLE_HOLE) this.stream = this.createStream(streamCount);
-    } else {
-      // Built in a worker while the galaxies close in (no stall at the end).
+    if (!this.holeWinner) {
+      // Built in a worker while the galaxies meet (no stall at the end).
       prepareGalaxy(remnant.shape, remnant.seed, remnant.structure).then(() => {
         this.remnantReady = isGalaxyReady(remnant.shape, remnant.seed);
       });
@@ -218,12 +227,19 @@ export class CollisionSim {
   /** The objects to keep in focus (depth of field). */
   members() {
     if (this.stage === 'after' || this.stage === 'done') return [this.winner];
-    return this.preview ? [this.winner, this.victim, this.preview] : [this.winner, this.victim];
+    return this.preview?.group ? [this.winner, this.victim, this.preview] : [this.winner, this.victim];
   }
 
-  /** The winner's centre (fixed: the camera target). */
+  /** The camera target: the barycentre in the opening pass, then the winner. */
   centre(out = new THREE.Vector3()) {
-    return out.fromArray(this.path.winnerPos);
+    if (this.stage !== 'pass') return out.fromArray(this.winnerPos);
+    const s = this.centres;
+    const M = s.mass[0] + s.mass[1];
+    return out.set(
+      (s.mass[0] * s.pos[0][0] + s.mass[1] * s.pos[1][0]) / M,
+      (s.mass[0] * s.pos[0][1] + s.mass[1] * s.pos[1][1]) / M,
+      (s.mass[0] * s.pos[0][2] + s.mass[1] * s.pos[1][2]) / M,
+    );
   }
 
   isDone() {
@@ -237,20 +253,23 @@ export class CollisionSim {
 
   /**
    * For the auto camera and the sound: the stage, progress 0–1 over the
-   * path, the victim's distance from the winner, the orbit frequency (Hz)
-   * and the seconds since the merge.
+   * spiral (0 in the opening pass), the distance between the centres, the
+   * orbit frequency (Hz) and the seconds since the merge.
    */
   status(out = {}) {
     const p = this.pose;
+    const spiral = this.spiral !== null;
     out.stage = this.stage;
     out.kind = this.kind;
-    out.progress = this.stage === 'after' || this.stage === 'done' ? 1 : Math.min(1, this.t / this.path.duration);
-    out.distance = p.radius;
+    out.progress = this.stage === 'after' || this.stage === 'done' ? 1 : spiral ? p.progress : 0;
+    out.distance = Math.hypot(this.victimPos[0] - this.winnerPos[0], this.victimPos[1] - this.winnerPos[1], this.victimPos[2] - this.winnerPos[2]);
     out.startDistance = this.startDistance;
-    out.orbitHz = p.stage === 'approach' || p.radius <= 0 ? 0 : Math.hypot(p.vel[0], p.vel[1], p.vel[2]) / (2 * Math.PI * p.radius);
+    out.handoverDistance = spiral ? this.spiral.r0 : out.distance;
+    out.inContact = this.centres.interacting;
+    out.orbitHz = spiral && p.radius > 0 ? Math.hypot(p.vel[0] - p.winnerVel[0], p.vel[1] - p.winnerVel[1], p.vel[2] - p.winnerVel[2]) / (2 * Math.PI * p.radius) : 0;
     out.afterTime = this.afterTime;
-    out.merged = p.stage === 'merged';
-    out.turnsDone = p.turnsDone;
+    out.merged = spiral && p.stage === 'merged';
+    out.turnsDone = spiral ? p.turnsDone : 0;
     return out;
   }
 
@@ -265,27 +284,16 @@ export class CollisionSim {
       return null;
     }
     if (dt > 0) {
-      // Galaxy merger time-lapse: in from 1 over the approach, out over the fade.
-      const lapse = this.lapse ?? 1;
-      if (lapse > 1) {
-        const k = this.stage === 'fade' ? 1 - smooth(this.stageTime / MERGE_FADE_SECONDS) : smooth(this.t / this.path.approach);
-        this.lapseNow = 1 + (lapse - 1) * k;
-        this.winner.timeScale = this.victim.timeScale = this.lapseNow;
+      if (this.stage === 'pass' && !this.centres.interacting) {
+        // Far apart: the centres fast-forward, the stars stay analytic.
+        stepCentres(this.centres, dt * warpFactor(this.centres));
+        this.readCentres();
+        if (this.centres.interacting) this.startStars();
+      } else {
+        this.stepInteracting(dt);
       }
-      const dtStar = dt * this.lapseNow;
-      const n = this.sims.length > 0 ? Math.max(1, starSubsteps(dtStar)) : 1;
-      for (let i = 0; i < n; i++) {
-        this.t += dt / n;
-        pathPose(this.path, this.t, this.pose);
-        this.victim.group.position.fromArray(this.pose.pos);
-        if (this.kind === KIND.GALAXY_GALAXY && !this.winnerSim && this.pose.stage !== 'approach') this.startMergerStars();
-        if (this.sims.length > 0 && this.pose.stage !== 'approach') {
-          this.setField(dtStar / n);
-          for (const sim of this.sims) sim.gpu.compute();
-        }
-      }
-      if (this.pose.stage === 'merged') {
-        if (this.stage === 'run') this.stage = this.holeWinner ? 'drain' : 'fade';
+      if (this.stage === 'spiral' && this.pose.stage === 'merged') this.stage = this.holeWinner ? 'drain' : 'fade';
+      if (this.stage === 'drain' || this.stage === 'fade') {
         if (this.stage === 'fade' && !this.preview) {
           // Wait for the remnant build (a slow device: the merger keeps swirling).
           if (this.remnantReady) this.startFade();
@@ -296,7 +304,7 @@ export class CollisionSim {
         if (this.stageTime >= end && (this.stage === 'drain' || this.preview)) {
           this.stage = 'commit';
           this.applyLooks();
-          return { type: 'commit', winnerId: this.winner.id, victimId: this.victim.id, patch: this.patch };
+          return { type: 'commit', winnerId: this.winner.id, victimId: this.victim.id, patch: this.commitPatch() };
         }
       }
     }
@@ -304,13 +312,121 @@ export class CollisionSim {
     return null;
   }
 
+  /** The store patch: the growth, and the winner where it came to rest. */
+  commitPatch() {
+    const position = this.winnerPos.map((x) => Math.round(x * 100) / 100);
+    return { ...this.patch, look: { ...(this.patch.look ?? {}), position } };
+  }
+
+  /** In contact: substeps of the star simulation with the centres in step. */
+  stepInteracting(dt) {
+    const dtStar = dt * this.lapseNow;
+    const n = this.sims.length > 0 ? Math.max(1, starSubsteps(dtStar)) : 1;
+    for (let i = 0; i < n; i++) {
+      const hPath = dt / n;
+      const hStar = dtStar / n;
+      if (this.stage === 'pass') {
+        stepCentres(this.centres, hStar);
+        this.readCentres();
+        const merged = HEAD_ON * 0.5 * (this.wb.radius + this.vb.radius);
+        if (watchPass(this.watch, separation(this.centres), hStar, merged)) this.handover();
+      } else {
+        this.spiralTime += hPath;
+        // The physics path keeps going during the blend, to blend from.
+        const b = blendFactor(this.spiralTime);
+        if (b < 1) stepCentres(this.centres, hStar);
+        spiralPose(this.spiral, this.spiralTime, this.pose);
+        this.blendPaths(b);
+        this.lapseNow = 1 + (this.spiral.lapse - 1) * b;
+      }
+      this.winner.group.position.fromArray(this.winnerPos);
+      this.victim.group.position.fromArray(this.victimPos);
+      if (this.sims.length > 0) {
+        this.setField(hStar);
+        for (const sim of this.sims) sim.gpu.compute();
+      }
+    }
+  }
+
+  readCentres() {
+    const s = this.centres;
+    for (let k = 0; k < 3; k++) {
+      this.winnerPos[k] = s.pos[0][k];
+      this.victimPos[k] = s.pos[1][k];
+      this.victimVel[k] = s.vel[1][k];
+      _winnerVel[k] = s.vel[0][k];
+      _winnerAcc[k] = 0;
+    }
+    this.winner.group.position.fromArray(this.winnerPos);
+    this.victim.group.position.fromArray(this.victimPos);
+  }
+
+  /** The first close pass is over: the consumption takes over from here. */
+  handover() {
+    const s = this.centres;
+    const eps2 = this.eps2Winner + this.eps2Victim;
+    this.spiral = designSpiral({
+      kind: this.kind,
+      winnerPos: s.pos[0],
+      winnerVel: s.vel[0],
+      victimPos: s.pos[1],
+      victimVel: s.vel[1],
+      spin: spinAxis(this.normal, this.winner.speed),
+      gm: this.gmWinner + this.gmVictim0,
+      eps2,
+      rEnd: mergeRadius(this.wb),
+      turns: this.turns,
+      seconds: this.seconds,
+    });
+    this.spiralTime = 0;
+    spiralPose(this.spiral, 0, this.pose);
+    this.stage = 'spiral';
+    if (this.kind === KIND.HOLE_HOLE) this.stream = this.createStream(this.streamCount);
+  }
+
+  /**
+   * The victim at blend b: the physics path (relative to the physics
+   * winner) → the spiral, both around the settling winner. Velocities in
+   * path time.
+   */
+  blendPaths(b) {
+    const p = this.pose;
+    const s = this.centres;
+    for (let k = 0; k < 3; k++) {
+      this.winnerPos[k] = p.winnerPos[k];
+      const relPhys = s.pos[1][k] - s.pos[0][k];
+      const relSpiral = p.pos[k] - p.winnerPos[k];
+      this.victimPos[k] = p.winnerPos[k] + relPhys + (relSpiral - relPhys) * b;
+      const velPhys = (s.vel[1][k] - s.vel[0][k]) * this.lapseNow;
+      const velSpiral = p.vel[k] - p.winnerVel[k];
+      this.victimVel[k] = p.winnerVel[k] + velPhys + (velSpiral - velPhys) * b;
+      _winnerVel[k] = p.winnerVel[k];
+      _winnerAcc[k] = p.winnerAcc[k];
+    }
+  }
+
+  /** Contact: hand the stars, as they are now, to the GPU (one pass each, collisionInit.glsl). */
+  startStars() {
+    // A winning hole's own star cloud stays analytic (it moves with the hole).
+    const bodies = this.holeWinner ? [this.victim] : [this.winner, this.victim];
+    for (const g of bodies) {
+      const sim = this.createGalaxySim(g);
+      const u = sim.uniforms;
+      const b = g === this.winner ? 0 : 1;
+      u.uCentreVel.value.fromArray(this.centres.vel[b]);
+      for (const [variable, define] of [[sim.pos, '#define WRITE_POSITION\n'], [sim.vel, '']]) {
+        const material = sim.gpu.createShaderMaterial(define + INIT_SHADER, { ...g.uniforms, ...u });
+        sim.gpu.doRenderTarget(material, sim.gpu.getCurrentRenderTarget(variable));
+        material.dispose();
+      }
+    }
+  }
+
   /** The result is in the store (the victim is gone): only the winner's after-effects remain. */
   committed() {
     this.freeSimulation();
-    if (this.preview) {
-      this.removePreview?.(this.preview);
-      this.preview = null;
-    }
+    if (this.preview?.group) this.removePreview?.(this.preview);
+    this.preview = null;
     clearGalaxyCache();
     this.winner.endCollision();
     this.ids = [this.winner.id];
@@ -325,7 +441,7 @@ export class CollisionSim {
     const w = this.winner;
     const t = this.afterTime;
     if (this.holeWinner) {
-      const feed = feedLevel(this.kind, this.path.turns, this.path.turns, t);
+      const feed = feedLevel(this.kind, this.turns, this.turns, t);
       const flash = this.kind === KIND.HOLE_HOLE ? flashGain(t) : 1;
       w.setFeeding(feed);
       w.setHoleLook(1, (1 + DISC_FEED_GAIN * feed) * flash, 1 + feed);
@@ -342,36 +458,40 @@ export class CollisionSim {
     }
   }
 
-  /** The current state of the bodies, the lens split, the looks and the textures. */
+  /** The current looks, the lens split and the textures. */
   applyLooks() {
     const w = this.winner;
     const v = this.victim;
-    const p = this.pose;
-    const turnsDone = p.turnsDone;
-    const turns = this.path.turns;
+    const turnsDone = this.spiral ? this.pose.turnsDone : 0;
+    const progress = this.spiral ? this.pose.progress : 0;
+    const disruption = this.centres.disruption;
     if (this.holeWinner) {
-      const feed = feedLevel(this.kind, turnsDone, turns);
+      const feed = feedLevel(this.kind, turnsDone, this.turns);
       w.setFeeding(feed);
-      w.setHoleLook(winnerGrowth(p.progress), 1 + DISC_FEED_GAIN * feed, 1 + feed);
+      w.setHoleLook(winnerGrowth(progress), 1 + DISC_FEED_GAIN * feed, 1 + feed);
       const rs = w.rsUnit * w.radius * w.holeScale;
-      const view = { center: this.path.winnerPos, capture: captureRadius(rs), reach: LENS_REACH * rs };
+      const view = { center: this.winnerPos, capture: captureRadius(rs), reach: LENS_REACH * rs };
       v.setConsumeView(view);
       if (this.kind === KIND.HOLE_HOLE) {
-        v.setHoleLook(victimHoleScale(turnsDone, turns), 1, 1);
+        v.setHoleLook(victimHoleScale(turnsDone, this.turns), 1, 1);
         this.updateStream(view);
       } else {
-        v.setGasFade(gasFade(releasedShare(this.kind, turnsDone)));
+        v.setGasFade(gasFade(Math.max(disruption[1], eatenShare(this.kind, turnsDone, this.turns))));
       }
       // Whatever is left at the end of the drain goes with the victim.
       if (this.stage === 'drain' || this.stage === 'commit') v.setFade(1 - smooth(this.stageTime / DRAIN_SECONDS));
     } else {
       const fade = this.stage === 'fade' || this.stage === 'commit' ? smooth(this.stageTime / MERGE_FADE_SECONDS) : 0;
-      v.setGasFade(gasFade(releasedShare(this.kind, turnsDone)) * (1 - fade));
-      w.setGasFade((1 - 0.6 * smooth(p.progress)) * (1 - fade));
+      v.setGasFade(gasFade(Math.max(disruption[1], eatenShare(this.kind, turnsDone, this.turns))) * (1 - fade));
+      // The winner keeps at least half its glow: it is the galaxy that stays.
+      w.setGasFade((0.5 + 0.5 * gasFade(disruption[0])) * (1 - 0.4 * smooth(progress)) * (1 - fade));
       w.setFade(1 - fade);
       v.setFade(1 - fade);
-      if (this.preview) {
+      // The merger's time-lapse also turns the galaxies' analytic spin.
+      w.timeScale = v.timeScale = this.lapseNow;
+      if (this.preview?.group) {
         const r = this.preview;
+        r.group.position.fromArray(this.winnerPos);
         r.setFade(fade);
         r.setGasFade(fade);
         r.setStarburst(fade);
@@ -385,24 +505,44 @@ export class CollisionSim {
     for (const sim of this.sims) sim.galaxy?.updateStarSimulation(sim.gpu.getCurrentRenderTarget(sim.pos).texture);
   }
 
-  /** Field uniforms for one substep of h (star) seconds. */
+  /**
+   * Field uniforms for one substep of h star seconds. In the opening pass
+   * the frame is inertial (no indirect term); in the spiral it is the
+   * winner's, and path-time rates are turned into star time (÷ the time
+   * factor, an acceleration ÷ its square).
+   */
   setField(h) {
     const f = this.field;
+    const L = this.lapseNow;
+    const spiral = this.spiral !== null;
     const p = this.pose;
-    const draining = this.stage === 'drain';
-    const gmVictim = this.kind === KIND.HOLE_HOLE ? this.gmVictim0 * victimHoleScale(p.turnsDone, this.path.turns) : this.gmVictim0;
+    const pull = spiral ? victimPull(this.kind, p.turnsDone, this.turns) : 1;
+    const gmVictim = this.gmVictim0 * pull;
     f.uDt.value = h;
-    f.uCentre1.value.fromArray(p.pos);
+    f.uCentre0.value.fromArray(this.winnerPos);
+    f.uCentre1.value.fromArray(this.victimPos);
     f.uGm.value.set(this.gmWinner, gmVictim);
-    indirectAccel(_indirect, this.path.winnerPos, p.pos, gmVictim, this.eps2Victim);
+    if (spiral) {
+      for (let k = 0; k < 3; k++) _winnerAcc[k] /= L * L;
+      indirectAccel(_indirect, this.winnerPos, this.victimPos, gmVictim, this.eps2Victim, _winnerAcc);
+      for (let k = 0; k < 3; k++) _winnerAcc[k] *= L * L;
+    } else {
+      _indirect[0] = _indirect[1] = _indirect[2] = 0;
+    }
     f.uIndirect.value.fromArray(_indirect);
+    f.uWinnerVel.value.fromArray(_winnerVel).divideScalar(spiral ? L : 1);
     if (this.holeWinner) {
       const w = this.winner;
-      f.uDrag.value = freeDrag(p, this.path.seconds);
+      const draining = this.stage === 'drain';
+      f.uDrag.value = spiral ? freeDrag(p, this.seconds) / L : 0;
       f.uCapture.value = captureRadius(w.rsUnit * w.radius * w.holeScale);
       // Draining: everything left falls in.
       f.uAccRadius.value = draining ? NO_RELEASE : this.accRadius;
-      f.uTimeLeft.value = draining ? Math.max(0, DRAIN_SECONDS - this.stageTime) : p.timeLeft + DRAIN_SECONDS;
+      f.uAccRate.value = ACC_RATE / L;
+      f.uSpinMax.value = ACC_SPIN_MAX / L;
+      f.uSettle.value = ACC_SETTLE / L;
+      const left = draining ? Math.max(0, DRAIN_SECONDS - this.stageTime) : spiral ? p.timeLeft + DRAIN_SECONDS : 1e3;
+      f.uTimeLeft.value = left * L;
     }
     for (const sim of this.sims) {
       const u = sim.uniforms;
@@ -411,20 +551,18 @@ export class CollisionSim {
       g.group.updateMatrixWorld();
       u.uMatrix.value.copy(g.group.matrixWorld);
       u.uCentre.value.copy(g.group.position);
-      // Star velocities are in star time (the merger's time-lapse).
-      if (g === this.victim) u.uCentreVel.value.fromArray(p.vel).divideScalar(this.lapseNow);
-      u.uRelease.value = p.stage === 'approach' ? NO_RELEASE : releaseRadius(this.kind, p.turnsDone);
     }
     if (this.stream) {
       const s = this.stream.uniforms;
-      s.uProgress.value = p.stage === 'approach' ? -1 : (1 - victimHoleScale(p.turnsDone, this.path.turns)) / STREAM_BIRTHS_END;
-      s.uSpawnRadius.value = this.victim.hole.discSize * this.victim.rsUnit * this.victim.radius * Math.max(this.victim.holeScale, 0.05);
+      const v = this.victim;
+      s.uProgress.value = (1 - victimHoleScale(p.turnsDone, this.turns)) / STREAM_BIRTHS_END;
+      s.uSpawnRadius.value = v.hole.discSize * v.rsUnit * v.radius * Math.max(v.holeScale, 0.05);
       s.uVictimGm.value = Math.max(gmVictim, this.gmVictim0 * 0.05);
-      s.uVictimVel.value.fromArray(p.vel);
+      s.uVictimVel.value.fromArray(this.victimVel).divideScalar(L);
     }
   }
 
-  /** A body's GPU star simulation; every star starts BOUND (zero textures). */
+  /** A body's GPU star simulation (the textures start empty; startStars fills them). */
   createGalaxySim(g) {
     const count = Math.min(g.count, g.quality?.starCap ?? g.count);
     const { width, height } = simTextureSize(count);
@@ -458,23 +596,6 @@ export class CollisionSim {
     return sim;
   }
 
-  /**
-   * Galaxy merger, at the orbit entry: hand the winner's stars, as they are
-   * now, to the GPU (one pass, collisionInit.glsl; no CPU loop), so its disc
-   * answers the victim's pull with tidal arms. The victim's come free later,
-   * from the outside in (releaseRadius).
-   */
-  startMergerStars() {
-    const g = this.winner;
-    const sim = this.createGalaxySim(g);
-    for (const [variable, define] of [[sim.pos, '#define WRITE_POSITION\n'], [sim.vel, '']]) {
-      const material = sim.gpu.createShaderMaterial(define + INIT_SHADER, { ...g.uniforms, ...sim.uniforms });
-      sim.gpu.doRenderTarget(material, sim.gpu.getCurrentRenderTarget(variable));
-      material.dispose();
-    }
-    this.winnerSim = sim;
-  }
-
   /** The gold stream off a victim black hole: its own small simulation and two point layers. */
   createStream(count) {
     const { width, height } = simTextureSize(count);
@@ -506,7 +627,7 @@ export class CollisionSim {
     for (const variable of [pos, vel]) Object.assign(variable.material.uniforms, this.field, uniforms);
     const error = gpu.init();
     if (error) throw new Error(error);
-    this.sims.push({ gpu, pos, vel, galaxy: null, uniforms: null, textures: [seedTexture], stream: true });
+    this.sims.push({ gpu, pos, vel, galaxy: null, uniforms: null, textures: [seedTexture] });
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3));
@@ -551,10 +672,10 @@ export class CollisionSim {
     const r = this.createPreview?.(this.remnant);
     if (!r) {
       // No preview (tests): the commit just swaps at the end of the fade.
-      this.preview = { setFade() {}, setGasFade() {}, setStarburst() {}, setEmphasis() {}, uniforms: { uPhase: { value: 0 } }, group: this.winner.group };
+      this.preview = {};
       return;
     }
-    r.group.position.fromArray(this.path.winnerPos);
+    r.group.position.fromArray(this.winnerPos);
     r.setFade(0);
     r.setGasFade(0);
     this.preview = r;
@@ -580,7 +701,7 @@ export class CollisionSim {
   dispose() {
     const before = this.stage !== 'after' && this.stage !== 'done';
     this.freeSimulation();
-    if (this.preview?.dispose) this.removePreview?.(this.preview);
+    if (this.preview?.group) this.removePreview?.(this.preview);
     this.preview = null;
     if (before) {
       clearGalaxyCache();
@@ -594,8 +715,6 @@ export class CollisionSim {
     this.stage = 'done';
   }
 }
-
-const _ripple = { radius: 0, amp: 0 };
 
 function smooth(x) {
   const t = Math.min(1, Math.max(0, x));

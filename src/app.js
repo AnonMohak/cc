@@ -788,8 +788,11 @@ export function startApp(container, { startScreen } = {}) {
     const next = reducer(state, actions.consumeGalaxy(winnerId, victimId, patch));
     return { patch, remnant: next.galaxies.find((g) => g.id === winnerId) };
   }
-  /** @param {string} starterId the object whose panel started it (wins a tie) */
-  function startCollision(starterId, partnerId) {
+  /**
+   * @param {string} starterId the object whose panel started it (wins a tie)
+   * @param {{ pass?: number, speed?: number }} [options] the opening pass (collision.js COLLISION_LIMITS)
+   */
+  function startCollision(starterId, partnerId, options = {}) {
     stopCollision();
     const a = galaxies.get(starterId);
     const b = galaxies.get(partnerId);
@@ -803,6 +806,8 @@ export function startApp(container, { startScreen } = {}) {
         createPreview: (entry) => galaxies.createDetached(entry),
         removePreview: (g) => galaxies.removeDetached(g),
         streamCount: mobile ? 4000 : 12000,
+        pass: options.pass,
+        speed: options.speed,
       });
     } catch (error) {
       console.error(error);

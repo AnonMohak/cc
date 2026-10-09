@@ -1,4 +1,3 @@
-import { G_SIM, SOFTENING, galaxyMass } from './collision.js';
 import { LIMITS } from './params.js';
 import { MARCH_INNER } from './blackHole.js';
 
@@ -8,13 +7,16 @@ import { MARCH_INNER } from './blackHole.js';
  * eats a galaxy (the hole always wins), a galaxy merges into a galaxy (the
  * bigger one wins).
  *
- * The winner never moves; the victim follows a scripted path: a short
- * approach (cubic Hermite, from rest), then an inspiral with an exact number
- * of turns:
- *   r(τ) = r0 · (1 − τ)^¼,   θ(τ) ∝ 1 − (1 − τ)^⅝,   τ = t / T
- * This is Kepler's law with a constant mass G·M = ω0² r0³ (the law of a
- * real gravitational-wave inspiral): every turn is smaller and faster than
- * the one before it, and stars set free on the way move with the path.
+ * It opens with free physics (collision.js: both centres move, one close
+ * pass, the stars react with tails and bridges). After that pass
+ * (watchPass) the consumption takes over: the winner comes to rest
+ * (winner settle) and the victim's path blends from the physics path into a
+ * scripted spiral with an exact number of turns:
+ *   r(τ) = r0 · (1 − τ)^¼,   dθ/dt = W · ω(r),   τ = t / T
+ * ω(r) is the circular speed of the real softened pull at every radius, so
+ * stars set free on the way move with the path; one time factor W
+ * (designSpiral) makes the turn count exact. Every turn is smaller and
+ * faster than the one before it.
  *
  * Pure: plain numbers and arrays, no three.js scene objects. World units
  * (1 = 9,000 ly); time is simulation time (scaled, zero while paused).
@@ -27,11 +29,18 @@ export const KIND = {
   GALAXY_GALAXY: 'galaxy-galaxy',
 };
 
-/** Inspiral seconds (simulation time at time scale 1). */
-export const INSPIRAL_SECONDS = { [KIND.HOLE_HOLE]: 8, [KIND.HOLE_GALAXY]: 25, [KIND.GALAXY_GALAXY]: 25 };
-/** Approach seconds: the minimum, and the maximum for a far start. */
-export const APPROACH_MIN = 2;
-export const APPROACH_MAX = 3;
+/** Inspiral seconds (simulation time at time scale 1): slow and calm. */
+export const INSPIRAL_SECONDS = { [KIND.HOLE_HOLE]: 24, [KIND.HOLE_GALAXY]: 75, [KIND.GALAXY_GALAXY]: 75 };
+/** The handover after the opening pass: the victim's path blends into the spiral over this time. */
+export const BLEND_SECONDS = 3;
+/** The winner comes to rest with this e-fold time after the handover (about 3 s). */
+export const SETTLE_SECONDS = 1.2;
+/** The opening pass ends once the distance is back to this × the closest one… */
+export const PASS_RATIO = 1.5;
+/** …or this many seconds after the closest approach… */
+export const PASS_HOLD = 4;
+/** …or after this much time in contact (a head-on or a capture that never turns back). */
+export const PASS_MAX = 60;
 /** Black-hole winners: seconds after the merge for the last matter to fall in. */
 export const DRAIN_SECONDS = 1.5;
 /** Galaxy merger: seconds of the fade from the simulated stars to the remnant. */
@@ -43,18 +52,19 @@ export const GALAXY_TURNS = 3;
 /** A black hole eating a galaxy: turns for a small and a large galaxy. */
 export const FEED_TURNS_MIN = 10;
 export const FEED_TURNS_MAX = 12;
-// Orbit plane tilt from the winner's disc plane (degrees).
-const ORBIT_TILT = { [KIND.HOLE_HOLE]: 0, [KIND.HOLE_GALAXY]: 15, [KIND.GALAXY_GALAXY]: 25 };
-// Galaxy merger time-lapse: the real masses are far too light for 3 turns in
-// 25 s, so the whole merger runs faster (stars, spin and path alike).
+// The spiral's time factor (physics time per path second): the turn count
+// is exact within these limits.
+export const MIN_TIME_LAPSE = 0.25;
 export const MAX_TIME_LAPSE = 12;
+// Samples of the spiral's angle table.
+const SPIRAL_SAMPLES = 512;
 
 // Black-hole winners: accretion. Free matter feels a drag that rises as the
 // path closes in (so it spirals in with the victim and is gone by the end);
 // inside ACC_RADIUS × the disc radius it moves on to an analytic spiral in
 // the disc plane, and inside the capture radius (the disc's inner edge,
 // MARCH_INNER Rs) it is gone.
-export const FREE_DRAG = 0.05; // 1/s
+export const FREE_DRAG = 0.03; // 1/s
 export const MAX_FREE_DRAG = 1.5;
 export const ACC_RADIUS = 1;
 export const ACC_RATE = 0.25; // 1/s: e-fold time of the infall
@@ -62,13 +72,6 @@ export const ACC_SPIN_MAX = 12; // rad/s: no strobing of the fastest inner orbit
 export const ACC_SETTLE = 2; // 1/s: the spiral flattens onto the disc plane
 /** Capture radius in Rs (the disc's inner edge). */
 export const CAPTURE_RS = MARCH_INNER;
-
-// Bound stars of the victim come free from the outside in (unit-space orbit
-// radius aOrbit.x above the release radius), over these turns.
-// A merging galaxy keeps its shape and sheds tidal tails: the scripted path
-// closes in faster than its softened pull could hold free stars.
-const RELEASE_TURNS = { [KIND.HOLE_HOLE]: [0, 3.5], [KIND.HOLE_GALAXY]: [0.25, 4], [KIND.GALAXY_GALAXY]: [0.3, 2.6] };
-const RELEASE_START = 1.6; // above every star's orbit radius (the halo reaches 1.4)
 
 // After-effects (seconds after the merge).
 export const FEED_DECAY = 4;
@@ -138,162 +141,172 @@ export function turnsFor(kind, victimRadius) {
 }
 
 /**
- * Start radius of the inspiral and the radius where it ends (the merge).
- * @param {string} kind
- * @param {{ radius: number, rs?: number, discOuter?: number }} winner discOuter: disc outer radius (world)
- * @param {{ radius: number }} victim
+ * Where the spiral ends (the merge): near a winning hole's horizon, near a
+ * winning galaxy's centre.
+ * @param {{ hole: boolean, radius: number, rs?: number }} winner
  */
-export function orbitRadii(kind, winner, victim) {
-  if (kind === KIND.HOLE_HOLE) {
-    const r0 = 1.5 * winner.discOuter;
-    return { r0, rEnd: Math.max(2 * winner.rs, 0.01 * r0) };
+export function mergeRadius(winner) {
+  return winner.hole ? 2 * winner.rs : 0.02 * winner.radius;
+}
+
+/** A scratch watch for the opening pass (watchPass). */
+export function createPassWatch() {
+  return { min: Infinity, sinceMin: 0, time: 0 };
+}
+
+/**
+ * The opening pass: true once the consumption should take over. The centres
+ * have passed their closest approach and are moving apart again (the
+ * distance is back to PASS_RATIO × the closest, or PASS_HOLD s have passed
+ * since it), or they merged head-on (closer than `merged`), or the contact
+ * lasted PASS_MAX s. Call it each step while in contact.
+ */
+export function watchPass(w, separation, dt, merged) {
+  w.time += dt;
+  if (separation < w.min) {
+    w.min = separation;
+    w.sinceMin = 0;
+  } else {
+    w.sinceMin += dt;
   }
-  if (kind === KIND.HOLE_GALAXY) {
-    const r0 = victim.radius + winner.discOuter;
-    return { r0, rEnd: Math.max(2 * winner.rs, 0.01 * r0) };
-  }
-  return { r0: 0.9 * (winner.radius + victim.radius), rEnd: 0.02 * winner.radius };
+  const passed = w.sinceMin > 0 && (separation >= PASS_RATIO * w.min || w.sinceMin >= PASS_HOLD);
+  return passed || separation < merged || w.time >= PASS_MAX;
 }
 
-/** Angular speed at the start of the inspiral for `turns` turns in `seconds`. */
-export function startOmega(turns, seconds, tauEnd = 1) {
-  return (TAU * turns * 0.625) / seconds / angleNorm(tauEnd);
-}
-
-// θ(τ) is normalised so exactly `turns` turns are done at τEnd (the merge).
-function angleNorm(tauEnd) {
-  return 1 - (1 - tauEnd) ** 0.625;
+/** Circular angular speed at r in a softened pull (G·M, ε²). */
+function circularOmega(r, gm, eps2) {
+  return Math.sqrt(gm / (r * r + eps2) ** 1.5);
 }
 
 /**
- * G·M of the winner that makes the scripted path a Kepler orbit.
- * @param {{ r0: number, omega0: number }} path
+ * The spiral from the handover: the bodies' positions and velocities then.
+ * The orbit plane and sense come from the victim's motion around the
+ * winner (from the winner's spin if it falls straight in).
+ * @param {{ kind: string, winnerPos: number[], winnerVel: number[], victimPos: number[], victimVel: number[],
+ *   spin: number[], gm: number, eps2: number, rEnd: number, turns: number, seconds: number }} input
+ *   gm, eps2: the pair's G·(M1 + M2) and summed softening² (physics units)
  */
-export function orbitGm(path) {
-  return path.omega0 * path.omega0 * path.r0 ** 3;
-}
-
-/**
- * Galaxy merger time-lapse: how much faster than the real masses (G_SIM,
- * mass ∝ R², softened) the path runs. 1 ≤ W ≤ MAX_TIME_LAPSE.
- */
-export function timeLapse(r0, omega0, radiusA, radiusB) {
-  const gm = G_SIM * (galaxyMass(radiusA) + galaxyMass(radiusB));
-  const eps2 = (SOFTENING * radiusA) ** 2 + (SOFTENING * radiusB) ** 2;
-  const omegaReal = Math.sqrt(gm / (r0 * r0 + eps2) ** 1.5);
-  return Math.min(MAX_TIME_LAPSE, Math.max(1, omega0 / omegaReal));
-}
-
-/**
- * The victim's path around the fixed winner.
- * @param {{ kind: string, winnerPos: number[], victimPos: number[], normal: number[], spin: number[],
- *   r0: number, rEnd: number, turns: number, seconds: number }} input
- *   normal: winner's disc normal; spin: its spin axis (collision.js spinAxis), so the orbit is prograde
- */
-export function designPath({ kind, winnerPos, victimPos, normal, spin, r0, rEnd, turns, seconds }) {
-  const d = sub(victimPos, winnerPos);
-  const dist = length(d);
-  // In the winner's disc plane, toward the victim (any in-plane direction if
-  // the victim sits on the axis).
-  let e1 = sub(d, scale(normal, dot(normal, d)));
-  if (length(e1) < 1e-6 * Math.max(dist, 1)) e1 = cross(normal, Math.abs(normal[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]);
-  e1 = normalize(e1);
-  // Prograde: spin × e1 is the direction the winner's stars move at e1.
-  let e2 = cross(spin, e1);
-  if (length(e2) < 1e-6) e2 = cross(normal, e1);
+export function designSpiral({ kind, winnerPos, winnerVel, victimPos, victimVel, spin, gm, eps2, rEnd, turns, seconds }) {
+  const rel = sub(victimPos, winnerPos);
+  const r0 = Math.max(length(rel), 1e-6);
+  const e1 = scale(rel, 1 / r0);
+  const L = cross(rel, sub(victimVel, winnerVel));
+  let e2 = cross(L, e1);
+  if (length(e2) < 1e-9 * r0) e2 = cross(spin, e1);
+  if (length(e2) < 1e-9) e2 = cross(Math.abs(e1[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0], e1);
   e2 = normalize(e2);
-  const tilt = (ORBIT_TILT[kind] * Math.PI) / 180;
-  if (tilt) e2 = normalize(add(scale(e2, Math.cos(tilt)), scale(cross(e1, e2), Math.sin(tilt))));
 
   const tauEnd = 1 - (Math.min(rEnd, r0 * 0.999) / r0) ** 4;
-  const omega0 = startOmega(turns, seconds, tauEnd);
-  const approach = Math.min(APPROACH_MAX, Math.max(APPROACH_MIN, APPROACH_MIN + (dist - r0) / (4 * r0)));
-  const entry = add(winnerPos, scale(e1, r0));
-  const entryVel = add(scale(e1, -r0 / (4 * seconds)), scale(e2, r0 * omega0));
+  // Cumulative ∫ ω(r(τ)) dτ (trapezoid), so θ(τ) = W · T · C(τ).
+  const table = new Float64Array(SPIRAL_SAMPLES);
+  const step = tauEnd / (SPIRAL_SAMPLES - 1);
+  let prev = circularOmega(r0, gm, eps2);
+  for (let i = 1; i < SPIRAL_SAMPLES; i++) {
+    const w = circularOmega(r0 * (1 - i * step) ** 0.25, gm, eps2);
+    table[i] = table[i - 1] + 0.5 * (prev + w) * step;
+    prev = w;
+  }
+  const total = table[SPIRAL_SAMPLES - 1];
+  const lapse = Math.min(MAX_TIME_LAPSE, Math.max(MIN_TIME_LAPSE, (TAU * turns) / (seconds * total)));
   return {
     kind,
-    winnerPos: [...winnerPos],
-    start: [...victimPos],
+    winnerStart: [...winnerPos],
+    winnerVel: [...winnerVel],
     e1,
     e2,
-    normal: [...normal],
     r0,
     rEnd,
-    turns,
+    gm,
+    eps2,
     seconds,
     tauEnd,
-    omega0,
-    approach,
-    entry,
-    entryVel,
-    /** Total path time (approach + inspiral). */
-    duration: approach + tauEnd * seconds,
+    table,
+    step,
+    lapse,
+    /** Turns actually made (= turns unless the time factor hit its limit). */
+    turns: (lapse * seconds * total) / TAU,
+    duration: tauEnd * seconds,
   };
 }
 
-/** A pose scratch object for pathPose. */
+/** A pose scratch object for spiralPose. */
 export function createPose() {
-  return { pos: [0, 0, 0], vel: [0, 0, 0], stage: 'approach', tau: 0, angle: 0, turnsDone: 0, progress: 0, timeLeft: 0, radius: 0 };
+  return {
+    pos: [0, 0, 0],
+    vel: [0, 0, 0],
+    winnerPos: [0, 0, 0],
+    winnerVel: [0, 0, 0],
+    winnerAcc: [0, 0, 0],
+    stage: 'spiral',
+    tau: 0,
+    angle: 0,
+    turnsDone: 0,
+    progress: 0,
+    timeLeft: 0,
+    radius: 0,
+  };
 }
 
 /**
- * The victim's centre at path time t (closed form: the same at any frame
- * rate). Writes into out; allocation-free.
- * stage: 'approach' | 'inspiral' | 'merged'; turnsDone 0 → turns;
- * progress 0 → 1 over the inspiral; timeLeft: seconds to the merge.
+ * Winner and victim at path time t after the handover (closed form: the
+ * same at any frame rate). Writes into out; allocation-free. Velocities and
+ * the winner's acceleration are per path second (star time: divide by the
+ * time factor, the acceleration by its square).
+ * stage: 'spiral' | 'merged'; turnsDone 0 → turns; progress 0 → 1;
+ * timeLeft: seconds to the merge.
  */
-export function pathPose(path, t, out) {
-  const { e1, e2, winnerPos: w } = path;
-  if (t < path.approach) {
-    // Cubic Hermite from rest at the start to the entry point and velocity.
-    const T = path.approach;
-    const s = Math.max(0, t) / T;
-    const s2 = s * s;
-    const s3 = s2 * s;
-    const h00 = 2 * s3 - 3 * s2 + 1;
-    const h01 = -2 * s3 + 3 * s2;
-    const h11 = s3 - s2;
-    const d00 = (6 * s2 - 6 * s) / T;
-    const d01 = (-6 * s2 + 6 * s) / T;
-    const d11 = 3 * s2 - 2 * s;
-    for (let k = 0; k < 3; k++) {
-      out.pos[k] = h00 * path.start[k] + h01 * path.entry[k] + h11 * T * path.entryVel[k];
-      out.vel[k] = d00 * path.start[k] + d01 * path.entry[k] + d11 * path.entryVel[k];
-    }
-    out.stage = 'approach';
-    out.tau = 0;
-    out.angle = 0;
-    out.turnsDone = 0;
-    out.progress = 0;
-    out.timeLeft = path.duration - t;
-    out.radius = Math.sqrt((out.pos[0] - w[0]) ** 2 + (out.pos[1] - w[1]) ** 2 + (out.pos[2] - w[2]) ** 2);
-    return out;
-  }
-  const raw = (t - path.approach) / path.seconds;
-  const tau = Math.min(raw, path.tauEnd);
-  const left = 1 - tau;
-  const norm = angleNorm(path.tauEnd);
-  const r = path.r0 * left ** 0.25;
-  const merged = raw >= path.tauEnd;
-  const angle = merged ? TAU * path.turns : (TAU * path.turns * (1 - left ** 0.625)) / norm;
-  const drdt = -path.r0 / (4 * path.seconds) * left ** -0.75;
-  const dthdt = path.omega0 * left ** -0.375;
-  const c = Math.cos(angle);
-  const sn = Math.sin(angle);
+export function spiralPose(sp, t, out) {
+  // The winner comes to rest: v = v0 e^(−t/S).
+  const decay = Math.exp(-Math.max(0, t) / SETTLE_SECONDS);
   for (let k = 0; k < 3; k++) {
-    const radial = c * e1[k] + sn * e2[k];
-    const tangent = -sn * e1[k] + c * e2[k];
-    out.pos[k] = w[k] + r * radial;
-    out.vel[k] = drdt * radial + r * dthdt * tangent;
+    out.winnerPos[k] = sp.winnerStart[k] + sp.winnerVel[k] * SETTLE_SECONDS * (1 - decay);
+    out.winnerVel[k] = sp.winnerVel[k] * decay;
+    out.winnerAcc[k] = (-sp.winnerVel[k] / SETTLE_SECONDS) * decay;
   }
-  out.stage = merged ? 'merged' : 'inspiral';
+  const raw = Math.max(0, t) / sp.seconds;
+  const merged = raw >= sp.tauEnd;
+  const tau = Math.min(raw, sp.tauEnd);
+  const left = 1 - tau;
+  const r = sp.r0 * left ** 0.25;
+  const x = tau / sp.step;
+  const i = Math.min(SPIRAL_SAMPLES - 2, Math.floor(x));
+  const c = sp.table[i] + (sp.table[i + 1] - sp.table[i]) * (x - i);
+  const angle = merged ? TAU * sp.turns : sp.lapse * sp.seconds * c;
+  const drdt = (-sp.r0 / (4 * sp.seconds)) * left ** -0.75;
+  const dthdt = sp.lapse * circularOmega(r, sp.gm, sp.eps2);
+  const ca = Math.cos(angle);
+  const sa = Math.sin(angle);
+  for (let k = 0; k < 3; k++) {
+    const radial = ca * sp.e1[k] + sa * sp.e2[k];
+    const tangent = -sa * sp.e1[k] + ca * sp.e2[k];
+    out.pos[k] = out.winnerPos[k] + r * radial;
+    out.vel[k] = out.winnerVel[k] + drdt * radial + r * dthdt * tangent;
+  }
+  out.stage = merged ? 'merged' : 'spiral';
   out.tau = tau;
   out.angle = angle;
-  out.turnsDone = merged ? path.turns : angle / TAU;
-  out.progress = Math.min(1, out.turnsDone / path.turns);
-  out.timeLeft = Math.max(0, (path.tauEnd - tau) * path.seconds);
+  out.turnsDone = merged ? sp.turns : angle / TAU;
+  out.progress = Math.min(1, out.turnsDone / sp.turns);
+  out.timeLeft = Math.max(0, (sp.tauEnd - tau) * sp.seconds);
   out.radius = r;
   return out;
+}
+
+/** Handover blend 0 → 1 (the physics path → the spiral) over BLEND_SECONDS. */
+export function blendFactor(t) {
+  return smoothstep(0, BLEND_SECONDS, t);
+}
+
+/**
+ * How much of the victim's own pull is left (it is torn up and eaten): a
+ * black hole by its shrinking size, a galaxy eaten by a hole fades from
+ * 25% to 85% of the spiral, a merging galaxy keeps its pull.
+ */
+export function victimPull(kind, turnsDone, turns) {
+  const p = clamp01(turnsDone / turns);
+  if (kind === KIND.HOLE_HOLE) return 1 - p;
+  if (kind === KIND.HOLE_GALAXY) return 1 - smoothstep(0.25, 0.85, p);
+  return 1;
 }
 
 /** A victim black hole's size (Rs and disc) by turns done: −1/turns of the start per turn. */
@@ -306,25 +319,14 @@ export function winnerGrowth(progress) {
   return 1 + (GROWTH - 1) * clamp01(progress);
 }
 
-/**
- * Release radius (unit space of the victim): bound stars with an orbit
- * radius at or above it are set free. Infinity before the start; 0 = all.
- */
-export function releaseRadius(kind, turnsDone) {
-  const span = RELEASE_TURNS[kind];
-  const u = clamp01((turnsDone - span[0]) / (span[1] - span[0]));
-  return u >= 1 ? 0 : RELEASE_START * (1 - u) ** 1.5;
-}
-
-/** Share of the victim's stars released, 0–1 (gas fades with it). */
-export function releasedShare(kind, turnsDone) {
-  const r = releaseRadius(kind, turnsDone);
-  return clamp01(1 - r / RELEASE_START);
+/** Share of the victim eaten so far, 0–1 (its gas fades with it). */
+export function eatenShare(kind, turnsDone, turns) {
+  if (kind === KIND.GALAXY_GALAXY) return smoothstep(0, 0.8, turnsDone / turns);
+  return 1 - victimPull(kind, turnsDone, turns);
 }
 
 /** Drag on free matter around a black-hole winner (1/s). */
 export function freeDrag(pose, seconds) {
-  if (pose.stage === 'approach') return 0;
   const chirp = 1 / (8 * seconds * Math.max(1 - pose.tau, 1e-3));
   return Math.min(MAX_FREE_DRAG, FREE_DRAG + chirp);
 }

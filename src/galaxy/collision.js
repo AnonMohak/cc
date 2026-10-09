@@ -3,13 +3,17 @@ import { createRandom } from './random.js';
 import { KIND } from './generateGalaxy.js';
 
 /**
- * Collision physics for consumption (galaxy/consumption.js has the timeline):
- * restricted N-body, "N-body-lite" (Toomre & Toomre 1972). Each body is a
- * softened point mass (a Plummer sphere; a black hole with a small
- * softening), and the stars are test particles that feel both bodies but not
- * each other. The winner stays fixed and the victim follows a scripted path,
- * so the stars live in the winner's frame: every star also gets the
- * opposite of the victim's pull on the winner (the indirect term).
+ * Collision physics (galaxy/consumption.js has the timeline): restricted
+ * N-body, "N-body-lite" (Toomre & Toomre 1972). Each body is a softened
+ * point mass (a Plummer sphere; a black hole with a small softening), and
+ * the stars are test particles that feel both bodies but not each other.
+ *
+ * Two phases. The opening pass is free physics: both centres move under
+ * their mutual gravity (leapfrog, zero total momentum) with a drag while
+ * they overlap, as in a real encounter. After the first close pass the
+ * consumption takes over: the winner comes to rest and the victim follows a
+ * scripted spiral, so the stars then live in the winner's frame and get the
+ * opposite of the winner's own acceleration (the indirect term).
  *
  * Each simulated star has a state: BOUND (still drawn on its analytic orbit
  * in the moving victim), FREE (gravity, plus a drag toward a black-hole
@@ -30,9 +34,38 @@ export const SOFTENING = 0.3;
 // A default-size galaxy (radius 6) has mass 1. Mass ∝ R² (same surface
 // density), so a galaxy twice the size is four times heavier.
 const MASS_RADIUS = 6;
+// Star simulation starts when the centres are this close, in units of
+// rA + rB; farther out, tides are weak and the stars stay analytic.
+export const CONTACT = 1.6;
+// Far apart, the centres fast-forward (warp grows as (sep / contact)^1.5,
+// the free-fall time scaling, from 1 at contact), so the approach takes
+// seconds, not minutes.
+const WARP_GAIN = 6;
+const MAX_WARP = 30;
+// Drag between overlapping centres (1/s), and its reach in mean radii.
+const FRICTION = 0.8;
+const FRICTION_REACH = 1;
+// Gas fade per second for an equal-mass partner one radius away.
+const DISRUPT_RATE = 0.35;
+// Largest centre step (simulation seconds).
+const CENTRE_STEP = 0.02;
 // Largest star step on the GPU (simulation seconds), and the most substeps per frame.
 export const STAR_STEP = 1 / 30;
 export const MAX_STAR_SUBSTEPS = 8;
+// A black hole's mass ∝ Rs: a default hole (Rs 0.12 = 0.03 × 4) weighs four
+// default galaxies, so it dominates a galaxy it meets.
+export const HOLE_MASS = 4;
+const HOLE_RS_REF = 0.12;
+// A black hole's softening, as a share of its disc radius (accretion takes
+// over inside the disc anyway).
+const HOLE_SOFTENING = 0.5;
+
+/** The opening pass (Selected → Collision sliders). */
+export const COLLISION_LIMITS = {
+  pass: { min: 0, max: 2, step: 0.05 }, // closest approach, in mean radii
+  speed: { min: 0.5, max: 2, step: 0.05 }, // × escape speed at contact
+};
+export const DEFAULT_COLLISION = { pass: 1.2, speed: 1 };
 
 /** Star states (packed with the arm crest into the position texture's w). */
 export const STATE = { BOUND: 0, FREE: 1, ACCRETE: 2, GONE: 3 };
@@ -51,6 +84,18 @@ export function unpackState(w) {
 /** @param {number} radius galaxy radius (world units) */
 export function galaxyMass(radius) {
   return (radius / MASS_RADIUS) ** 2;
+}
+
+/**
+ * Mass, softening² and size of a body (consumption.js Body + discOuter).
+ * @param {{ hole: boolean, radius: number, rs?: number, discOuter?: number }} body
+ * @returns {{ mass: number, eps2: number, radius: number }}
+ */
+export function bodyPhysics(body) {
+  if (body.hole) {
+    return { mass: (HOLE_MASS * body.rs) / HOLE_RS_REF, eps2: (HOLE_SOFTENING * body.discOuter) ** 2, radius: body.radius };
+  }
+  return { mass: galaxyMass(body.radius), eps2: (SOFTENING * body.radius) ** 2, radius: body.radius };
 }
 
 /** Circular speed at distance r from a Plummer sphere (gm = G·M, eps2 = ε²). */
@@ -86,17 +131,168 @@ export function spinAxis(normal, speed) {
 }
 
 /**
- * The indirect term: minus the victim's pull on the (fixed) winner. Every
- * star in the winner's frame gets it, else a fixed winner's disc slides
- * toward the victim. Writes into out.
+ * The indirect term for a scripted winner: its own acceleration (it comes to
+ * rest after the opening pass; 0 once at rest) minus the victim's pull on
+ * it. Every star gets it, so the winner's stars move with it: a winner
+ * that is held still does not have its disc slide toward the victim, and
+ * one that slows down takes its stars along. Writes into out.
+ * @param {number[]} [winnerAcc] the winner's scripted acceleration (star time)
  */
-export function indirectAccel(out, winnerPos, victimPos, victimGm, eps2) {
+export function indirectAccel(out, winnerPos, victimPos, victimGm, eps2, winnerAcc = null) {
   out[0] = out[1] = out[2] = 0;
   addPlummerAccel(out, winnerPos, victimPos, victimGm, eps2);
-  out[0] = -out[0];
-  out[1] = -out[1];
-  out[2] = -out[2];
+  for (let k = 0; k < 3; k++) out[k] = (winnerAcc ? winnerAcc[k] : 0) - out[k];
   return out;
+}
+
+/**
+ * Starting velocities for the two centres (zero total momentum, so the
+ * barycentre stays put). The relative orbit has energy set by `speed`
+ * (× escape speed at contact: < 1 bound, > 1 a fast fly-by) and its
+ * pericentre at `pass` mean radii (point-mass estimate). The orbit is
+ * prograde for body A (strong tidal tails), in the plane closest to A's disc.
+ *
+ * @param {{ posA: number[], posB: number[], a: { mass: number, radius: number }, b: { mass: number, radius: number }, spinA: number[], pass?: number, speed?: number }} input
+ * @returns {{ velA: number[], velB: number[] }}
+ */
+export function designOrbit({ posA, posB, a, b, spinA, pass = DEFAULT_COLLISION.pass, speed = DEFAULT_COLLISION.speed }) {
+  const gm = G_SIM * (a.mass + b.mass);
+  const d = sub(posB, posA);
+  const r = Math.max(length(d), 1e-6);
+  const rHat = scale(d, 1 / r);
+  const contact = CONTACT * (a.radius + b.radius);
+
+  const energy = (speed * speed - 1) * (gm / contact);
+  const v = Math.sqrt(Math.max(0, 2 * (energy + gm / r)));
+  // Point-mass angular momentum for pericentre q (with the energy actually
+  // reached: a bound orbit released from rest has its own).
+  const e = v > 0 ? energy : -gm / r;
+  const q = Math.min(pass * 0.5 * (a.radius + b.radius), 0.95 * r);
+  const L = q * Math.sqrt(Math.max(0, 2 * (e + gm / Math.max(q, 1e-6))));
+  const vt = Math.min(L / r, v);
+  const vr = -Math.sqrt(Math.max(0, v * v - vt * vt));
+
+  // Tangential direction: spin × r̂ makes B orbit A in A's sense of rotation.
+  let t = cross(spinA, rHat);
+  if (length(t) < 0.1) t = cross(Math.abs(rHat[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0], rHat);
+  t = scale(t, 1 / length(t));
+
+  const vRel = add(scale(rHat, vr), scale(t, vt));
+  const M = a.mass + b.mass;
+  return { velA: scale(vRel, -b.mass / M), velB: scale(vRel, a.mass / M) };
+}
+
+/**
+ * The state of the two centres in the opening pass. Arrays are plain
+ * numbers so the state can be stepped and tested in Node.
+ * friction: the drag while they overlap (a slow pass merges). The
+ * consumption turns it off: its first pass is a clean fly-by at the asked
+ * distance, and the scripted spiral does the merging.
+ * @param {{ posA: number[], posB: number[], velA: number[], velB: number[], a: { mass: number, eps2: number, radius: number }, b: { mass: number, eps2: number, radius: number }, friction?: boolean }} input
+ */
+export function createCentres({ posA, posB, velA, velB, a, b, friction = true }) {
+  const mass = [a.mass, b.mass];
+  return {
+    pos: [[...posA], [...posB]],
+    vel: [[...velA], [...velB]],
+    radius: [a.radius, b.radius],
+    mass,
+    gm: mass.map((m) => G_SIM * m),
+    eps2: [a.eps2, b.eps2],
+    contact: CONTACT * (a.radius + b.radius),
+    friction,
+    // Gas disruption 0–1 per body (only grows).
+    disruption: [0, 0],
+    // Set once the centres first come within contact: the star sim runs from then on.
+    interacting: false,
+    time: 0,
+  };
+}
+
+/** Centre separation. */
+export function separation(state) {
+  const p = state.pos;
+  return Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]);
+}
+
+/** Fast-forward factor for the approach (1 once interacting or within contact). */
+export function warpFactor(state) {
+  if (state.interacting) return 1;
+  const over = Math.max(0, separation(state) / state.contact - 1);
+  return Math.min(MAX_WARP, 1 + WARP_GAIN * over ** 1.5);
+}
+
+const _acc = [[0, 0, 0], [0, 0, 0]];
+const _d = [0, 0, 0];
+
+/**
+ * Advance the centres by dt simulation seconds (already warped by the
+ * caller if needed). Kick-drift-kick leapfrog over small substeps; the
+ * mutual pull uses the sum of both softenings (two extended bodies).
+ */
+export function stepCentres(state, dt) {
+  if (dt <= 0) return state;
+  const n = Math.ceil(dt / CENTRE_STEP);
+  const h = dt / n;
+  for (let i = 0; i < n; i++) {
+    centreAccel(state, _acc);
+    kick(state, _acc, h / 2);
+    for (let b = 0; b < 2; b++) for (let k = 0; k < 3; k++) state.pos[b][k] += state.vel[b][k] * h;
+    centreAccel(state, _acc);
+    kick(state, _acc, h / 2);
+    disrupt(state, h);
+    state.time += h;
+  }
+  if (!state.interacting && separation(state) <= state.contact) state.interacting = true;
+  return state;
+}
+
+function kick(state, acc, h) {
+  for (let b = 0; b < 2; b++) for (let k = 0; k < 3; k++) state.vel[b][k] += acc[b][k] * h;
+}
+
+function centreAccel(state, out) {
+  const [pA, pB] = state.pos;
+  const dx = pB[0] - pA[0];
+  const dy = pB[1] - pA[1];
+  const dz = pB[2] - pA[2];
+  const r2 = dx * dx + dy * dy + dz * dz;
+  const eps2 = state.eps2[0] + state.eps2[1];
+  const inv = 1 / (r2 + eps2) ** 1.5;
+  // Drag on the relative velocity while the bodies overlap; momentum is
+  // kept. Like Chandrasekhar friction it fades for fast passes (∝ 1/v³), so
+  // a slow pass is captured and a fast one escapes.
+  const reach = FRICTION_REACH * 0.5 * (state.radius[0] + state.radius[1]);
+  const M = state.mass[0] + state.mass[1];
+  const vx = state.vel[1][0] - state.vel[0][0];
+  const vy = state.vel[1][1] - state.vel[0][1];
+  const vz = state.vel[1][2] - state.vel[0][2];
+  const v0 = Math.sqrt((G_SIM * M) / reach);
+  const vRatio = Math.sqrt(vx * vx + vy * vy + vz * vz) / v0;
+  const drag = state.friction ? (FRICTION * Math.exp(-r2 / (reach * reach))) / (1 + vRatio * vRatio * vRatio) : 0;
+  _d[0] = dx;
+  _d[1] = dy;
+  _d[2] = dz;
+  for (let k = 0; k < 3; k++) {
+    const d = _d[k];
+    const vRel = state.vel[1][k] - state.vel[0][k];
+    out[0][k] = state.gm[1] * d * inv + drag * (state.mass[1] / M) * vRel;
+    out[1][k] = -state.gm[0] * d * inv - drag * (state.mass[0] / M) * vRel;
+  }
+}
+
+/**
+ * Tidal disruption: grows with the partner's tidal strength
+ * (M_other / M_self) · (R_self / r)³, so a close heavy partner strips the
+ * gas fast and a distant one barely at all.
+ */
+function disrupt(state, h) {
+  const r = Math.sqrt(separation(state) ** 2 + state.eps2[0] + state.eps2[1]);
+  for (let b = 0; b < 2; b++) {
+    const o = 1 - b;
+    const tide = (state.mass[o] / state.mass[b]) * (state.radius[b] / r) ** 3;
+    state.disruption[b] = Math.min(1, state.disruption[b] + DISRUPT_RATE * tide * h);
+  }
 }
 
 /** Gas (volume, H II, dust) brightness for a disruption 0–1. */
@@ -246,7 +442,7 @@ function clusterCentre(orbit, i, m, out) {
 
 /**
  * The field the stars move in during one step (the GPU uniforms).
- * @typedef {{ pos: number[][], gm: number[], eps2: number[], indirect?: number[], drag?: number,
+ * @typedef {{ pos: number[][], gm: number[], eps2: number[], indirect?: number[], drag?: number, winnerVel?: number[],
  *   hole?: boolean, normal?: number[], accRadius?: number, capture?: number, accRate?: number,
  *   spinMax?: number, settle?: number, timeLeft?: number }} StarField
  *   pos/gm/eps2: [winner, victim]; hole: the winner is a black hole (accretion on)
@@ -272,8 +468,9 @@ export function stepStar(star, f, dt) {
     const a = [0, 0, 0];
     for (let b = 0; b < 2; b++) addPlummerAccel(a, pos, f.pos[b], f.gm[b], f.eps2[b]);
     const drag = f.drag ?? 0;
+    // The drag works on the velocity relative to the winner (it may still be slowing down).
     for (let k = 0; k < 3; k++) {
-      vel[k] += (a[k] + (f.indirect?.[k] ?? 0) - drag * vel[k]) * dt;
+      vel[k] += (a[k] + (f.indirect?.[k] ?? 0) - drag * (vel[k] - (f.winnerVel?.[k] ?? 0))) * dt;
       pos[k] += vel[k] * dt;
     }
     if (f.hole) {
@@ -393,4 +590,20 @@ function randomUnitInto(rng, out) {
   out[1] = u;
   out[2] = s * Math.sin(phi);
   return out;
+}
+
+function add(a, b) {
+  return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+}
+function sub(a, b) {
+  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+}
+function scale(a, k) {
+  return [a[0] * k, a[1] * k, a[2] * k];
+}
+function length(a) {
+  return Math.hypot(a[0], a[1], a[2]);
+}
+function cross(a, b) {
+  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 }

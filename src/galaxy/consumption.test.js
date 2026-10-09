@@ -4,16 +4,17 @@ import {
   pickWinner,
   consumeKind,
   turnsFor,
-  orbitRadii,
-  designPath,
-  pathPose,
+  mergeRadius,
+  createPassWatch,
+  watchPass,
+  designSpiral,
+  spiralPose,
   createPose,
-  orbitGm,
-  timeLapse,
+  blendFactor,
+  victimPull,
+  eatenShare,
   victimHoleScale,
   winnerGrowth,
-  releaseRadius,
-  releasedShare,
   freeDrag,
   feedLevel,
   flashGain,
@@ -22,27 +23,31 @@ import {
   consumeResult,
   GROWTH,
   INSPIRAL_SECONDS,
-  APPROACH_MIN,
-  APPROACH_MAX,
+  BLEND_SECONDS,
+  SETTLE_SECONDS,
+  PASS_HOLD,
   MAX_TIME_LAPSE,
 } from './consumption.js';
 import { LIMITS, MAX_PARTICLES_PER_GALAXY } from './params.js';
+import { G_SIM } from './collision.js';
 
 const hole = (id, rs, radius = 4) => ({ id, hole: true, rs, radius });
 const galaxy = (id, radius) => ({ id, hole: false, radius });
 
-function makePath(kind = KIND.HOLE_HOLE, overrides = {}) {
-  const turns = overrides.turns ?? 5;
-  return designPath({
-    kind,
+// Two default galaxies after a pass: the victim 9 away, moving off at an angle.
+function makeSpiral(overrides = {}) {
+  return designSpiral({
+    kind: KIND.GALAXY_GALAXY,
     winnerPos: [0, 0, 0],
-    victimPos: [20, 3, 0],
-    normal: [0, 1, 0],
+    winnerVel: [-0.3, 0, 0.1],
+    victimPos: [9, 0, 0],
+    victimVel: [0.3, 0, 1.2],
     spin: [0, -1, 0],
-    r0: 4,
-    rEnd: 0.24,
-    turns,
-    seconds: INSPIRAL_SECONDS[kind],
+    gm: G_SIM * 2,
+    eps2: 2 * 1.8 ** 2,
+    rEnd: 0.12,
+    turns: 3,
+    seconds: INSPIRAL_SECONDS[KIND.GALAXY_GALAXY],
     ...overrides,
   });
 }
@@ -64,7 +69,7 @@ describe('pickWinner', () => {
   });
 });
 
-describe('turnsFor', () => {
+describe('turnsFor and mergeRadius', () => {
   it('5 for two holes, 3 for two galaxies, 10–12 for a hole eating a galaxy', () => {
     expect(turnsFor(KIND.HOLE_HOLE, 4)).toBe(5);
     expect(turnsFor(KIND.GALAXY_GALAXY, 6)).toBe(3);
@@ -72,160 +77,149 @@ describe('turnsFor', () => {
     expect(turnsFor(KIND.HOLE_GALAXY, 6)).toBe(11);
     expect(turnsFor(KIND.HOLE_GALAXY, 30)).toBe(12);
   });
-});
 
-describe('orbitRadii', () => {
-  it('starts outside the winner and ends near its centre', () => {
-    const w = { radius: 4, rs: 0.12, discOuter: 2.16 };
-    const hh = orbitRadii(KIND.HOLE_HOLE, w, { radius: 4 });
-    expect(hh.r0).toBeCloseTo(3.24);
-    expect(hh.rEnd).toBeCloseTo(0.24);
-    const hg = orbitRadii(KIND.HOLE_GALAXY, w, { radius: 6 });
-    expect(hg.r0).toBeCloseTo(8.16);
-    const gg = orbitRadii(KIND.GALAXY_GALAXY, { radius: 6 }, { radius: 6 });
-    expect(gg.r0).toBeCloseTo(10.8);
-    expect(gg.rEnd).toBeLessThan(gg.r0 * 0.05);
+  it('ends near a hole horizon or a galaxy centre', () => {
+    expect(mergeRadius({ hole: true, rs: 0.12, radius: 4 })).toBeCloseTo(0.24);
+    expect(mergeRadius({ hole: false, radius: 6 })).toBeCloseTo(0.12);
+  });
+
+  it('is 3× slower than before', () => {
+    expect(INSPIRAL_SECONDS).toEqual({ [KIND.HOLE_HOLE]: 24, [KIND.HOLE_GALAXY]: 75, [KIND.GALAXY_GALAXY]: 75 });
   });
 });
 
-describe('pathPose', () => {
-  it('starts at rest at the victim and joins the inspiral smoothly', () => {
-    const path = makePath();
-    const pose = createPose();
-    pathPose(path, 0, pose);
-    expect(pose.pos).toEqual([20, 3, 0]);
-    expect(Math.hypot(...pose.vel)).toBeCloseTo(0, 9);
-    expect(path.approach).toBeGreaterThanOrEqual(APPROACH_MIN);
-    expect(path.approach).toBeLessThanOrEqual(APPROACH_MAX);
-    const before = pathPose(path, path.approach - 1e-6, createPose());
-    const after = pathPose(path, path.approach + 1e-6, createPose());
-    for (let k = 0; k < 3; k++) {
-      expect(after.pos[k]).toBeCloseTo(before.pos[k], 4);
-      expect(after.vel[k]).toBeCloseTo(before.vel[k], 3);
+describe('watchPass', () => {
+  it('hands over after the closest approach, once the bodies move apart', () => {
+    const w = createPassWatch();
+    // Closing in, then moving apart.
+    for (const d of [20, 15, 10, 8, 7.5]) expect(watchPass(w, d, 0.1, 0.1)).toBe(false);
+    expect(watchPass(w, 9, 0.1, 0.1)).toBe(false);
+    expect(watchPass(w, 11.3, 0.1, 0.1)).toBe(true); // ≥ 1.5 × 7.5
+  });
+
+  it('hands over PASS_HOLD s after the closest approach for a slow capture', () => {
+    const w = createPassWatch();
+    watchPass(w, 5, 0.1, 0.1);
+    let t = 0;
+    let done = false;
+    while (!done && t < 20) {
+      done = watchPass(w, 5.2, 0.1, 0.1);
+      t += 0.1;
     }
-    expect(after.stage).toBe('inspiral');
-    expect(after.radius).toBeCloseTo(path.r0, 4);
+    expect(t).toBeCloseTo(PASS_HOLD, 1);
   });
 
-  it('enters in the winner disc plane and turns prograde', () => {
-    const path = makePath();
-    const pose = pathPose(path, path.approach + 0.1, createPose());
-    // Disc plane y = 0 (no tilt for two holes); spin −y turns +x toward +z.
-    expect(Math.abs(pose.pos[1])).toBeLessThan(1e-9);
-    expect(pose.vel[2]).toBeGreaterThan(0);
+  it('hands over at once for a head-on merge', () => {
+    const w = createPassWatch();
+    expect(watchPass(w, 0.05, 0.1, 0.1)).toBe(true);
+  });
+});
+
+describe('spiral', () => {
+  it('starts at the handover positions and moves the victim the way it was going', () => {
+    const sp = makeSpiral();
+    const pose = spiralPose(sp, 0, createPose());
+    for (let k = 0; k < 3; k++) expect(pose.pos[k]).toBeCloseTo([9, 0, 0][k], 9);
+    // The relative motion was toward +z: the spiral turns that way.
+    const later = spiralPose(sp, 1, createPose());
+    expect(later.pos[2] - later.winnerPos[2]).toBeGreaterThan(0);
   });
 
   it('makes exactly the given turns by the merge, each one smaller and faster', () => {
-    for (const [kind, turns] of [[KIND.HOLE_HOLE, 5], [KIND.HOLE_GALAXY, 11], [KIND.GALAXY_GALAXY, 3]]) {
-      const path = makePath(kind, { turns });
+    for (const [kind, turns, gm, eps2, rEnd] of [
+      [KIND.HOLE_HOLE, 5, G_SIM * 8, 1.08 ** 2 * 2, 0.24],
+      [KIND.HOLE_GALAXY, 11, G_SIM * 5, 1.08 ** 2 + 1.8 ** 2, 0.24],
+      [KIND.GALAXY_GALAXY, 3, G_SIM * 2, 2 * 1.8 ** 2, 0.12],
+    ]) {
+      const sp = makeSpiral({ kind, turns, gm, eps2, rEnd, seconds: INSPIRAL_SECONDS[kind] });
+      expect(sp.lapse).toBeLessThan(MAX_TIME_LAPSE);
       const pose = createPose();
-      pathPose(path, path.duration + 0.01, pose);
+      spiralPose(sp, sp.duration + 0.01, pose);
       expect(pose.stage).toBe('merged');
-      expect(pose.turnsDone).toBeCloseTo(turns, 9);
+      expect(pose.turnsDone).toBeCloseTo(turns, 6);
       expect(pose.progress).toBe(1);
-      expect(pose.radius).toBeCloseTo(path.rEnd, 6);
-      // Turn durations shrink.
+      // The angle reaches the turn count continuously.
+      spiralPose(sp, sp.duration - 1e-6, pose);
+      expect(pose.turnsDone).toBeCloseTo(turns, 2);
       const times = [];
       let last = 0;
-      for (let t = path.approach; t <= path.duration; t += 0.001) {
-        const turn = Math.floor(pathPose(path, t, pose).turnsDone);
+      for (let t = 0; t <= sp.duration; t += 0.002) {
+        const turn = Math.floor(spiralPose(sp, t, pose).turnsDone);
         if (turn > last) {
           times.push(t);
           last = turn;
         }
       }
-      const lengths = times.map((t, i) => t - (i === 0 ? path.approach : times[i - 1]));
+      const lengths = times.map((t, i) => t - (i === 0 ? 0 : times[i - 1]));
       for (let i = 1; i < lengths.length; i++) expect(lengths[i]).toBeLessThan(lengths[i - 1]);
     }
   });
 
-  it('two holes: 5 turns in about 8 s, the first ~2.4 s and the last under 1 s', () => {
-    const path = makePath();
+  it('moves like a circular orbit in the softened pull, in star time', () => {
+    const sp = makeSpiral();
     const pose = createPose();
-    let first = null;
-    for (let t = path.approach; t < path.duration; t += 0.001) {
-      if (pathPose(path, t, pose).turnsDone >= 1) {
-        first = t - path.approach;
-        break;
-      }
+    for (const tau of [0.1, 0.5, 0.9]) {
+      spiralPose(sp, tau * sp.seconds + 20, pose);
+      const rel = pose.pos.map((x, k) => x - pose.winnerPos[k]);
+      const v = pose.vel.map((x, k) => (x - pose.winnerVel[k]) / sp.lapse); // star time
+      const r = Math.hypot(...rel);
+      const vr = (v[0] * rel[0] + v[1] * rel[1] + v[2] * rel[2]) / r;
+      const vt2 = v[0] ** 2 + v[1] ** 2 + v[2] ** 2 - vr * vr;
+      // v²/r equals the softened pull at r.
+      expect((vt2 / r) / ((sp.gm * r) / (r * r + sp.eps2) ** 1.5)).toBeCloseTo(1, 2);
     }
-    expect(first).toBeGreaterThan(2.2);
-    expect(first).toBeLessThan(2.6);
-    let last = null;
-    for (let t = path.duration; t > path.approach; t -= 0.001) {
-      if (pathPose(path, t, pose).turnsDone <= 4) {
-        last = path.duration - t;
-        break;
-      }
-    }
-    expect(last).toBeLessThan(1);
-    expect(path.duration - path.approach).toBeCloseTo(8, 1);
   });
 
-  it('is a Kepler orbit: v² r stays G·M along the inspiral', () => {
-    const path = makePath();
-    const gm = orbitGm(path);
-    const pose = createPose();
-    for (const tau of [0.05, 0.3, 0.6, 0.9]) {
-      pathPose(path, path.approach + tau * path.seconds, pose);
-      const v2 = pose.vel[0] ** 2 + pose.vel[1] ** 2 + pose.vel[2] ** 2;
-      const vr = (pose.vel[0] * pose.pos[0] + pose.vel[1] * pose.pos[1] + pose.vel[2] * pose.pos[2]) / pose.radius;
-      // Tangential part only (the radial drift is tiny).
-      expect(((v2 - vr * vr) * pose.radius) / gm).toBeCloseTo(1, 2);
-    }
+  it('brings the winner to rest, smoothly', () => {
+    const sp = makeSpiral();
+    const pose = spiralPose(sp, 0, createPose());
+    expect(pose.winnerVel).toEqual([-0.3, 0, 0.1]);
+    spiralPose(sp, 10 * SETTLE_SECONDS, pose);
+    expect(Math.hypot(...pose.winnerVel)).toBeLessThan(1e-4);
+    expect(pose.winnerPos[0]).toBeCloseTo(-0.3 * SETTLE_SECONDS, 3);
+    // a = dv/dt.
+    const a = spiralPose(sp, 1, createPose());
+    const b = spiralPose(sp, 1.001, createPose());
+    expect((b.winnerVel[0] - a.winnerVel[0]) / 0.001).toBeCloseTo(a.winnerAcc[0], 3);
   });
 
   it('is the same at any frame rate (closed form)', () => {
-    const path = makePath();
-    const a = pathPose(path, 5.123, createPose());
-    const b = pathPose(path, 5.123, createPose());
-    expect(a).toEqual(b);
+    const sp = makeSpiral();
+    expect(spiralPose(sp, 5.123, createPose())).toEqual(spiralPose(sp, 5.123, createPose()));
+  });
+
+  it('blends in over BLEND_SECONDS', () => {
+    expect(blendFactor(0)).toBe(0);
+    expect(blendFactor(BLEND_SECONDS / 2)).toBeCloseTo(0.5);
+    expect(blendFactor(BLEND_SECONDS)).toBe(1);
   });
 });
 
-describe('timeLapse', () => {
-  it('speeds two default galaxies up by about ×5 and stays within limits', () => {
-    const path = makePath(KIND.GALAXY_GALAXY, { turns: 3, r0: 10.8, rEnd: 0.12 });
-    const w = timeLapse(path.r0, path.omega0, 6, 6);
-    expect(w).toBeGreaterThan(3.5);
-    expect(w).toBeLessThan(7);
-    expect(timeLapse(path.r0, path.omega0 * 100, 6, 6)).toBe(MAX_TIME_LAPSE);
-    expect(timeLapse(path.r0, 1e-6, 6, 6)).toBe(1);
-  });
-});
-
-describe('victim and winner sizes', () => {
+describe('victim and winner', () => {
   it('the victim hole loses 1/turns of its start size per turn and the winner grows to ×GROWTH', () => {
     expect(victimHoleScale(0, 5)).toBe(1);
     expect(victimHoleScale(1, 5)).toBeCloseTo(0.8);
-    expect(victimHoleScale(3, 5)).toBeCloseTo(0.4);
     expect(victimHoleScale(5, 5)).toBe(0);
     expect(winnerGrowth(0)).toBe(1);
     expect(winnerGrowth(1)).toBeCloseTo(GROWTH);
   });
-});
 
-describe('release', () => {
-  it('frees the outer stars first and every star by the end of the span', () => {
-    expect(releaseRadius(KIND.HOLE_GALAXY, 0)).toBeGreaterThan(1.4);
-    const r1 = releaseRadius(KIND.HOLE_GALAXY, 1);
-    const r2 = releaseRadius(KIND.HOLE_GALAXY, 2);
-    expect(r2).toBeLessThan(r1);
-    expect(releaseRadius(KIND.HOLE_GALAXY, 4)).toBe(0);
-    expect(releaseRadius(KIND.HOLE_HOLE, 3.5)).toBe(0);
-    expect(releaseRadius(KIND.GALAXY_GALAXY, 0)).toBeGreaterThan(1.4);
-    expect(releaseRadius(KIND.GALAXY_GALAXY, 3)).toBe(0);
-    expect(releasedShare(KIND.HOLE_GALAXY, 0)).toBe(0);
-    expect(releasedShare(KIND.HOLE_GALAXY, 4)).toBe(1);
+  it('the victim loses its pull as it is eaten (a merging galaxy keeps it)', () => {
+    expect(victimPull(KIND.HOLE_HOLE, 2.5, 5)).toBeCloseTo(0.5);
+    expect(victimPull(KIND.HOLE_GALAXY, 0, 11)).toBe(1);
+    expect(victimPull(KIND.HOLE_GALAXY, 11, 11)).toBe(0);
+    expect(victimPull(KIND.GALAXY_GALAXY, 3, 3)).toBe(1);
+    expect(eatenShare(KIND.HOLE_GALAXY, 11, 11)).toBe(1);
+    expect(eatenShare(KIND.GALAXY_GALAXY, 0, 3)).toBe(0);
+    expect(eatenShare(KIND.GALAXY_GALAXY, 3, 3)).toBe(1);
   });
 
   it('the drag on free matter rises toward the merge', () => {
-    const path = makePath(KIND.HOLE_GALAXY, { turns: 11 });
+    const sp = makeSpiral({ kind: KIND.HOLE_GALAXY, turns: 11 });
     const pose = createPose();
-    const early = freeDrag(pathPose(path, path.approach + 1, pose), path.seconds);
-    const late = freeDrag(pathPose(path, path.duration - 0.2, pose), path.seconds);
+    const early = freeDrag(spiralPose(sp, 1, pose), sp.seconds);
+    const late = freeDrag(spiralPose(sp, sp.duration - 0.2, pose), sp.seconds);
     expect(late).toBeGreaterThan(early);
-    expect(freeDrag(pathPose(path, 0, pose), path.seconds)).toBe(0);
   });
 });
 

@@ -12,6 +12,13 @@ import {
   unpackState,
   accretionSlow,
   STATE,
+  bodyPhysics,
+  designOrbit,
+  createCentres,
+  separation,
+  warpFactor,
+  stepCentres,
+  HOLE_MASS,
   localStarPosition,
   initialStarState,
   stepStar,
@@ -197,5 +204,81 @@ describe('collision physics', () => {
     expect(collisionBroken([h, b], [{ ...h, hole: { ...h.hole, brightness: 2, colorHot: '#f00' } }, b], ['h', 'b'])).toBe(false);
     expect(collisionBroken([h, b], [{ ...h, hole: { ...h.hole, size: 0.04 } }, b], ['h', 'b'])).toBe(true);
     expect(collisionBroken([h, b], [{ ...h, hole: { ...h.hole, discSize: 20 } }, b], ['h', 'b'])).toBe(true);
+  });
+});
+
+describe('opening pass (free physics)', () => {
+  const body = (radius) => bodyPhysics({ hole: false, radius });
+  function run(input, seconds) {
+    const orbit = designOrbit(input);
+    const s = createCentres({ ...input, ...orbit });
+    let minSep = Infinity;
+    for (let t = 0; t < seconds; t += 1 / 60) {
+      stepCentres(s, (1 / 60) * warpFactor(s));
+      minSep = Math.min(minSep, separation(s));
+    }
+    return { s, minSep };
+  }
+
+  it('gives black holes a mass by Rs (a default hole = 4 default galaxies) and a disc-sized softening', () => {
+    expect(body(6).mass).toBeCloseTo(1);
+    const h = bodyPhysics({ hole: true, radius: 4, rs: 0.12, discOuter: 2.16 });
+    expect(h.mass).toBeCloseTo(HOLE_MASS);
+    expect(h.eps2).toBeCloseTo(1.08 ** 2);
+    expect(bodyPhysics({ hole: true, radius: 4, rs: 0.06, discOuter: 1.08 }).mass).toBeCloseTo(HOLE_MASS / 2);
+  });
+
+  it('designs an orbit with zero total momentum, prograde for A', () => {
+    const input = { posA: [0, 0, 0], posB: [40, 0, 0], a: body(6), b: body(6), spinA: [0, -1, 0], pass: 1, speed: 1 };
+    const { velA, velB } = designOrbit(input);
+    for (let k = 0; k < 3; k++) expect(velA[k] + velB[k]).toBeCloseTo(0, 10);
+    const rel = [0, 1, 2].map((k) => velB[k] - velA[k]);
+    expect(-40 * rel[2]).toBeLessThan(0); // L along −y
+    expect(rel[0]).toBeLessThan(0); // approaching
+  });
+
+  it('keeps the barycentre, captures a slow close pass and lets a fast wide one fly by', () => {
+    const base = { posA: [0, 0, 0], posB: [30, 0, 0], a: body(6), b: body(6), spinA: [0, -1, 0] };
+    const slow = run({ ...base, pass: 0.8, speed: 0.9 }, 60);
+    expect(separation(slow.s)).toBeLessThan(1.5);
+    for (let k = 0; k < 3; k++) expect(slow.s.pos[0][k] + slow.s.pos[1][k]).toBeCloseTo(30 * (k === 0 ? 1 : 0), 4);
+    const fast = run({ ...base, pass: 1.5, speed: 2 }, 60);
+    expect(separation(fast.s)).toBeGreaterThan(60);
+  });
+
+  it('fast-forwards the approach only while far apart', () => {
+    const far = createCentres({ posA: [0, 0, 0], posB: [80, 0, 0], velA: [0, 0, 0], velB: [0, 0, 0], a: body(6), b: body(6) });
+    expect(warpFactor(far)).toBeGreaterThan(5);
+    const near = createCentres({ posA: [0, 0, 0], posB: [15, 0, 0], velA: [0, 0, 0], velB: [0, 0, 0], a: body(6), b: body(6) });
+    stepCentres(near, 0.01);
+    expect(near.interacting).toBe(true);
+    expect(warpFactor(near)).toBe(1);
+    expect(near.disruption[0]).toBeGreaterThan(0);
+  });
+
+  it('a slowing winner takes its stars along (indirect term with its own acceleration)', () => {
+    const winnerAcc = [-0.5, 0, 0];
+    const ind = indirectAccel([0, 0, 0], [0, 0, 0], [1e6, 0, 0], 0, 1, winnerAcc);
+    expect(ind).toEqual([-0.5, 0, 0]);
+    // The drag works relative to the winner's velocity: a star moving with it feels none.
+    const field = { pos: [[0, 0, 0], [1e6, 0, 0]], gm: [0, 0], eps2: [1, 1], drag: 1, winnerVel: [2, 0, 0] };
+    const star = { pos: [5, 0, 0], vel: [2, 0, 0], state: STATE.FREE, spin: 1 };
+    stepStar(star, field, 0.1);
+    expect(star.vel[0]).toBeCloseTo(2, 9);
+  });
+});
+
+describe('opening pass without friction', () => {
+  it('passes at about the asked distance and moves apart again', () => {
+    const a = bodyPhysics({ hole: false, radius: 6 });
+    const input = { posA: [0, 0, 0], posB: [30, 0, 0], a, b: a, spinA: [0, -1, 0], pass: 1.2, speed: 1 };
+    const s = createCentres({ ...input, ...designOrbit(input), friction: false });
+    let min = Infinity;
+    for (let t = 0; t < 120; t += 1 / 60) {
+      stepCentres(s, (1 / 60) * warpFactor(s));
+      min = Math.min(min, separation(s));
+    }
+    expect(min).toBeGreaterThan(0.6 * 1.2 * 6);
+    expect(separation(s)).toBeGreaterThan(2 * min);
   });
 });

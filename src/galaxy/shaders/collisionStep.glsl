@@ -13,7 +13,8 @@ uniform vec3 uCentre0; // winner (fixed)
 uniform vec3 uCentre1; // victim (on its scripted path)
 uniform vec2 uGm; // G·M of the winner and the victim
 uniform vec2 uEps2; // softening² of each
-uniform vec3 uIndirect; // minus the victim's pull on the winner (winner frame)
+uniform vec3 uIndirect; // winner frame: its own acceleration minus the victim's pull on it (0 in the opening pass)
+uniform vec3 uWinnerVel; // the drag works relative to the winner (it may still be slowing down)
 uniform float uDrag; // 1/s, toward a black-hole winner
 uniform float uHole; // 1: the winner is a black hole (accretion on)
 uniform vec3 uHoleNormal;
@@ -75,7 +76,7 @@ void main() {
     }
 #endif
   } else if (state < 1.5) {
-    vec3 a = plummer(p, uCentre0, uGm.x, uEps2.x) + plummer(p, uCentre1, uGm.y, uEps2.y) + uIndirect - uDrag * v;
+    vec3 a = plummer(p, uCentre0, uGm.x, uEps2.x) + plummer(p, uCentre1, uGm.y, uEps2.y) + uIndirect - uDrag * (v - uWinnerVel);
     v += a * uDt;
     p += v * uDt;
     vec3 rel = p - uCentre0;
