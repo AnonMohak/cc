@@ -44,7 +44,7 @@ import { meterFrame, targetFactor, adapt } from './core/autoExposure.js';
 import { CollisionSim, collisionSupported } from './scene/CollisionSim.js';
 import { collisionBroken } from './galaxy/collision.js';
 import { consumeResult } from './galaxy/consumption.js';
-import { frameRadius, framingDistance, raiseDirection, easeValue, MIN_ELEVATION_DEG, TARGET_RATE, DISTANCE_RATE, DIRECTION_RATE } from './core/consumeCamera.js';
+import { frameRadius, framingDistance, orbitViewTan, raiseDirection, easeValue, MIN_ELEVATION_DEG, TARGET_RATE, DISTANCE_RATE, DIRECTION_RATE } from './core/consumeCamera.js';
 import { rumbleLevel, rumbleCutoff } from './audio/soundMix.js';
 
 const SAVE_DEBOUNCE_MS = 500;
@@ -858,15 +858,18 @@ export function startApp(container, { startScreen } = {}) {
     const cam = consumeCam;
     collision.centre(_consumeTarget);
     controls.target.lerp(_consumeTarget, 1 - Math.exp(-TARGET_RATE * realDt));
+    _consumeVec.subVectors(camera.position, controls.target).normalize().toArray(_consumeDir);
+    raiseDirection(_consumeDir, cam.normal, MIN_ELEVATION_DEG, _consumeRaised);
+    // The orbit lies near the winner's disc plane: fit it by how flat it looks from here.
+    const n = cam.normal;
+    const sinElevation = _consumeRaised[0] * n[0] + _consumeRaised[1] * n[1] + _consumeRaised[2] * n[2];
     const tanY = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     const want = THREE.MathUtils.clamp(
-      framingDistance(frameRadius(st), Math.min(tanY, tanY * camera.aspect)),
+      framingDistance(frameRadius(st), orbitViewTan(tanY, camera.aspect, sinElevation)),
       CAMERA_LIMITS.minDistance,
       CAMERA_LIMITS.maxDistance * 0.9,
     );
     cam.distance = easeValue(cam.distance, want, DISTANCE_RATE, realDt);
-    _consumeVec.subVectors(camera.position, controls.target).normalize().toArray(_consumeDir);
-    raiseDirection(_consumeDir, cam.normal, MIN_ELEVATION_DEG, _consumeRaised);
     const k = 1 - Math.exp(-DIRECTION_RATE * realDt);
     _consumeVec.fromArray(_consumeDir).lerp(_consumeVec2.fromArray(_consumeRaised), k).normalize();
     camera.position.copy(controls.target).addScaledVector(_consumeVec, cam.distance);

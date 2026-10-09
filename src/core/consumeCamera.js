@@ -39,6 +39,18 @@ export function framingDistance(radius, tanHalf, fill = FILL) {
 }
 
 /**
+ * The half-view tangent that fits a flat orbit of radius R seen from
+ * `sinElevation` above its plane: across, R fills the width (tanY × aspect);
+ * up and down it is only R × sin(elevation) high (a floor for the bodies'
+ * own thickness). The smaller fit wins, so the pair fills the screen.
+ */
+export function orbitViewTan(tanY, aspect, sinElevation) {
+  return Math.min(tanY * aspect, tanY / Math.max(Math.abs(sinElevation), MIN_FLAT_SIN));
+}
+// The flattest an orbit may look (also covers the bodies' own height).
+const MIN_FLAT_SIN = 0.35;
+
+/**
  * The view direction (unit, target → camera) raised to at least `minDeg`
  * above the disc plane on the side the camera is on. Writes into out.
  * @param {number[]} dir unit direction now

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { frameRadius, framingDistance, raiseDirection, easeValue, MIN_ELEVATION_DEG, FILL } from './consumeCamera.js';
+import { frameRadius, framingDistance, orbitViewTan, raiseDirection, easeValue, MIN_ELEVATION_DEG, FILL } from './consumeCamera.js';
 
 describe('consumeCamera', () => {
   it('frames the pair in the opening pass, then the shrinking orbit, down to the winner', () => {
@@ -12,6 +12,15 @@ describe('consumeCamera', () => {
     expect(frameRadius({ ...base, stage: 'fade', distance: 0.1, progress: 1 })).toBeCloseTo(0.9 * 6);
     const hole = frameRadius({ winnerRadius: 4, victimRadius: 4, winnerHole: true, winnerDisc: 2.16, stage: 'drain', distance: 0.2, progress: 1 });
     expect(hole).toBeCloseTo(1.2 * 2.16);
+  });
+
+  it('fits a flat orbit by the screen width, a face-on one by the height', () => {
+    // Low view on a wide screen: the orbit is flat, the width limits.
+    expect(orbitViewTan(0.5, 16 / 9, Math.sin(0.3))).toBeCloseTo(0.5 * 16 / 9);
+    // Face-on: a round orbit, the height limits.
+    expect(orbitViewTan(0.5, 16 / 9, 1)).toBeCloseTo(0.5);
+    // A portrait phone: the width limits.
+    expect(orbitViewTan(0.5, 0.5, 0.3)).toBeCloseTo(0.25);
   });
 
   it('fits the radius in the view', () => {
