@@ -6,6 +6,7 @@
  */
 export const PROJECTS = {
   '/three/galaxy-sandbox': 'galaxy-sandbox.pages.dev',
+  '/turing-machine': 'turing-machine.pages.dev',
   '/_404': 'momo-404.pages.dev', // assets of the shared 404 page
 };
 
