@@ -6,7 +6,26 @@
  */
 export const PROJECTS = {
   '/three/galaxy-sandbox': 'galaxy-sandbox.pages.dev',
+  '/_404': 'momo-404.pages.dev', // assets of the shared 404 page
 };
+
+/** Pages host of the shared 404 page (repo momo-404, built with base /_404/). */
+export const NOT_FOUND_HOST = 'momo-404.pages.dev';
+
+/**
+ * True when a 404 answers a page request, so the shared 404 page should replace it.
+ * Missing scripts, images and API calls keep their own 404.
+ *
+ * @param {Request} request
+ * @param {Response} response
+ */
+export function wantsNotFoundPage(request, response) {
+  return (
+    response.status === 404 &&
+    request.method === 'GET' &&
+    (request.headers.get('accept') ?? '').includes('text/html')
+  );
+}
 
 /**
  * Pure routing: where a request URL goes.
