@@ -56,6 +56,8 @@ const FILM_CLOSER = 0.9;
 const FILM_ELEVATION_DEG = 20;
 // Seconds for the black to fade into the scene after the intro.
 const INTRO_FADE_IN = 1.5;
+// The intro clock's largest step per frame (s).
+const INTRO_MAX_STEP = 0.5;
 
 // Depth-of-field focus scratch (no per-frame allocation).
 const _focusForward = new THREE.Vector3();
@@ -375,11 +377,18 @@ export function startApp(container, { startScreen } = {}) {
     gate.invalidate();
   }
 
+  // The intro keeps its own clock: the loop caps a frame at 0.1 s, and slow
+  // frames would let the picture fall behind the music.
+  let introLast = null;
   /** Advance the intro (real time, from the start-box click). */
-  function updateIntro(realDt) {
+  function updateIntro() {
     if (!intro) return;
     const starting = startScreen?.isOpen() ?? false;
-    if (!starting) introTime = Math.min(introTime + realDt, INTRO_SECONDS);
+    const now = performance.now();
+    // A hidden tab can stall for long: at most half a second per frame.
+    const dt = introLast === null ? 0 : Math.min((now - introLast) / 1000, INTRO_MAX_STEP);
+    introLast = now;
+    if (!starting) introTime = Math.min(introTime + dt, INTRO_SECONDS);
     const phase = introPhase(introTime);
     intro.update(introTime);
     fallOverlay.set(phase.vignette, phase.black);
@@ -500,7 +509,7 @@ export function startApp(container, { startScreen } = {}) {
     }
     soundscape.setRumble(rumbleLevel(collision ? collision.status(_consumeStatus) : null), rumbleCutoff(collision ? _consumeStatus.orbitHz : 0));
     if (cameraMode === 'tour') handleTourEvent(tour.tick(realDt));
-    updateIntro(realDt);
+    updateIntro();
     cameraFly.update(realDt);
     if (cameraMode === 'fly') fly.update(realDt);
     else if (cameraMode === 'consume') updateConsumeCamera(realDt);

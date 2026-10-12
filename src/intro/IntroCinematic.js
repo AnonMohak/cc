@@ -13,7 +13,7 @@ const _size = new THREE.Vector2();
 /** Ray-march resolution as a share of the drawing buffer. */
 const MARCH_SCALE = 0.5;
 /** Steps per ray (≤ gargantuaShader.js MAX_STEPS). */
-const MARCH_STEPS = 320;
+const MARCH_STEPS = 500;
 
 /**
  * The intro cinematic: the animation black hole (Gargantua), its own camera
