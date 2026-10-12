@@ -196,6 +196,7 @@ export function startApp(container, { startScreen } = {}) {
   // Render on demand: skip GPU work when nothing moves or changes.
   const gate = createRenderGate();
   galaxies.onChange = () => gate.invalidate(); // e.g. a debounced disc-map rebake
+  post.onFlareChange(() => gate.invalidate());
 
   let currentTier = null;
   let onTierChange = () => {};

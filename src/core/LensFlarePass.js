@@ -63,11 +63,40 @@ const LensFlareShader = {
   `,
 };
 
+// Peak meter: one texel per block of the source mip holds 1 when any texel
+// of the block passes the threshold (the ghosts are max(c − threshold, 0),
+// so below it they add exactly nothing).
+const PEAK_SIZE = 8;
+const peakShader = /* glsl */ `
+  uniform sampler2D tSource;
+  uniform float uThreshold;
+  void main() {
+    ivec2 size = textureSize(tSource, 0);
+    ivec2 block = (size + ${PEAK_SIZE - 1}) / ${PEAK_SIZE};
+    ivec2 start = ivec2(gl_FragCoord.xy) * block;
+    ivec2 end = min(start + block, size);
+    float peak = 0.0;
+    for (int y = start.y; y < end.y; y++) {
+      for (int x = start.x; x < end.x; x++) {
+        vec3 c = texelFetch(tSource, ivec2(x, y), 0).rgb;
+        peak = max(peak, max(c.r, max(c.g, c.b)));
+      }
+    }
+    gl_FragColor = vec4(peak > uThreshold ? 1.0 : 0.0, 0.0, 0.0, 1.0);
+  }
+`;
+
 /**
  * Subtle lens-flare ghosts from the brightest sources (supernovae, bright
  * stars, galaxy cores). Reads the bloom pass's blurred mips, so it must run
  * right after an enabled UnrealBloomPass, and adds its light to the HDR
  * buffer before tone mapping.
+ *
+ * Often nothing passes the threshold (the intro black hole draws after
+ * bloom, so its disc never casts ghosts): a tiny peak meter of the source
+ * mip, read back asynchronously like the exposure meter, skips the
+ * full-screen ghost draw then. The reading lands a frame or two late;
+ * `onChange` hears when it flips, so an idle render gate can wake.
  */
 export class LensFlarePass extends Pass {
   /** @param {import('three/addons/postprocessing/UnrealBloomPass.js').UnrealBloomPass} bloom */
@@ -85,6 +114,24 @@ export class LensFlarePass extends Pass {
       depthWrite: false,
     });
     this.fsQuad = new FullScreenQuad(this.material);
+
+    /** Called when the peak reading flips (a ghost appears or goes). */
+    this.onChange = null;
+    // Draw until the first reading says otherwise; always when the readback fails.
+    this.lit = true;
+    this.failed = false;
+    this.pending = false;
+    this.peakBytes = new Uint8Array(PEAK_SIZE * PEAK_SIZE * 4);
+    this.peakTarget = new THREE.WebGLRenderTarget(PEAK_SIZE, PEAK_SIZE, { type: THREE.UnsignedByteType, depthBuffer: false });
+    this.peakMaterial = new THREE.ShaderMaterial({
+      name: 'LensFlarePeak',
+      uniforms: { tSource: this.material.uniforms.tSource, uThreshold: this.material.uniforms.uThreshold },
+      vertexShader: LensFlareShader.vertexShader,
+      fragmentShader: peakShader,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.peakQuad = new FullScreenQuad(this.peakMaterial);
   }
 
   /**
@@ -96,8 +143,40 @@ export class LensFlarePass extends Pass {
     this.material.uniforms.uThreshold.value = threshold;
   }
 
+  /** Meters the source mip (one reading in flight); updates `lit` when it lands. */
+  measure(renderer) {
+    if (this.failed || this.pending) return;
+    renderer.setRenderTarget(this.peakTarget);
+    this.peakQuad.render(renderer);
+    if (typeof renderer.readRenderTargetPixelsAsync !== 'function') {
+      this.failed = true;
+      this.lit = true;
+      return;
+    }
+    this.pending = true;
+    renderer
+      .readRenderTargetPixelsAsync(this.peakTarget, 0, 0, PEAK_SIZE, PEAK_SIZE, this.peakBytes)
+      .then(() => {
+        let lit = false;
+        for (let i = 0; i < this.peakBytes.length; i += 4) lit ||= this.peakBytes[i] > 127;
+        if (lit !== this.lit) {
+          this.lit = lit;
+          this.onChange?.();
+        }
+      })
+      .catch(() => {
+        this.failed = true;
+        this.lit = true;
+      })
+      .finally(() => {
+        this.pending = false;
+      });
+  }
+
   render(renderer, writeBuffer, readBuffer) {
     this.material.uniforms.tSource.value = this.bloom.renderTargetsVertical[SOURCE_MIP].texture;
+    this.measure(renderer);
+    if (!this.lit) return;
     // Additive onto the scene + bloom image: the target must not be cleared.
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
@@ -109,5 +188,8 @@ export class LensFlarePass extends Pass {
   dispose() {
     this.material.dispose();
     this.fsQuad.dispose();
+    this.peakMaterial.dispose();
+    this.peakQuad.dispose();
+    this.peakTarget.dispose();
   }
 }

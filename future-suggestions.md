@@ -22,11 +22,9 @@ A first attempt was built on a branch and then dropped. The problems and the ide
   - Foreground dust grains that the camera passes (parallax), drawn after the lens pass (layer `JETS`) and hidden behind the shadow like the jets.
   - Brighter sky stars during the fall (×1.6) and a gentler disc spin-up (×6).
 - **Horizontal line through the black hole.** Problem: a straight horizontal line goes through the middle of the hole and looks false. Cause: the lens streak in `BlackHolePass.js` (`shade()`, `STREAK_GAIN` / `STREAK_LENGTH`): a ~1.2 px line level with the screen, reaching across the full screen width, that does not follow the disc tilt. Idea that was tried: a short, soft Gaussian glow along the disc's long axis on screen (perpendicular to the projected disc normal), sized by the disc and fainter, none for a face-on disc.
-- **More fps without much quality loss.** On the intro scene on a UHD 630 at 720p the black-hole pass is ~20 of ~24 ms (lens supersampled ×4), so start there. Measure with `?fps` first.
-  - Scissor the black-hole pass to the screen rectangle of the lens reach.
+- **More fps without much quality loss.** Done: the lens rectangle (scissor), the lens flare skipped when nothing passes its threshold, and supersampling on edges only. On the intro scene on a UHD 630 at 720p the black-hole pass is now ~16 of ~21 ms at the film shot and ~26 of ~32 ms close up (fine disc streaks count as edges there). Measure with `?fps` first.
   - Temporal supersampling for the lens: 1 ray per frame on a rotating sub-pixel offset, blended with the last frames (reproject; reset on fast motion), instead of 4 rays every frame.
-  - Supersample only the edges (photon ring, shadow edge, disc rims), found by a cheap gradient test.
   - Bake the disc look (profile × streak noise) into a small polar texture when the hole params change.
   - Dynamic resolution inside a tier before Auto drops a whole tier.
-  - Cheaper bloom on phones (fewer mips or quarter resolution); skip passes with no visible effect (for example the lens flare when nothing is above `FLARE_THRESHOLD`).
+  - Cheaper bloom on phones (fewer mips or quarter resolution).
   - `mediump` where it is safe on mobile GPUs; `highp` only for positions and the light-path lookup.

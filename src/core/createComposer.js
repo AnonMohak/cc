@@ -125,6 +125,13 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
       flare.setAmount(amount * FLARE_GAIN, FLARE_THRESHOLD);
     },
     /**
+     * `fn()` runs when the flare's late peak reading turns the ghosts on or
+     * off (wake the render gate: the reading can land after it went idle).
+     */
+    onFlareChange(fn) {
+      flare.onChange = fn;
+    },
+    /**
      * Black holes: `source(slots)` fills candidate slots and returns the count;
      * `allowed` is false when the setting or the quality tier turns them off.
      */

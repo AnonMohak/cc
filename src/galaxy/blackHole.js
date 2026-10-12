@@ -137,6 +137,52 @@ export function warpedReach(warp) {
   return LENS_REACH * (1 + WARP_REACH * Math.min(1, Math.max(0, warp)));
 }
 
+/**
+ * Screen extent (uv, 0–1) along one axis of the rays that pass within
+ * `radius` of a centre at lateral offset `x` and depth `depth` in front of
+ * the camera: the tangent lines from the camera to that circle (exact for a
+ * sphere, since the planes holding the other axis meet it as this circle).
+ * Writes [lo, hi] to out.
+ */
+function sphereSpan(x, depth, radius, tanHalf, out) {
+  const dist = Math.hypot(x, depth);
+  if (dist <= radius) {
+    out[0] = 0;
+    out[1] = 1;
+    return;
+  }
+  const mid = Math.atan2(x, depth);
+  const half = Math.asin(radius / dist);
+  const toUv = (a) => Math.min(1, Math.max(0, (Math.tan(a) / tanHalf) * 0.5 + 0.5));
+  out[0] = mid - half <= -Math.PI / 2 ? 0 : toUv(mid - half);
+  out[1] = mid + half >= Math.PI / 2 ? 1 : toUv(mid + half);
+}
+
+const _span = [0, 0];
+
+/**
+ * The screen rectangle (uv, 0–1) of every ray that passes within `radius`
+ * of a view-space centre: where a lens reach of that radius can change the
+ * picture (BlackHolePass draws only there). Writes [x0, y0, x1, y1] to out
+ * and returns false when the lens is behind the camera (no rays reach it).
+ * @param {{ x: number, y: number, z: number }} center view space (camera looks down −z)
+ * @param {number} radius same units as center
+ * @param {number} tanX tan of the half field of view, horizontal
+ * @param {number} tanY tan of the half field of view, vertical
+ * @param {number[]} out
+ */
+export function lensScreenRect(center, radius, tanX, tanY, out) {
+  const depth = -center.z;
+  if (!(depth > 0)) return false;
+  sphereSpan(center.x, depth, radius, tanX, _span);
+  out[0] = _span[0];
+  out[2] = _span[1];
+  sphereSpan(center.y, depth, radius, tanY, _span);
+  out[1] = _span[0];
+  out[3] = _span[1];
+  return true;
+}
+
 /** Shadow radius on screen (px) for Rs and distance in world units. */
 export function shadowPixels(rsWorld, distance, tanHalfFovY, viewportHeight) {
   if (!(distance > 0)) return 0;
