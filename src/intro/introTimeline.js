@@ -1,3 +1,5 @@
+import { shotPose } from './shotSolve.js';
+
 /**
  * The intro cinematic's clock: the camera path (shots 1–5 of the reference,
  * a turn around the disc, the plunge), the darkness and the sound modes, all
@@ -23,39 +25,42 @@ export const MUSIC_RISE_SECONDS = 5;
  * Camera keys: t (s), r (Rs), elevation above the disc plane (deg), azimuth
  * (deg, the disc turns toward +azimuth), lead (deg: the view turns from the
  * hole toward the direction of motion; 0 aims at the hole), aimY (Rs: the
- * height of the aim point), roll (deg), fov (deg) and exposure.
+ * height of the aim point), roll (deg), fov (deg), exposure and sparse (0–1:
+ * how much the inner gas thins into clumps).
  */
+// A key at a reference shot: the pose solved from the still (shotSolve.js).
+const shot = (t, n, { roll = 0, exp = 1, sparse = 0 } = {}) => ({ t, ...shotPose(n), roll, exp, sparse });
+
 export const CAMERA_KEYS = [
   // Shots 1–3: in the disc plane inside the clear gap near the hole; the
-  // shadow fills the view, the thin ring and sparse clumps around it. The
-  // camera backs out and turns to the hole as the rings come into view.
-  { t: 0, r: 2.4, el: 0, az: 0, lead: 21, aimY: 0.15, roll: 0, fov: 75, exp: 0.45 },
-  { t: 6, r: 2.9, el: 0, az: 4, lead: 8, aimY: 0.1, roll: 0, fov: 75, exp: 0.6 },
-  { t: 12, r: 3.5, el: 0, az: 8, lead: 0, aimY: 0.05, roll: 0, fov: 75, exp: 0.85 },
-  // Rise out of the gap over the inner edge, then out over the cloud tops.
-  { t: 15, r: 4.2, el: 13, az: 11, lead: 0, aimY: 0.6, roll: 0, fov: 70, exp: 1.05 },
+  // shadow fills the view, the thin ring and sparse clumps around it.
+  shot(0, 1, { exp: 0.026, sparse: 1 }),
+  shot(6, 2, { exp: 0.028, sparse: 1 }),
+  shot(12, 3, { exp: 0.43, sparse: 1 }),
+  // Rise out of the gap over the inner edge.
+  { t: 15.5, r: 4.2, el: 12, az: 11, lead: 0, aimY: 0.2, roll: 0, fov: 72, exp: 1.05, sparse: 0.5 },
   // Shots 4–5: just over the cloud tops; the shadow is a dome with the arches.
-  { t: 19.5, r: 9, el: 6.5, az: 14, lead: 0, aimY: 1.3, roll: 0, fov: 62, exp: 1.15 },
-  { t: 25, r: 12, el: 6.3, az: 19, lead: 0, aimY: 1.5, roll: 0, fov: 60, exp: 1.25 },
+  shot(19.5, 4, { exp: 0.38 }),
+  shot(25, 5, { exp: 1.03 }),
   // The turn around the disc (references 6–10): above the clouds, then low
-  // beside the hole with it at the left (a negative lead: the view turns
-  // against the motion) and the cloud arc overhead, then through the thin
-  // inner fog.
-  { t: 31, r: 14, el: 12, az: 40, lead: 0, aimY: 0, roll: 3, fov: 56, exp: 1.1 },
-  { t: 37.5, r: 7.5, el: 8, az: 90, lead: -40, aimY: 0.5, roll: -10, fov: 58, exp: 1 },
-  { t: 44, r: 6, el: 6, az: 140, lead: -32, aimY: 0.5, roll: -12, fov: 60, exp: 1 },
-  { t: 50, r: 5, el: 2.5, az: 182, lead: -15, aimY: 0.4, roll: -6, fov: 62, exp: 0.55 },
+  // beside the hole with it at the left and the cloud arc overhead (shots
+  // 7–9), then through the thin inner fog.
+  { t: 31, r: 12, el: 12, az: 50, lead: 0, aimY: 0, roll: 0, fov: 56, exp: 1.1, sparse: 0 },
+  shot(37.5, 7, { roll: -3, exp: 6.3 }),
+  shot(41, 8, { roll: -4, exp: 4.6 }),
+  shot(44, 9, { roll: -5, exp: 3.3 }),
+  { t: 50, r: 5, el: 2.5, az: 182, lead: -15, aimY: 0.4, roll: -6, fov: 62, exp: 0.55, sparse: 1 },
   // The fall: rise a little, turn to the shadow and plunge.
-  { t: 55.5, r: 4, el: 12, az: 205, lead: 0, aimY: 0, roll: 2, fov: 64, exp: 1 },
-  { t: 61.5, r: 1.9, el: 10, az: 222, lead: 0, aimY: 0, roll: 0, fov: 80, exp: 1 },
-  { t: BLACK_FULL, r: 1.2, el: 10, az: 230, lead: 0, aimY: 0, roll: 0, fov: 85, exp: 1 },
+  { t: 55.5, r: 4, el: 12, az: 205, lead: 0, aimY: 0, roll: 2, fov: 64, exp: 1, sparse: 1 },
+  { t: 61.5, r: 1.9, el: 10, az: 222, lead: 0, aimY: 0, roll: 0, fov: 80, exp: 1, sparse: 1 },
+  { t: BLACK_FULL, r: 1.2, el: 10, az: 230, lead: 0, aimY: 0, roll: 0, fov: 85, exp: 1, sparse: 1 },
 ];
 
 /**
  * The moments that match the reference stills (shot number → seconds), for
  * the ?tune view's side-by-side and the per-shot tuning.
  */
-export const REFERENCE_SHOTS = { 1: 2, 2: 9, 3: 13.5, 4: 19.5, 5: 25, 6: 31, 7: 37.5, 8: 41, 9: 44, 10: 50 };
+export const REFERENCE_SHOTS = { 1: 0, 2: 6, 3: 12, 4: 19.5, 5: 25, 6: 31, 7: 37.5, 8: 41, 9: 44, 10: 50 };
 
 const DEG = Math.PI / 180;
 
@@ -123,6 +128,7 @@ export function introCamera(t, out, keys = CAMERA_KEYS) {
   out.roll = catmullRom(k0.roll, k1.roll, k2.roll, k3.roll, s) * DEG;
   out.fov = catmullRom(k0.fov, k1.fov, k2.fov, k3.fov, s);
   out.exposure = catmullRom(k0.exp, k1.exp, k2.exp, k3.exp, s);
+  out.sparse = Math.min(1, Math.max(0, catmullRom(k0.sparse, k1.sparse, k2.sparse, k3.sparse, s)));
   return out;
 }
 

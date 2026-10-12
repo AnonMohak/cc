@@ -38,6 +38,8 @@ export const marchShader = /* glsl */ `
   uniform sampler2D tPrev;
   uniform float uHistory;
   uniform float uFrame;
+  // How much the inner gas thins into sparse clumps (the camera key sparse).
+  uniform float uSparse;
   varying vec2 vUv;
 
   #define MAX_STEPS ${MAX_STEPS}
@@ -102,7 +104,7 @@ ${LOOK}
     // Cloud tops: the gas thins with height, with a noisy, smoky surface.
     float body = exp(-0.6 * zn * zn);
     // Near the inner edge the gas thins into sparse clumps.
-    float sparse = 1.0 - smoothstep(DISC_INNER, DISC_INNER * SPARSE_OUT, r);
+    float sparse = uSparse * (1.0 - smoothstep(DISC_INNER, DISC_INNER * SPARSE_OUT, r));
     float dens = win * body * smoothstep(0.32, 0.62, cloud + 0.35 * (body - 0.6) - 0.22 * sparse);
     // Large dark dust clumps (the black patches).
     float dust = smoothstep(0.5, 0.66, n.g + 0.25 * (fine - 0.5));

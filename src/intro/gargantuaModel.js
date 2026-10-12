@@ -16,13 +16,20 @@
  * sparse clumps (reference shots 1–3).
  */
 export const DISC_INNER = 4;
-/** Inside this many × DISC_INNER the gas thins into sparse clumps. */
+/**
+ * Inside this many × DISC_INNER the gas can thin into sparse clumps: how much
+ * is a per-shot value (camera key `sparse`; 1 in shots 1–3, 0 where the camera
+ * looks over a dense surface, shots 4–5).
+ */
 export const SPARSE_OUT = 2.2;
 /** The disc fades out toward here (Rs): huge next to the shadow, as in the film. */
 export const DISC_OUTER = 60;
-/** Gaussian half-thickness H(r) = H0 + H1 · r (Rs): thin inside, flared outside. */
+/**
+ * Gaussian half-thickness H(r) = H0 + H1 · r (Rs): thin, as in the film (a
+ * camera ~0.6 Rs over the plane near the hole is above the gas: shots 7–9).
+ */
 export const H0 = 0.05;
-export const H1 = 0.03;
+export const H1 = 0.015;
 /** Vertical extent of the gas, in half-thicknesses (the slab the march visits). */
 export const SLAB_K = 3;
 /** Rays inside this radius (Rs) and moving inward are captured: the shadow. */
