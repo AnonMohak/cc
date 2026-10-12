@@ -14,15 +14,22 @@ const _size = new THREE.Vector2();
 const MARCH_SCALE = 0.5;
 /** Steps per ray (≤ gargantuaShader.js MAX_STEPS). */
 const MARCH_STEPS = 500;
+/**
+ * Accumulation time constant (s): each frame keeps exp(−dt / this) of the
+ * last. About a 180° film shutter's blur, and it averages the step jitter.
+ */
+const SHUTTER = 0.06;
 
 /**
  * The intro cinematic: the animation black hole (Gargantua), its own camera
  * and its own rendering, apart from the scene and its black holes. It exists
  * only while the intro plays (app.js), then is disposed.
  *
- * Rendering: a ray march of the disc gas at MARCH_SCALE resolution into a
- * HalfFloat target (light, transmittance), then a full-resolution composite
- * (sky, exposure, tone mapping, grade) to the screen.
+ * Rendering: a ray march of the disc gas along bent light paths at
+ * MARCH_SCALE resolution into one of two HalfFloat targets (light, depth),
+ * mixed with the other (the last frame: accumulation), with mipmaps for the
+ * glow; then a full-resolution composite (depth of field, glow, flare,
+ * exposure, ACES, grade, grain) to the screen.
  */
 export class IntroCinematic {
   /** @param {{ aspect: number }} options */
@@ -49,10 +56,21 @@ export class IntroCinematic {
       uCamBasis: { value: new THREE.Matrix3() },
       uTanHalfFov: { value: new THREE.Vector2(1, 1) },
     };
-    this.target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+    const targetOptions = { type: THREE.HalfFloatType, depthBuffer: false, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter };
+    this.targets = [new THREE.WebGLRenderTarget(1, 1, targetOptions), new THREE.WebGLRenderTarget(1, 1, targetOptions)];
+    this.frame = 0;
+    this.lastRender = null;
     this.march = new THREE.ShaderMaterial({
       name: 'IntroMarch',
-      uniforms: { ...camUniforms, uNoise: { value: this.noise }, uTime: { value: 0 }, uSteps: { value: MARCH_STEPS } },
+      uniforms: {
+        ...camUniforms,
+        uNoise: { value: this.noise },
+        uTime: { value: 0 },
+        uSteps: { value: MARCH_STEPS },
+        tPrev: { value: null },
+        uHistory: { value: 0 },
+        uFrame: { value: 0 },
+      },
       vertexShader: QUAD_VERTEX,
       fragmentShader: marchShader,
       depthTest: false,
@@ -60,7 +78,13 @@ export class IntroCinematic {
     });
     this.composite = new THREE.ShaderMaterial({
       name: 'IntroComposite',
-      uniforms: { ...camUniforms, tMarch: { value: this.target.texture }, uResolution: { value: new THREE.Vector2(1, 1) }, uExposure: { value: 1 } },
+      uniforms: {
+        tMarch: { value: null },
+        uResolution: { value: new THREE.Vector2(1, 1) },
+        uExposure: { value: 1 },
+        uFocus: { value: 10 },
+        uTime: { value: 0 },
+      },
       vertexShader: QUAD_VERTEX,
       fragmentShader: compositeShader,
       depthTest: false,
@@ -101,7 +125,19 @@ export class IntroCinematic {
     renderer.getDrawingBufferSize(_size);
     const w = Math.max(1, Math.round(_size.x * MARCH_SCALE));
     const h = Math.max(1, Math.round(_size.y * MARCH_SCALE));
-    if (this.target.width !== w || this.target.height !== h) this.target.setSize(w, h);
+    let fresh = this.frame === 0;
+    for (const target of this.targets) {
+      if (target.width !== w || target.height !== h) {
+        target.setSize(w, h);
+        fresh = true;
+      }
+    }
+    // Real time since the last frame sets how much of it to keep.
+    const now = performance.now();
+    const dt = this.lastRender === null ? 1 : (now - this.lastRender) / 1000;
+    this.lastRender = now;
+    const [read, write] = this.frame % 2 === 0 ? this.targets : [this.targets[1], this.targets[0]];
+    this.frame++;
 
     const u = this.march.uniforms;
     const cam = this.camera;
@@ -110,10 +146,18 @@ export class IntroCinematic {
     const tanY = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     u.uTanHalfFov.value.set(tanY * cam.aspect, tanY);
     u.uTime.value = this.time;
-    this.composite.uniforms.uExposure.value = this.exposure;
-    this.composite.uniforms.uResolution.value.copy(_size);
+    u.tPrev.value = read.texture;
+    u.uHistory.value = fresh ? 0 : Math.exp(-dt / SHUTTER);
+    u.uFrame.value = this.frame % 1024;
+    const c = this.composite.uniforms;
+    c.tMarch.value = write.texture;
+    c.uExposure.value = this.exposure;
+    c.uResolution.value.copy(_size);
+    // In focus: the hole (its distance from the camera, in Rs).
+    c.uFocus.value = cam.position.length();
+    c.uTime.value = this.time;
 
-    renderer.setRenderTarget(this.target);
+    renderer.setRenderTarget(write);
     this.marchQuad.render(renderer);
     renderer.setRenderTarget(null);
     this.compositeQuad.render(renderer);
@@ -121,7 +165,7 @@ export class IntroCinematic {
 
   dispose() {
     this.noise.dispose();
-    this.target.dispose();
+    for (const target of this.targets) target.dispose();
     this.march.dispose();
     this.composite.dispose();
     this.marchQuad.dispose();

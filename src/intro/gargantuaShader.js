@@ -36,7 +36,8 @@ const LOOK = /* glsl */ `
 /**
  * The disc ray march, at a reduced resolution, along bent light paths: rgb
  * = light reaching the camera (gas, then the stars where the ray leaves), a
- * = transmittance (0 where the ray falls into the hole: the shadow). The
+ * = the depth (Rs along the path) where the gas turns half opaque. Each
+ * result is mixed with the last one (accumulation). The
  * arches over the shadow, the photon ring and the Einstein ring come from
  * the bending itself.
  */
@@ -48,6 +49,11 @@ export const marchShader = /* glsl */ `
   uniform sampler3D uNoise;
   uniform float uTime;
   uniform int uSteps;
+  // Accumulation: the last result and its weight (a film shutter's motion
+  // blur, and the per-frame jitter averages out), and a frame counter.
+  uniform sampler2D tPrev;
+  uniform float uHistory;
+  uniform float uFrame;
   varying vec2 vUv;
 
   #define MAX_STEPS ${MAX_STEPS}
@@ -63,6 +69,7 @@ export const marchShader = /* glsl */ `
   const float CURVE_K = ${f(CURVE_K)};
   const float CURVE_MIN = ${f(CURVE_MIN)};
   const float CURVE_MAX = ${f(CURVE_MAX)};
+  const float FAR_DEPTH = 1000.0;
   const float SPIN = ${f(SPIN)};
   const float GLOW_POWER = ${f(GLOW_POWER)};
   const float STEP_K = ${f(STEP_K)};
@@ -145,8 +152,12 @@ ${LOOK}
     vec3 light = vec3(0.0);
     float T = 1.0;
     bool captured = false;
-    // A fixed per-pixel offset of the first step (no shimmer from frame to frame).
-    float jitter = hash12(gl_FragCoord.xy);
+    // A new offset of the first step every frame; the accumulation averages it.
+    float jitter = hash12(gl_FragCoord.xy + vec2(uFrame * 13.17, uFrame * 7.73));
+    // Depth for the depth of field: the path length where the gas becomes
+    // half opaque (far when it never does).
+    float dist = 0.0;
+    float depth = -1.0;
     for (int i = 0; i < MAX_STEPS; i++) {
       if (i >= uSteps || T < 0.01) break;
       float r = length(p);
@@ -172,8 +183,10 @@ ${LOOK}
           vec3 lit = (GAS_WARM * glowAt(rc) * 0.6 + SMOKE_COOL) * ALBEDO * (1.0 - 0.8 * g.z);
           light += w * (emit + lit);
           T *= exp(-sigma * dt);
+          if (depth < 0.0 && T < 0.5) depth = dist;
         }
       }
+      dist += dt;
       // Velocity Verlet: the light bends toward the hole.
       p += v * dt + 0.5 * acc * dt * dt;
       vec3 acc1 = accel(p, h2);
@@ -182,22 +195,42 @@ ${LOOK}
     }
     // Rays that leave see the stars where they point; captured rays are the shadow.
     if (!captured) light += T * stars(normalize(v));
-    gl_FragColor = vec4(light, captured ? 0.0 : T);
+    if (depth < 0.0) depth = FAR_DEPTH;
+    vec4 cur = vec4(light, depth);
+    gl_FragColor = mix(cur, texture2D(tPrev, vUv), uHistory);
   }
 `;
 
 /**
- * Full resolution: the march (bilinear), then exposure, tone mapping and a
- * film grade.
+ * Full resolution: the march with depth of field, a veiling glow and bloom
+ * (mip levels of the march), lens ghosts and a halo ring, then exposure,
+ * ACES, a teal/orange film grade and grain.
  */
 export const compositeShader = /* glsl */ `
   uniform sampler2D tMarch;
-  uniform vec3 uCamPos;
-  uniform mat3 uCamBasis;
-  uniform vec2 uTanHalfFov;
   uniform vec2 uResolution;
   uniform float uExposure;
+  uniform float uFocus; // Rs: the depth in focus
+  uniform float uTime;
   varying vec2 vUv;
+
+  const float PI = 3.14159265;
+  // Depth of field: the blur radius (px at full resolution) per unit of
+  // |1 − focus/depth|, and its cap.
+  const float DOF_K = 9.0;
+  const float DOF_MAX = 10.0;
+  // Veiling glow (the film's IMAX lens glow) and bloom, from the mips.
+  const float VEIL = 0.09;
+  const float BLOOM = 0.22;
+  // Lens ghosts and the halo ring (pink-violet coatings), from bright light only.
+  const float FLARE_THRESHOLD = 1.6;
+  const float GHOSTS = 0.025;
+  const float HALO = 0.035;
+  const float HALO_RADIUS = 0.42;
+  // Grade.
+  const vec3 SHADOW_TINT = vec3(0.005, 0.011, 0.015);
+  const float SATURATION = 1.15;
+  const float GRAIN = 0.022;
 
   float hash12(vec2 p) {
     vec3 q = fract(vec3(p.xyx) * 0.1031);
@@ -205,16 +238,59 @@ export const compositeShader = /* glsl */ `
     return fract((q.x + q.y) * q.z);
   }
 
-
   vec3 aces(vec3 x) {
     return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
   }
 
+  vec3 bright(vec2 uv, float lod) {
+    return max(textureLod(tMarch, clamp(uv, 0.0, 1.0), lod).rgb - FLARE_THRESHOLD, 0.0);
+  }
+
   void main() {
-    vec3 col = texture2D(tMarch, vUv).rgb;
+    vec4 c0 = textureLod(tMarch, vUv, 0.0);
+    // Depth of field: a golden-angle gather by this pixel's blur radius.
+    float coc = min(DOF_K * abs(1.0 - uFocus / max(c0.a, 1e-3)), DOF_MAX);
+    vec3 col = c0.rgb;
+    if (coc > 0.75) {
+      vec2 px = coc / uResolution;
+      vec3 sum = c0.rgb;
+      float wsum = 1.0;
+      for (int i = 0; i < 16; i++) {
+        float fi = float(i) + 0.5;
+        float rad = sqrt(fi / 16.0);
+        float ang = fi * 2.39996;
+        vec4 s = textureLod(tMarch, vUv + vec2(cos(ang), sin(ang)) * rad * px, 0.0);
+        // A sharp, nearer neighbour does not smear over a blurred pixel.
+        float sc = min(DOF_K * abs(1.0 - uFocus / max(s.a, 1e-3)), DOF_MAX);
+        float w = smoothstep(rad * coc * 0.5, rad * coc, sc + 0.5);
+        sum += s.rgb * w;
+        wsum += w;
+      }
+      col = sum / wsum;
+    }
+    // Veiling glow and bloom: wide, soft, over everything (the shadow too).
+    col += VEIL * textureLod(tMarch, vUv, 6.0).rgb;
+    col += BLOOM * (0.5 * textureLod(tMarch, vUv, 3.0).rgb + 0.35 * textureLod(tMarch, vUv, 4.0).rgb + 0.15 * textureLod(tMarch, vUv, 5.0).rgb);
+    // Ghosts along the line through the centre, and the halo ring.
+    vec2 toCentre = vec2(0.5) - vUv;
+    vec3 flare = vec3(0.0);
+    for (int i = 1; i <= 3; i++) {
+      vec2 g = vUv + toCentre * (float(i) * 0.55);
+      float fade = 1.0 - smoothstep(0.2, 0.7, length(g - 0.5));
+      flare += bright(g, 4.0) * fade * vec3(0.6, 0.7, 1.0);
+    }
+    vec2 dir = length(toCentre) > 1e-4 ? normalize(toCentre) : vec2(0.0);
+    vec2 h = vUv + dir * HALO_RADIUS * vec2(uResolution.y / uResolution.x, 1.0);
+    float hw = pow(1.0 - min(abs(length(h - 0.5) - HALO_RADIUS * 0.5) * 6.0, 1.0), 4.0);
+    col += GHOSTS * flare + HALO * bright(h, 3.0) * hw * vec3(1.0, 0.6, 0.95);
+
     col = aces(col * uExposure);
-    // Film grade: blacks lifted a little and warm, highlights kept.
-    col = col * 0.985 + vec3(0.010, 0.008, 0.007);
-    gl_FragColor = vec4(pow(col, vec3(1.0 / 2.2)), 1.0);
+    // Film grade: teal in the darks, the highlights kept warm.
+    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    col = max(mix(vec3(luma), col, SATURATION), 0.0);
+    col += SHADOW_TINT * pow(1.0 - luma, 4.0);
+    col = mix(col, col * vec3(1.03, 1.0, 0.94), smoothstep(0.4, 1.0, luma));
+    col += (hash12(gl_FragCoord.xy + fract(uTime * 7.31) * 311.0) - 0.5) * GRAIN;
+    gl_FragColor = vec4(pow(max(col, 0.0), vec3(1.0 / 2.2)), 1.0);
   }
 `;
