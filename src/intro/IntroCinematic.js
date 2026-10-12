@@ -4,7 +4,7 @@ import { introCamera } from './introTimeline.js';
 import { bakeNoise3d, NOISE3D_SIZE } from './noise3d.js';
 import { marchShader, compositeShader, QUAD_VERTEX } from './gargantuaShader.js';
 
-const _pose = { position: [0, 0, 0], target: [0, 0, 0], roll: 0, fov: 60 };
+const _pose = { position: [0, 0, 0], target: [0, 0, 0], roll: 0, fov: 60, exposure: 1 };
 const _target = new THREE.Vector3();
 const _forward = new THREE.Vector3();
 const _right = new THREE.Vector3();
@@ -30,7 +30,10 @@ export class IntroCinematic {
     this.camera = new THREE.PerspectiveCamera(60, aspect, 0.01, 1000);
     /** For tuning: a fixed pose ({ position, target, roll, fov }) instead of the timeline. */
     this.override = null;
+    /** For tuning: a fixed time (s) instead of the clock. */
+    this.fixedTime = null;
     this.time = 0;
+    this.exposure = 1;
 
     this.noise = new THREE.Data3DTexture(bakeNoise3d(), NOISE3D_SIZE, NOISE3D_SIZE, NOISE3D_SIZE);
     this.noise.format = THREE.RGFormat;
@@ -73,7 +76,8 @@ export class IntroCinematic {
   }
 
   /** Place the camera for t seconds since the start-box click. */
-  update(t) {
+  update(clock) {
+    const t = this.fixedTime ?? clock;
     this.time = t;
     const pose = this.override ?? introCamera(t, _pose);
     const cam = this.camera;
@@ -84,6 +88,7 @@ export class IntroCinematic {
     _right.crossVectors(_forward, THREE.Object3D.DEFAULT_UP).normalize();
     cam.up.copy(THREE.Object3D.DEFAULT_UP).multiplyScalar(Math.cos(pose.roll)).addScaledVector(_right, Math.sin(pose.roll));
     cam.lookAt(_target);
+    this.exposure = pose.exposure ?? 1;
     if (cam.fov !== pose.fov) {
       cam.fov = pose.fov;
       cam.updateProjectionMatrix();
@@ -105,6 +110,7 @@ export class IntroCinematic {
     const tanY = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     u.uTanHalfFov.value.set(tanY * cam.aspect, tanY);
     u.uTime.value = this.time;
+    this.composite.uniforms.uExposure.value = this.exposure;
     this.composite.uniforms.uResolution.value.copy(_size);
 
     renderer.setRenderTarget(this.target);
