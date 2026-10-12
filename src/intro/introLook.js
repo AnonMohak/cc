@@ -4,6 +4,10 @@
  * have slider limits; arrays are linear RGB colours. Pure.
  */
 
+import { filmColour, DISC_K } from './filmColour.js';
+
+const DISC_COLOUR = filmColour(DISC_K).map((v) => Math.round(v * 1000) / 1000);
+
 /** The disc ray march (gargantuaShader.js marchShader). */
 export const MARCH_LOOK = {
   // Optical depth across the full thickness of dense gas: marginally thick.
@@ -17,10 +21,12 @@ export const MARCH_LOOK = {
   VERT_FREQ: 0.3,
   // Domain warp (texture units): breaks the even rings into clumps.
   WARP: 0.55,
-  // 4500 K gas, white-hot near the inner edge; the smoke is lit warm from
-  // below and a little cool by the sky.
-  GAS_WARM: [1, 0.5, 0.2],
-  GAS_HOT: [1, 0.86, 0.66],
+  // The gas colour: 4500 K black body through the camera film, as the film
+  // did it (filmColour.js); one temperature, so the outer gas and the hot
+  // inner gas share it (the inner disc looks white-hot from exposure alone).
+  // The smoke is lit by the same light from below and a little cool by the sky.
+  GAS_WARM: DISC_COLOUR,
+  GAS_HOT: DISC_COLOUR,
   SMOKE_COOL: [0.16, 0.19, 0.24],
 };
 
@@ -43,18 +49,18 @@ export const COMPOSITE_LOOK = {
   GRAIN: 0.022,
   // Colour fit to the reference stills: a tone curve per channel (display
   // space), the output at each of CURVE_KNOTS, fitted to the mean colour of
-  // matching brightness bands of our frames and shots 1–3 and 7–9 (shots 4–5
+  // matching brightness bands of our frames (with the film-stock gas colour) and shots 1–3 and 7–9 (shots 4–5
   // are cool from the haze over the dome, not from the grade). The film is
   // near neutral low down and turns orange in the highlights.
   CURVE_0: [0, 0, 0],
-  CURVE_1: [0.053, 0.055, 0.036],
-  CURVE_2: [0.158, 0.151, 0.115],
-  CURVE_3: [0.306, 0.276, 0.219],
-  CURVE_4: [0.482, 0.421, 0.341],
-  CURVE_5: [0.661, 0.575, 0.476],
-  CURVE_6: [0.815, 0.728, 0.629],
-  CURVE_7: [0.925, 0.87, 0.792],
-  CURVE_8: [1, 1, 0.955],
+  CURVE_1: [0.054, 0.054, 0.035],
+  CURVE_2: [0.162, 0.147, 0.112],
+  CURVE_3: [0.315, 0.27, 0.214],
+  CURVE_4: [0.494, 0.413, 0.331],
+  CURVE_5: [0.674, 0.566, 0.461],
+  CURVE_6: [0.827, 0.72, 0.604],
+  CURVE_7: [0.931, 0.865, 0.757],
+  CURVE_8: [1, 1, 0.91],
   // A manual grade on top (ASC CDL: out = (in · slope + offset)^power), at identity.
   CDL_SLOPE: [1, 1, 1],
   CDL_OFFSET: [0, 0, 0],
