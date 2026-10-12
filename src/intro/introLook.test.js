@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MARCH_LOOK, COMPOSITE_LOOK, LOOK_LIMITS, lookDeclarations, clampLook } from './introLook.js';
-import { marchShader, compositeShader } from './gargantuaShader.js';
+import { marchShader, compositeShader, lightShader } from './gargantuaShader.js';
 
 describe('introLook', () => {
   it('every number has slider limits that hold its default', () => {
@@ -21,6 +21,10 @@ describe('introLook', () => {
     expect(lookDeclarations({ A: 1, B: [1, 2, 3] })).toBe('  uniform float A;\n  uniform vec3 B;');
     for (const name of Object.keys(MARCH_LOOK)) expect(marchShader).toMatch(new RegExp(`uniform (float|vec3) ${name};`));
     for (const name of Object.keys(COMPOSITE_LOOK)) expect(compositeShader).toMatch(new RegExp(`uniform (float|vec3) ${name};`));
+    // The light pass shares the gas (and its look values) with the march.
+    for (const name of Object.keys(MARCH_LOOK)) expect(lightShader).toMatch(new RegExp(`uniform (float|vec3) ${name};`));
+    expect(lightShader).toContain('vec3 gas(vec3 p)');
+    expect(marchShader).toContain('lightAt(p, rc)');
   });
 
   it('clamps to the limits; the angle tiles stay whole (no seam)', () => {

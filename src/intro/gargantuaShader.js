@@ -18,31 +18,16 @@ export const MAX_STEPS = 600;
 const LOOK = lookDeclarations(MARCH_LOOK);
 
 /**
- * The disc ray march, at a reduced resolution, along bent light paths: rgb
- * = light reaching the camera (gas, then the stars where the ray leaves), a
- * = the depth (Rs along the path) where the gas turns half opaque. Each
- * result is mixed with the last one (accumulation). The
- * arches over the shadow, the photon ring and the Einstein ring come from
- * the bending itself.
+ * The disc gas, shared by the march and the light pass: its uniforms, the
+ * model constants and gas().
  */
-export const marchShader = /* glsl */ `
+const GAS_GLSL = /* glsl */ `
   precision highp sampler3D;
-  uniform vec3 uCamPos;
-  uniform mat3 uCamBasis; // camera to world: right, up, back
-  uniform vec2 uTanHalfFov;
   uniform sampler3D uNoise;
   uniform float uTime;
-  uniform int uSteps;
-  // Accumulation: the last result and its weight (a film shutter's motion
-  // blur, and the per-frame jitter averages out), and a frame counter.
-  uniform sampler2D tPrev;
-  uniform float uHistory;
-  uniform float uFrame;
   // How much the inner gas thins into sparse clumps (the camera key sparse).
   uniform float uSparse;
-  varying vec2 vUv;
 
-  #define MAX_STEPS ${MAX_STEPS}
   const float PI = 3.14159265;
   const float DISC_INNER = ${f(DISC_INNER)};
   const float SPARSE_OUT = ${f(SPARSE_OUT)};
@@ -50,12 +35,6 @@ export const marchShader = /* glsl */ `
   const float H0 = ${f(H0)};
   const float H1 = ${f(H1)};
   const float SLAB_K = ${f(SLAB_K)};
-  const float PHOTON_SPHERE = ${f(PHOTON_SPHERE)};
-  const float ESCAPE_R = ${f(ESCAPE_R)};
-  const float CURVE_K = ${f(CURVE_K)};
-  const float CURVE_MIN = ${f(CURVE_MIN)};
-  const float CURVE_MAX = ${f(CURVE_MAX)};
-  const float FAR_DEPTH = 1000.0;
   const float SPIN = ${f(SPIN)};
   const float GLOW_POWER = ${f(GLOW_POWER)};
   const float STEP_K = ${f(STEP_K)};
@@ -71,18 +50,7 @@ ${LOOK}
   float glowAt(float r) { return pow(DISC_INNER / max(r, DISC_INNER), GLOW_POWER); }
   float angularSpeed(float r) { return SPIN * pow(DISC_INNER / max(r, DISC_INNER), 1.5); }
   float marchStep(float r) { return clamp(STEP_K * halfThickness(r), STEP_MIN, STEP_MAX); }
-  float curveStep(float r) { return clamp(CURVE_K * r, CURVE_MIN, CURVE_MAX); }
-  // Schwarzschild light path, units of Rs (gargantuaModel.js bendRay).
-  vec3 accel(vec3 p, float h2) {
-    float r2 = dot(p, p);
-    return p * (-1.5 * h2 / (r2 * r2 * sqrt(r2)));
-  }
 
-  float hash12(vec2 p) {
-    vec3 q = fract(vec3(p.xyx) * 0.1031);
-    q += dot(q, q.yzx + 33.33);
-    return fract((q.x + q.y) * q.z);
-  }
 
   // The gas at p: x = extinction (per Rs), y = hot-core light, z = dust 0–1.
   vec3 gas(vec3 p) {
@@ -108,8 +76,66 @@ ${LOOK}
     float dens = win * body * smoothstep(0.32, 0.62, cloud + 0.35 * (body - 0.6) - 0.22 * sparse);
     // Large dark dust clumps (the black patches).
     float dust = smoothstep(0.5, 0.66, n.g + 0.25 * (fine - 0.5));
-    float hot = exp(-2.2 * zn * zn) * glowAt(r);
-    return vec3(dens * TAU / (2.0 * h), hot, dust);
+    // The gas's own light falls off faster than the light on the smoke: the
+    // outer disc reads as dark smoke, the inner disc glows (shots 4–5 vs 7–9).
+    float hot = exp(-2.2 * zn * zn) * pow(DISC_INNER / max(r, DISC_INNER), EMIT_POWER);
+    // The upper layers are smoke: more extinction with height, so the glowing
+    // core shows through gaps and the surface reads dark (reference shots 4–5).
+    float smoke = 1.0 + SMOKE_K * smoothstep(0.4, 1.8, abs(zn));
+    return vec3(dens * smoke * TAU / (2.0 * h), hot, dust);
+  }
+
+`;
+
+/**
+ * The disc ray march, at a reduced resolution, along bent light paths: rgb
+ * = light reaching the camera (gas, then the stars where the ray leaves), a
+ * = the depth (Rs along the path) where the gas turns half opaque. Each
+ * result is mixed with the last one (accumulation). The
+ * arches over the shadow, the photon ring and the Einstein ring come from
+ * the bending itself.
+ */
+export const marchShader = /* glsl */ `
+  uniform vec3 uCamPos;
+  uniform mat3 uCamBasis; // camera to world: right, up, back
+  uniform vec2 uTanHalfFov;
+  uniform int uSteps;
+  // Accumulation: the last result and its weight (a film shutter's motion
+  // blur, and the per-frame jitter averages out), and a frame counter.
+  uniform sampler2D tPrev;
+  uniform float uHistory;
+  uniform float uFrame;
+  // Light reaching the smoke from the hot inner disc (the light pass).
+  uniform sampler2D uLight;
+  varying vec2 vUv;
+${GAS_GLSL}
+  #define MAX_STEPS ${MAX_STEPS}
+  const float PHOTON_SPHERE = ${f(PHOTON_SPHERE)};
+  const float ESCAPE_R = ${f(ESCAPE_R)};
+  const float CURVE_K = ${f(CURVE_K)};
+  const float CURVE_MIN = ${f(CURVE_MIN)};
+  const float CURVE_MAX = ${f(CURVE_MAX)};
+  const float FAR_DEPTH = 1000.0;
+
+  float curveStep(float r) { return clamp(CURVE_K * r, CURVE_MIN, CURVE_MAX); }
+  // Schwarzschild light path, units of Rs (gargantuaModel.js bendRay).
+  vec3 accel(vec3 p, float h2) {
+    float r2 = dot(p, p);
+    return p * (-1.5 * h2 / (r2 * r2 * sqrt(r2)));
+  }
+
+  float hash12(vec2 p) {
+    vec3 q = fract(vec3(p.xyx) * 0.1031);
+    q += dot(q, q.yzx + 33.33);
+    return fract((q.x + q.y) * q.z);
+  }
+
+  // The light texture over the disc: u = angle (turns), v = log radius from
+  // the inner to the outer edge.
+  float lightAt(vec3 p, float rc) {
+    float u = fract(atan(p.z, p.x) / (2.0 * PI));
+    float v = log(max(rc, DISC_INNER) / DISC_INNER) / log(DISC_OUTER / DISC_INNER);
+    return texture(uLight, vec2(u, v)).r;
   }
 
   // Sparse, faint stars (the film's sky is nearly empty near Gargantua).
@@ -166,7 +192,8 @@ ${LOOK}
           float w = T * (1.0 - exp(-sigma * dt));
           vec3 hotCol = mix(GAS_WARM, GAS_HOT, smoothstep(0.25, 0.9, g.y));
           vec3 emit = hotCol * g.y * EMIT * (1.0 - 0.9 * g.z);
-          vec3 lit = (GAS_WARM * glowAt(rc) * 0.6 + SMOKE_COOL) * ALBEDO * (1.0 - 0.8 * g.z);
+          // Lit by the inner disc through the gas between (self-shadowing).
+          vec3 lit = (GAS_WARM * glowAt(rc) * LIGHT_GAIN * lightAt(p, rc) + SMOKE_COOL) * ALBEDO * (1.0 - 0.8 * g.z);
           light += w * (emit + lit);
           T *= exp(-sigma * dt);
           if (depth < 0.0 && T < 0.5) depth = dist;
@@ -184,6 +211,36 @@ ${LOOK}
     if (depth < 0.0) depth = FAR_DEPTH;
     vec4 cur = vec4(light, depth);
     gl_FragColor = mix(cur, texture2D(tPrev, vUv), uHistory);
+  }
+`;
+
+/** Light texture size (angle × log radius) and radial steps per texel. */
+export const LIGHT_SIZE = [256, 96];
+const LIGHT_STEPS = 48;
+
+/**
+ * The light pass (once per frame): for each angle and radius over the disc,
+ * how much of the hot inner disc's light gets through the gas on the way
+ * out. Near the midplane the disc is opaque, so the light that reaches the
+ * smoke runs over the cloud tops (at LIGHT_HEIGHT half-thicknesses), and tall
+ * clouds and dust clumps cast shadows behind them.
+ */
+export const lightShader = /* glsl */ `
+  varying vec2 vUv;
+${GAS_GLSL}
+  void main() {
+    float theta = vUv.x * 2.0 * PI;
+    float lr0 = log(DISC_INNER);
+    float lr1 = log(DISC_INNER) + vUv.y * log(DISC_OUTER / DISC_INNER);
+    float tau = 0.0;
+    float prev = DISC_INNER;
+    for (int i = 1; i <= ${LIGHT_STEPS}; i++) {
+      float r = exp(mix(lr0, lr1, float(i) / ${LIGHT_STEPS}.0));
+      vec3 g = gas(vec3(cos(theta) * r, LIGHT_HEIGHT * halfThickness(r), sin(theta) * r));
+      tau += g.x * (1.0 + 2.0 * g.z) * (r - prev);
+      prev = r;
+    }
+    gl_FragColor = vec4(exp(-LIGHT_K * tau), 0.0, 0.0, 1.0);
   }
 `;
 

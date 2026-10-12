@@ -14,6 +14,8 @@ export const MARCH_LOOK = {
   TAU: 2.2,
   // Light of the hot midplane, and the share of the smoke lit by it.
   EMIT: 14,
+  // How fast the gas's own light falls off with radius (r^-EMIT_POWER).
+  EMIT_POWER: 3,
   ALBEDO: 0.6,
   // Noise frequencies: many streaks across the radius, few long arcs around.
   RAD_FREQ: 4,
@@ -21,6 +23,13 @@ export const MARCH_LOOK = {
   VERT_FREQ: 0.3,
   // Domain warp (texture units): breaks the even rings into clumps.
   WARP: 0.55,
+  // Self-shadowing: the height (half-thicknesses) the inner disc's light runs
+  // out at, how strongly the gas on the way blocks it, and its strength.
+  LIGHT_HEIGHT: 1.6,
+  LIGHT_K: 0.35,
+  LIGHT_GAIN: 1,
+  // Extra extinction of the upper smoke layers (× at the cloud tops).
+  SMOKE_K: 7,
   // The gas colour: 4500 K black body through the camera film, as the film
   // did it (filmColour.js); one temperature, so the outer gas and the hot
   // inner gas share it (the inner disc looks white-hot from exposure alone).
@@ -74,11 +83,16 @@ export const CURVE_KNOTS = [0, 0.05, 0.15, 0.27, 0.42, 0.6, 0.78, 0.92, 1];
 export const LOOK_LIMITS = {
   TAU: [0.2, 8, 0.05],
   EMIT: [0, 60, 0.5],
+  EMIT_POWER: [0.5, 6, 0.05],
   ALBEDO: [0, 2, 0.01],
   RAD_FREQ: [0.5, 12, 0.1],
   ANG_TILES: [1, 24, 1],
   VERT_FREQ: [0.05, 1.5, 0.01],
   WARP: [0, 2, 0.01],
+  LIGHT_HEIGHT: [0, 3, 0.05],
+  LIGHT_K: [0, 2, 0.01],
+  LIGHT_GAIN: [0, 4, 0.05],
+  SMOKE_K: [0, 12, 0.1],
   DOF_K: [0, 30, 0.5],
   DOF_MAX: [0, 30, 0.5],
   VEIL: [0, 0.5, 0.005],

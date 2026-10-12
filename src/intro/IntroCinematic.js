@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { introCamera } from './introTimeline.js';
 import { bakeNoise3d, NOISE3D_SIZE } from './noise3d.js';
-import { marchShader, compositeShader, QUAD_VERTEX } from './gargantuaShader.js';
+import { marchShader, compositeShader, lightShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
 import { MARCH_LOOK, COMPOSITE_LOOK } from './introLook.js';
 
 /** Uniform objects for a look: numbers, or THREE.Vector3 for colours. */
@@ -72,18 +72,36 @@ export class IntroCinematic {
     this.targets = [new THREE.WebGLRenderTarget(1, 1, targetOptions), new THREE.WebGLRenderTarget(1, 1, targetOptions)];
     this.frame = 0;
     this.lastRender = null;
+    // The gas uniforms, shared by the march and the light pass (by reference).
+    const gasUniforms = {
+      uNoise: { value: this.noise },
+      uTime: { value: 0 },
+      uSparse: { value: 1 },
+      ...lookUniforms(MARCH_LOOK),
+    };
+    // Self-shadowing: the inner disc's light through the gas, over the disc
+    // (u = angle, wraps; v = log radius), once per frame.
+    this.lightTarget = new THREE.WebGLRenderTarget(LIGHT_SIZE[0], LIGHT_SIZE[1], { type: THREE.HalfFloatType, depthBuffer: false });
+    this.lightTarget.texture.wrapS = THREE.RepeatWrapping;
+    this.light = new THREE.ShaderMaterial({
+      name: 'IntroLight',
+      uniforms: gasUniforms,
+      vertexShader: QUAD_VERTEX,
+      fragmentShader: lightShader,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.lightQuad = new FullScreenQuad(this.light);
     this.march = new THREE.ShaderMaterial({
       name: 'IntroMarch',
       uniforms: {
         ...camUniforms,
-        uNoise: { value: this.noise },
-        uTime: { value: 0 },
+        ...gasUniforms,
         uSteps: { value: MARCH_STEPS },
         tPrev: { value: null },
         uHistory: { value: 0 },
         uFrame: { value: 0 },
-        uSparse: { value: 1 },
-        ...lookUniforms(MARCH_LOOK),
+        uLight: { value: this.lightTarget.texture },
       },
       vertexShader: QUAD_VERTEX,
       fragmentShader: marchShader,
@@ -223,6 +241,8 @@ export class IntroCinematic {
     c.uFocus.value = cam.position.length();
     c.uTime.value = this.time;
 
+    renderer.setRenderTarget(this.lightTarget);
+    this.lightQuad.render(renderer);
     renderer.setRenderTarget(write);
     this.marchQuad.render(renderer);
     renderer.setRenderTarget(null);
@@ -230,6 +250,9 @@ export class IntroCinematic {
   }
 
   dispose() {
+    this.lightTarget.dispose();
+    this.light.dispose();
+    this.lightQuad.dispose();
     this.worker?.terminate();
     this.worker = null;
     this.noise.dispose();
