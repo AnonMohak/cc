@@ -51,6 +51,12 @@ export const CAMERA_KEYS = [
   { t: BLACK_FULL, r: 1.2, el: 10, az: 230, lead: 0, aimY: 0, roll: 0, fov: 85, exp: 1 },
 ];
 
+/**
+ * The moments that match the reference stills (shot number → seconds), for
+ * the ?tune view's side-by-side and the per-shot tuning.
+ */
+export const REFERENCE_SHOTS = { 1: 2, 2: 9, 3: 13.5, 4: 19.5, 5: 25, 6: 31, 7: 37.5, 8: 41, 9: 44, 10: 50 };
+
 const DEG = Math.PI / 180;
 
 function smoothstep(e0, e1, x) {

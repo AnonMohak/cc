@@ -1,4 +1,5 @@
 import { DISC_INNER, SPARSE_OUT, DISC_OUTER, H0, H1, SLAB_K, SPIN, GLOW_POWER, STEP_K, STEP_MIN, STEP_MAX, PHOTON_SPHERE, ESCAPE_R, CURVE_K, CURVE_MIN, CURVE_MAX } from './gargantuaModel.js';
+import { MARCH_LOOK, COMPOSITE_LOOK, lookDeclarations } from './introLook.js';
 
 const f = (x) => x.toFixed(4);
 
@@ -13,25 +14,8 @@ export const QUAD_VERTEX = /* glsl */ `
 /** Max steps per ray (uSteps ≤ this). */
 export const MAX_STEPS = 600;
 
-// Disc look (tuned against the reference stills).
-const LOOK = /* glsl */ `
-  // Optical depth across the full thickness of dense gas: marginally thick.
-  const float TAU = 2.2;
-  // Light of the hot midplane, and the share of the smoke lit by it.
-  const float EMIT = 14.0;
-  const float ALBEDO = 0.6;
-  // Noise frequencies: many streaks across the radius, few long arcs around.
-  const float RAD_FREQ = 4.0;
-  const float ANG_TILES = 7.0; // per turn: an integer, so the angle wraps without a seam
-  const float VERT_FREQ = 0.3;
-  // Domain warp (texture units): breaks the even rings into clumps.
-  const float WARP = 0.55;
-  // Colours (linear): 4500 K gas, white-hot near the inner edge; the smoke is
-  // lit warm from below and a little cool by the sky.
-  const vec3 GAS_WARM = vec3(1.0, 0.5, 0.2);
-  const vec3 GAS_HOT = vec3(1.0, 0.86, 0.66);
-  const vec3 SMOKE_COOL = vec3(0.16, 0.19, 0.24);
-`;
+// The look constants are uniforms (introLook.js), so the ?tune view changes them live.
+const LOOK = lookDeclarations(MARCH_LOOK);
 
 /**
  * The disc ray march, at a reduced resolution, along bent light paths: rgb
@@ -215,22 +199,7 @@ export const compositeShader = /* glsl */ `
   varying vec2 vUv;
 
   const float PI = 3.14159265;
-  // Depth of field: the blur radius (px at full resolution) per unit of
-  // |1 − focus/depth|, and its cap.
-  const float DOF_K = 9.0;
-  const float DOF_MAX = 10.0;
-  // Veiling glow (the film's IMAX lens glow) and bloom, from the mips.
-  const float VEIL = 0.09;
-  const float BLOOM = 0.22;
-  // Lens ghosts and the halo ring (pink-violet coatings), from bright light only.
-  const float FLARE_THRESHOLD = 1.6;
-  const float GHOSTS = 0.025;
-  const float HALO = 0.035;
-  const float HALO_RADIUS = 0.42;
-  // Grade.
-  const vec3 SHADOW_TINT = vec3(0.005, 0.011, 0.015);
-  const float SATURATION = 1.15;
-  const float GRAIN = 0.022;
+${lookDeclarations(COMPOSITE_LOOK)}
 
   float hash12(vec2 p) {
     vec3 q = fract(vec3(p.xyx) * 0.1031);

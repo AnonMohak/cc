@@ -47,6 +47,7 @@ import { frameRadius, framingDistance, orbitViewTan, raiseDirection, createSprin
 import { rumbleLevel, rumbleCutoff } from './audio/soundMix.js';
 import { IntroCinematic } from './intro/IntroCinematic.js';
 import { introPhase, INTRO_SECONDS, MUSIC_RISE_SECONDS } from './intro/introTimeline.js';
+import { createIntroTuner } from './intro/introTuner.js';
 
 const SAVE_DEBOUNCE_MS = 500;
 // The film shot is this much closer than the "disc fills the view" distance.
@@ -347,6 +348,9 @@ export function startApp(container, { startScreen } = {}) {
   for (const type of unlockEvents) window.addEventListener(type, unlockSound, true);
 
   let intro = new IntroCinematic({ aspect: container.clientWidth / Math.max(container.clientHeight, 1) });
+  // ?tune: the tuning view (src/intro/introTuner.js). The intro then neither
+  // ends nor locks the input, and the tuner sets the time.
+  const tuner = new URLSearchParams(window.location.search).has('tune') ? createIntroTuner({ intro, container }) : null;
   let introTime = 0;
   intro.update(0);
   document.body.classList.add('intro-active');
@@ -355,7 +359,7 @@ export function startApp(container, { startScreen } = {}) {
   // start box handles its own input before.
   const lockEvents = ['pointerdown', 'pointerup', 'pointermove', 'click', 'dblclick', 'wheel', 'keydown', 'keyup', 'contextmenu', 'touchstart', 'touchmove', 'touchend'];
   const swallowInput = (event) => {
-    if (!intro || (startScreen?.isOpen() ?? false)) return;
+    if (!intro || tuner || (startScreen?.isOpen() ?? false)) return;
     event.stopPropagation();
     if (event.cancelable) event.preventDefault();
   };
@@ -387,14 +391,15 @@ export function startApp(container, { startScreen } = {}) {
     // A hidden tab can stall for long: at most half a second per frame.
     const dt = introLast === null ? 0 : Math.min((now - introLast) / 1000, INTRO_MAX_STEP);
     introLast = now;
-    if (!starting) introTime = Math.min(introTime + dt, INTRO_SECONDS);
+    if (tuner) introTime = tuner.tick(dt);
+    else if (!starting) introTime = Math.min(introTime + dt, INTRO_SECONDS);
     const phase = introPhase(introTime);
     intro.update(introTime);
     fallOverlay.set(phase.vignette, phase.black);
     // The music starts at the click and rises (timed so black lands on its peak).
-    soundscape.setMode(starting ? 'ambient' : phase.sound, MUSIC_RISE_SECONDS - introTime);
+    soundscape.setMode(starting || tuner ? 'ambient' : phase.sound, MUSIC_RISE_SECONDS - introTime);
     wakeLock.set(!starting);
-    if (phase.done) endIntro();
+    if (phase.done && !tuner) endIntro();
   }
 
   // Depth of field: focus on the selected object (else the orbit target), as

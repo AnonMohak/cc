@@ -1,0 +1,80 @@
+/**
+ * The intro's look constants, in one place, as live uniforms (the ?tune view
+ * changes them while the cinematic plays). Keys are the GLSL names. Numbers
+ * have slider limits; arrays are linear RGB colours. Pure.
+ */
+
+/** The disc ray march (gargantuaShader.js marchShader). */
+export const MARCH_LOOK = {
+  // Optical depth across the full thickness of dense gas: marginally thick.
+  TAU: 2.2,
+  // Light of the hot midplane, and the share of the smoke lit by it.
+  EMIT: 14,
+  ALBEDO: 0.6,
+  // Noise frequencies: many streaks across the radius, few long arcs around.
+  RAD_FREQ: 4,
+  ANG_TILES: 7, // per turn: an integer, so the angle wraps without a seam
+  VERT_FREQ: 0.3,
+  // Domain warp (texture units): breaks the even rings into clumps.
+  WARP: 0.55,
+  // 4500 K gas, white-hot near the inner edge; the smoke is lit warm from
+  // below and a little cool by the sky.
+  GAS_WARM: [1, 0.5, 0.2],
+  GAS_HOT: [1, 0.86, 0.66],
+  SMOKE_COOL: [0.16, 0.19, 0.24],
+};
+
+/** The full-resolution composite (gargantuaShader.js compositeShader). */
+export const COMPOSITE_LOOK = {
+  // Depth of field: blur radius (px) per unit of |1 − focus/depth|, and its cap.
+  DOF_K: 9,
+  DOF_MAX: 10,
+  // Veiling glow (the film's IMAX lens glow) and bloom, from the mips.
+  VEIL: 0.09,
+  BLOOM: 0.22,
+  // Lens ghosts and the halo ring, from light above the threshold only.
+  FLARE_THRESHOLD: 1.6,
+  GHOSTS: 0.025,
+  HALO: 0.035,
+  HALO_RADIUS: 0.42,
+  // Grade.
+  SHADOW_TINT: [0.005, 0.011, 0.015],
+  SATURATION: 1.15,
+  GRAIN: 0.022,
+};
+
+/** Slider limits: [min, max, step]. */
+export const LOOK_LIMITS = {
+  TAU: [0.2, 8, 0.05],
+  EMIT: [0, 60, 0.5],
+  ALBEDO: [0, 2, 0.01],
+  RAD_FREQ: [0.5, 12, 0.1],
+  ANG_TILES: [1, 24, 1],
+  VERT_FREQ: [0.05, 1.5, 0.01],
+  WARP: [0, 2, 0.01],
+  DOF_K: [0, 30, 0.5],
+  DOF_MAX: [0, 30, 0.5],
+  VEIL: [0, 0.5, 0.005],
+  BLOOM: [0, 1, 0.01],
+  FLARE_THRESHOLD: [0, 6, 0.05],
+  GHOSTS: [0, 0.3, 0.005],
+  HALO: [0, 0.3, 0.005],
+  HALO_RADIUS: [0.1, 0.8, 0.01],
+  SATURATION: [0, 2, 0.01],
+  GRAIN: [0, 0.1, 0.001],
+};
+
+/** GLSL uniform declarations for a look (float or vec3 by value). */
+export function lookDeclarations(look) {
+  return Object.entries(look)
+    .map(([name, value]) => `  uniform ${Array.isArray(value) ? 'vec3' : 'float'} ${name};`)
+    .join('\n');
+}
+
+/** Clamp a number to its slider limits (unknown keys pass through). */
+export function clampLook(name, value) {
+  const limit = LOOK_LIMITS[name];
+  if (!limit || !Number.isFinite(value)) return value;
+  const v = Math.min(limit[1], Math.max(limit[0], value));
+  return name === 'ANG_TILES' ? Math.round(v) : v;
+}

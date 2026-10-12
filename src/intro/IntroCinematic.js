@@ -3,6 +3,12 @@ import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { introCamera } from './introTimeline.js';
 import { bakeNoise3d, NOISE3D_SIZE } from './noise3d.js';
 import { marchShader, compositeShader, QUAD_VERTEX } from './gargantuaShader.js';
+import { MARCH_LOOK, COMPOSITE_LOOK } from './introLook.js';
+
+/** Uniform objects for a look: numbers, or THREE.Vector3 for colours. */
+function lookUniforms(look) {
+  return Object.fromEntries(Object.entries(look).map(([name, v]) => [name, { value: Array.isArray(v) ? new THREE.Vector3(...v) : v }]));
+}
 
 const _pose = { position: [0, 0, 0], target: [0, 0, 0], roll: 0, fov: 60, exposure: 1 };
 const _target = new THREE.Vector3();
@@ -75,6 +81,7 @@ export class IntroCinematic {
         tPrev: { value: null },
         uHistory: { value: 0 },
         uFrame: { value: 0 },
+        ...lookUniforms(MARCH_LOOK),
       },
       vertexShader: QUAD_VERTEX,
       fragmentShader: marchShader,
@@ -89,6 +96,7 @@ export class IntroCinematic {
         uExposure: { value: 1 },
         uFocus: { value: 10 },
         uTime: { value: 0 },
+        ...lookUniforms(COMPOSITE_LOOK),
       },
       vertexShader: QUAD_VERTEX,
       fragmentShader: compositeShader,
@@ -123,6 +131,28 @@ export class IntroCinematic {
       this.worker.postMessage({ size: NOISE3D_SIZE });
     } catch {
       onMainThread();
+    }
+  }
+
+  /** The current look values (introLook.js keys). */
+  getLook() {
+    const out = {};
+    for (const material of [this.march, this.composite]) {
+      for (const name of Object.keys(material === this.march ? MARCH_LOOK : COMPOSITE_LOOK)) {
+        const v = material.uniforms[name].value;
+        out[name] = typeof v === 'number' ? v : v.toArray();
+      }
+    }
+    return out;
+  }
+
+  /** Change look values live (introLook.js keys; colours as [r, g, b]). */
+  setLook(values) {
+    for (const [name, v] of Object.entries(values)) {
+      const u = this.march.uniforms[name] ?? this.composite.uniforms[name];
+      if (!u) continue;
+      if (Array.isArray(v)) u.value.fromArray(v);
+      else u.value = v;
     }
   }
 
