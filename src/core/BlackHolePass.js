@@ -262,8 +262,8 @@ ${DISC_GLSL}
 //
 // The look follows Gargantua (Interstellar), not strict physics: the disc
 // reaches in to 1.7 Rs (a fast spin), no Doppler beaming (both sides equally
-// The lens streak, one per lens: a horizontal line through the hole. It is
-// camera optics, not scene light, so depth of field must not blur it: while
+// The lens streak, one per lens: a soft glow along the disc's long axis on
+// screen. It is camera optics, not scene light, so depth of field must not blur it: while
 // DepthOfFieldPass runs, this pass leaves it out (uStreaks 0) and the DOF
 // composite adds it after the blur, from these same uniforms (by reference).
 // Needs the uniforms in STREAK_UNIFORMS and SHADOW_B.
@@ -276,18 +276,23 @@ export const STREAK_UNIFORMS = /* glsl */ `
   uniform float uPixelAngle;
   uniform int uCount;
   uniform vec4 uLensCenter[MAX_LENSES];
+  uniform vec4 uLensNormal[MAX_LENSES];
   uniform vec4 uLensDisc[MAX_LENSES];
   uniform vec3 uLensHot[MAX_LENSES];
   uniform float uDiscGain;
   uniform vec3 uBandHot;
 `;
 /** Uniform names the streak reads (DepthOfFieldPass shares them by reference). */
-export const STREAK_UNIFORM_NAMES = ['uTanHalfFov', 'uResolution', 'uPixelAngle', 'uCount', 'uLensCenter', 'uLensDisc', 'uLensHot', 'uDiscGain', 'uBandHot'];
+export const STREAK_UNIFORM_NAMES = ['uTanHalfFov', 'uResolution', 'uPixelAngle', 'uCount', 'uLensCenter', 'uLensNormal', 'uLensDisc', 'uLensHot', 'uDiscGain', 'uBandHot'];
 export const STREAK_GLSL = /* glsl */ `
-  const float STREAK_GAIN = 0.2;
-  const float STREAK_LENGTH = 5.0; // × the disc radius on screen
-  // Horizontal lens streak through each hole; it reaches past the lens.
-  // Faint over the shadow, so the shadow still reads black.
+  const float STREAK_GAIN = 0.1;
+  // Gaussian widths, × the disc's outer radius on screen.
+  const float STREAK_LENGTH = 0.55;
+  const float STREAK_WIDTH = 0.025;
+  // A soft glow along the disc's long axis on screen (perpendicular to the
+  // projected disc normal), sized by the disc: it follows the disc's tilt
+  // and fades out as the disc turns face-on (a round disc has no long
+  // axis). Nearly gone over the shadow, so the shadow still reads black.
   vec3 lensStreaks(vec2 uv) {
     vec3 rd = normalize(vec3((uv * 2.0 - 1.0) * uTanHalfFov, -1.0));
     vec3 sum = vec3(0.0);
@@ -297,13 +302,27 @@ export const STREAK_GLSL = /* glsl */ `
       float tc = dot(c, rd);
       if (tc <= 0.0 || c.z >= 0.0) continue;
       vec4 disc = uLensDisc[i];
+      vec2 centre = (c.xy / -c.z) / uTanHalfFov * 0.5 * uResolution;
+      vec2 dpx = (uv - 0.5) * uResolution - centre;
+      float outerPx = disc.x / (-c.z * uPixelAngle);
+      float la = max(outerPx * STREAK_LENGTH, 1.0);
+      // Past 4 widths along the axis the glow is below 1/3000: most pixels stop here.
+      if (dot(dpx, dpx) > 16.0 * la * la) continue;
+      vec3 n = uLensNormal[i].xyz;
+      vec3 toHole = normalize(c);
+      float tilt = 1.0 - abs(dot(n, toHole));
+      vec3 major = cross(toHole, n);
+      if (tilt <= 0.0 || dot(major, major) < 1e-8) continue;
+      // The long axis on screen: the projection of a short step along it (px).
+      vec3 q = c + normalize(major);
+      vec2 axis = normalize((q.xy / -q.z) / uTanHalfFov * 0.5 * uResolution - centre);
+      float along = dot(dpx, axis);
+      float across = dot(dpx, vec2(-axis.y, axis.x));
+      float lw = max(outerPx * STREAK_WIDTH, 1.5);
+      float streak = exp(-0.5 * (along * along / (la * la) + across * across / (lw * lw)));
       float b = length(rd * tc - c);
-      vec2 dpx = (uv - ((c.xy / -c.z) / uTanHalfFov * 0.5 + 0.5)) * uResolution;
-      float discPx = disc.x * 0.5 / (-c.z * uPixelAngle);
-      float thick = max(1.2, uResolution.y / 700.0);
-      float streak = exp(-abs(dpx.y) / thick - abs(dpx.x) / max(discPx * STREAK_LENGTH, 1.0));
-      sum += mix(uLensHot[i] * uBandHot, vec3(1.0), 0.3) * streak * STREAK_GAIN * uDiscGain * disc.y * disc.w * uLensCenter[i].w
-        * mix(0.25, 1.0, smoothstep(SHADOW_B * 0.6, SHADOW_B * 1.2, b));
+      sum += mix(uLensHot[i] * uBandHot, vec3(1.0), 0.3) * streak * tilt * tilt * STREAK_GAIN * uDiscGain * disc.y * disc.w * uLensCenter[i].w
+        * mix(0.1, 1.0, smoothstep(SHADOW_B * 0.8, SHADOW_B * 1.3, b));
     }
     return sum;
   }
