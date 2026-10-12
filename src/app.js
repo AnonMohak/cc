@@ -921,6 +921,6 @@ export function startApp(container, { startScreen } = {}) {
   loop.start(renderer);
 
   if (import.meta.env.DEV) {
-    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history, soundscape, getCameraMode: () => cameraMode, getIntro: () => (intro ? { time: introTime, camera: intro.camera } : null), startCollision, stopCollision, getCollision: () => collision };
+    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history, soundscape, getCameraMode: () => cameraMode, getIntro: () => intro, startCollision, stopCollision, getCollision: () => collision };
   }
 }
