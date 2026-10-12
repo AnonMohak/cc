@@ -34,8 +34,8 @@ const shot = (t, n, { roll = 0, exp = 1, sparse = 0 } = {}) => ({ t, ...shotPose
 export const CAMERA_KEYS = [
   // Shots 1–3: in the disc plane inside the clear gap near the hole; the
   // shadow fills the view, the thin ring and sparse clumps around it.
-  shot(0, 1, { exp: 0.026, sparse: 1 }),
-  shot(6, 2, { exp: 0.028, sparse: 1 }),
+  shot(0, 1, { exp: 0.044, sparse: 1 }),
+  shot(6, 2, { exp: 0.047, sparse: 1 }),
   shot(12, 3, { exp: 0.43, sparse: 1 }),
   // Rise out of the gap over the inner edge.
   { t: 15.5, r: 4.2, el: 12, az: 11, lead: 0, aimY: 0.2, roll: 0, fov: 72, exp: 1.05, sparse: 0.5 },

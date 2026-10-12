@@ -29,3 +29,17 @@ describe('introLook', () => {
     expect(clampLook('UNKNOWN', 5)).toBe(5);
   });
 });
+
+describe('colour fit tone curve', () => {
+  it('has one point per knot, keeps black black and never falls', async () => {
+    const { CURVE_KNOTS } = await import('./introLook.js');
+    const points = CURVE_KNOTS.map((_, i) => COMPOSITE_LOOK[`CURVE_${i}`]);
+    expect(points.every(Boolean)).toBe(true);
+    expect(COMPOSITE_LOOK[`CURVE_${CURVE_KNOTS.length}`]).toBeUndefined();
+    expect(points[0]).toEqual([0, 0, 0]);
+    for (let c = 0; c < 3; c++) {
+      for (let i = 1; i < points.length; i++) expect(points[i][c]).toBeGreaterThanOrEqual(points[i - 1][c]);
+    }
+    expect(compositeShader).toContain('vec3 toneCurve(vec3 x)');
+  });
+});

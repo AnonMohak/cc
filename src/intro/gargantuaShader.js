@@ -1,5 +1,5 @@
 import { DISC_INNER, SPARSE_OUT, DISC_OUTER, H0, H1, SLAB_K, SPIN, GLOW_POWER, STEP_K, STEP_MIN, STEP_MAX, PHOTON_SPHERE, ESCAPE_R, CURVE_K, CURVE_MIN, CURVE_MAX } from './gargantuaModel.js';
-import { MARCH_LOOK, COMPOSITE_LOOK, lookDeclarations } from './introLook.js';
+import { MARCH_LOOK, COMPOSITE_LOOK, CURVE_KNOTS, lookDeclarations } from './introLook.js';
 
 const f = (x) => x.toFixed(4);
 
@@ -209,6 +209,17 @@ ${lookDeclarations(COMPOSITE_LOOK)}
     return fract((q.x + q.y) * q.z);
   }
 
+  // The colour fit's tone curve (introLook.js CURVE_n at CURVE_KNOTS), per channel.
+  float curveChannel(float x, int c) {
+${CURVE_KNOTS.slice(1)
+  .map((k, i) => `    if (x <= ${k.toFixed(4)}) return mix(CURVE_${i}[c], CURVE_${i + 1}[c], (x - ${CURVE_KNOTS[i].toFixed(4)}) / ${(k - CURVE_KNOTS[i]).toFixed(4)});`)
+  .join(String.fromCharCode(10))}
+    return CURVE_${CURVE_KNOTS.length - 1}[c];
+  }
+  vec3 toneCurve(vec3 x) {
+    return vec3(curveChannel(x.r, 0), curveChannel(x.g, 1), curveChannel(x.b, 2));
+  }
+
   vec3 aces(vec3 x) {
     return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
   }
@@ -262,6 +273,10 @@ ${lookDeclarations(COMPOSITE_LOOK)}
     col += SHADOW_TINT * pow(1.0 - luma, 4.0);
     col = mix(col, col * vec3(1.03, 1.0, 0.94), smoothstep(0.4, 1.0, luma));
     col += (hash12(gl_FragCoord.xy + fract(uTime * 7.31) * 311.0) - 0.5) * GRAIN;
-    gl_FragColor = vec4(pow(max(col, 0.0), vec3(1.0 / 2.2)), 1.0);
+    vec3 display = pow(max(col, 0.0), vec3(1.0 / 2.2));
+    // The colour fit to the stills, then the manual grade (display space).
+    display = toneCurve(clamp(display, 0.0, 1.0));
+    display = pow(clamp(display * CDL_SLOPE + CDL_OFFSET, 1e-4, 1.0), CDL_POWER);
+    gl_FragColor = vec4(display, 1.0);
   }
 `;

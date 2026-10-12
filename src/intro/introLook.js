@@ -38,10 +38,31 @@ export const COMPOSITE_LOOK = {
   HALO: 0.035,
   HALO_RADIUS: 0.42,
   // Grade.
-  SHADOW_TINT: [0.005, 0.011, 0.015],
+  SHADOW_TINT: [0, 0, 0],
   SATURATION: 1.15,
   GRAIN: 0.022,
+  // Colour fit to the reference stills: a tone curve per channel (display
+  // space), the output at each of CURVE_KNOTS, fitted to the mean colour of
+  // matching brightness bands of our frames and shots 1–3 and 7–9 (shots 4–5
+  // are cool from the haze over the dome, not from the grade). The film is
+  // near neutral low down and turns orange in the highlights.
+  CURVE_0: [0, 0, 0],
+  CURVE_1: [0.053, 0.055, 0.036],
+  CURVE_2: [0.158, 0.151, 0.115],
+  CURVE_3: [0.306, 0.276, 0.219],
+  CURVE_4: [0.482, 0.421, 0.341],
+  CURVE_5: [0.661, 0.575, 0.476],
+  CURVE_6: [0.815, 0.728, 0.629],
+  CURVE_7: [0.925, 0.87, 0.792],
+  CURVE_8: [1, 1, 0.955],
+  // A manual grade on top (ASC CDL: out = (in · slope + offset)^power), at identity.
+  CDL_SLOPE: [1, 1, 1],
+  CDL_OFFSET: [0, 0, 0],
+  CDL_POWER: [1, 1, 1],
 };
+
+/** Input levels of the CURVE_n points (display space). */
+export const CURVE_KNOTS = [0, 0.05, 0.15, 0.27, 0.42, 0.6, 0.78, 0.92, 1];
 
 /** Slider limits: [min, max, step]. */
 export const LOOK_LIMITS = {
