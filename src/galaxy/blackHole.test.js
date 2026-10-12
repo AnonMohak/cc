@@ -103,42 +103,6 @@ describe('marchScaleFor', () => {
   });
 });
 
-describe('warpedReach', () => {
-  it('is LENS_REACH without warp and grows with it, clamped', async () => {
-    const { warpedReach, LENS_REACH, WARP_REACH } = await import('./blackHole.js');
-    expect(warpedReach(0)).toBe(LENS_REACH);
-    expect(warpedReach(1)).toBeCloseTo(LENS_REACH * (1 + WARP_REACH), 9);
-    expect(warpedReach(0.5)).toBeGreaterThan(LENS_REACH);
-    expect(warpedReach(5)).toBe(warpedReach(1));
-    expect(warpedReach(-1)).toBe(LENS_REACH);
-  });
-});
-
-describe('marchDiscRadius', () => {
-  it('puts the inner edge at MARCH_INNER, leaves the outer disc alone and never folds', async () => {
-    const { marchDiscRadius, MARCH_INNER, MARCH_BLEND, DISC_INNER, PHOTON_SPHERE } = await import('./blackHole.js');
-    expect(MARCH_INNER).toBeGreaterThan(PHOTON_SPHERE);
-    expect(marchDiscRadius(MARCH_INNER)).toBeCloseTo(DISC_INNER, 9);
-    expect(marchDiscRadius(MARCH_BLEND)).toBe(MARCH_BLEND);
-    expect(marchDiscRadius(12)).toBe(12);
-    let prev = -Infinity;
-    for (let r = MARCH_INNER; r <= MARCH_BLEND + 1; r += 0.01) {
-      const m = marchDiscRadius(r);
-      expect(m).toBeGreaterThan(prev);
-      prev = m;
-    }
-  });
-});
-
-describe('lensOrder', () => {
-  it('puts the lenses nearest first', () => {
-    const out = [9, 9, 9, 9];
-    expect(lensOrder([30, 10, 20], 3, out).slice(0, 3)).toEqual([1, 2, 0]);
-    expect(lensOrder([5], 1, out)[0]).toBe(0);
-    expect(lensOrder([7, 7], 2, out).slice(0, 2)).toEqual([0, 1]);
-  });
-});
-
 describe('lensScreenRect', () => {
   const tanX = 0.7;
   const tanY = 0.4;

@@ -42,7 +42,10 @@ export class IntroCinematic {
     this.time = 0;
     this.exposure = 1;
 
-    this.noise = new THREE.Data3DTexture(bakeNoise3d(), NOISE3D_SIZE, NOISE3D_SIZE, NOISE3D_SIZE);
+    // The noise bakes in a worker (main-thread fallback); until it arrives
+    // the cinematic is not ready (the start box keeps saying Loading).
+    this.ready = false;
+    this.noise = new THREE.Data3DTexture(new Uint8Array(2), 1, 1, 1);
     this.noise.format = THREE.RGFormat;
     this.noise.type = THREE.UnsignedByteType;
     this.noise.minFilter = THREE.LinearFilter;
@@ -50,6 +53,8 @@ export class IntroCinematic {
     this.noise.wrapS = this.noise.wrapT = this.noise.wrapR = THREE.RepeatWrapping;
     this.noise.unpackAlignment = 1;
     this.noise.needsUpdate = true;
+    this.worker = null;
+    this.bakeNoise();
 
     const camUniforms = {
       uCamPos: { value: new THREE.Vector3() },
@@ -92,6 +97,33 @@ export class IntroCinematic {
     });
     this.marchQuad = new FullScreenQuad(this.march);
     this.compositeQuad = new FullScreenQuad(this.composite);
+  }
+
+  bakeNoise() {
+    const accept = (data) => {
+      if (!this.noise) return; // disposed meanwhile
+      this.noise.image = { data, width: NOISE3D_SIZE, height: NOISE3D_SIZE, depth: NOISE3D_SIZE };
+      this.noise.needsUpdate = true;
+      this.ready = true;
+    };
+    const onMainThread = () => setTimeout(() => accept(bakeNoise3d()), 0);
+    if (typeof Worker !== 'function') return onMainThread();
+    try {
+      this.worker = new Worker(new URL('./noiseWorker.js', import.meta.url), { type: 'module' });
+      this.worker.onmessage = ({ data }) => {
+        accept(data.data);
+        this.worker?.terminate();
+        this.worker = null;
+      };
+      this.worker.onerror = () => {
+        this.worker?.terminate();
+        this.worker = null;
+        onMainThread();
+      };
+      this.worker.postMessage({ size: NOISE3D_SIZE });
+    } catch {
+      onMainThread();
+    }
   }
 
   setSize(width, height) {
@@ -164,7 +196,10 @@ export class IntroCinematic {
   }
 
   dispose() {
+    this.worker?.terminate();
+    this.worker = null;
     this.noise.dispose();
+    this.noise = null;
     for (const target of this.targets) target.dispose();
     this.march.dispose();
     this.composite.dispose();

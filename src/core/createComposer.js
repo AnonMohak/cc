@@ -143,10 +143,6 @@ export function createComposer(renderer, scene, camera, { bloomStrength = 0.8, v
     setBlackHoleMarch(on, steps) {
       blackHole.setMarch(on, steps);
     },
-    /** Lens rays per pixel (quality.js holeSamples; the intro tier supersamples). */
-    setBlackHoleSamples(n) {
-      blackHole.setSamples(n);
-    },
     /** Depth of field strength 0–1 and whether the pass runs (quality.js dofEnabled). */
     setDof(amount, enabled) {
       dof.setAmount(amount);

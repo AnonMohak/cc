@@ -131,12 +131,8 @@ export class Galaxy {
     this.snSchedule = createSupernovaSchedule(seed);
     this.snSlot = 0;
     this.snTime = 0;
-    // Accretion-disc time: simulation time × holeSpin (the intro fall spins
-    // the disc up). Accumulated, so a spin change never makes the streaks jump.
+    // Accretion-disc time (simulation time).
     this.holeTime = 0;
-    this.holeSpin = 1;
-    // Intro-fall lens warp 0–1 (BlackHolePass; blackHole.js WARP_*).
-    this.holeWarp = 0;
     // Consumption (scene/CollisionSim.js), all transient: the hole's Rs and
     // disc gain/glow multipliers, the feeding flare 0–1 and the merger ripple.
     this.holeScale = 1;
@@ -297,7 +293,7 @@ export class Galaxy {
     // timeScale: the time-lapse of a galaxy merger (1 otherwise).
     this.phase += dt * this.speed * this.timeScale;
     this.uniforms.uPhase.value = this.phase;
-    this.holeTime += dt * this.holeSpin;
+    this.holeTime += dt;
     this.tickSupernovae(dt);
     if (this.emphasis !== this.emphasisTarget) {
       this.emphasis = approach(this.emphasis, this.emphasisTarget, realDt);
@@ -418,16 +414,6 @@ export class Galaxy {
     this.starsAfterLens.visible = true;
   }
 
-  /** Disc spin multiplier; 1 = normal. */
-  setHoleSpin(k) {
-    this.holeSpin = k;
-  }
-
-  /** Intro-fall lens warp, 0 (none) to 1 (blackHole.js WARP_*). */
-  setHoleWarp(k) {
-    this.holeWarp = k;
-  }
-
   /** A standalone black hole's params (params.js LIMITS.hole): uniforms only. */
   setHole(hole) {
     if (!this.standalone) return;
@@ -467,7 +453,6 @@ export class Galaxy {
     slot.rippleRadius = this.holeRipple.radius;
     slot.rippleAmp = this.holeRipple.amp;
     slot.streak = h.streak ? 1 : 0;
-    slot.warp = this.holeWarp;
     slot.hot.copy(this.holeHot);
     slot.cool.copy(this.holeCool);
     return true;

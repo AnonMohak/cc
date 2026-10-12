@@ -188,7 +188,6 @@ export function startApp(container, { startScreen } = {}) {
     post.setVolumeScale(tier.volumeScale);
     post.setBloomMode(tier.bloom);
     post.setBlackHoleMarch(Boolean(tier.holeMarch), tier.holeSteps);
-    post.setBlackHoleSamples(tier.holeSamples ?? 1);
     if (setMaxPixelRatio(tier.maxPixelRatio)) resizeAll();
     gate.invalidate();
     onTierChange(name);
@@ -474,7 +473,7 @@ export function startApp(container, { startScreen } = {}) {
       applyCinematic();
     }
   }
-  const tierFor = (state) => activeTier(state.settings.quality, governor.tier(), { mobile });
+  const tierFor = (state) => activeTier(state.settings.quality, governor.tier());
   applySettings(store.getState().settings);
   applyTier(tierFor(store.getState()));
   store.subscribe((next, prev) => {
@@ -586,6 +585,7 @@ export function startApp(container, { startScreen } = {}) {
     // quality is for the scene).
     if (intro) {
       lastRender = null;
+      if (!intro.ready) return; // the disc noise is still baking
       if (introPhase(introTime).black < 1) intro.render(renderer);
       if (startScreen?.isOpen()) startScreen.ready();
       return;

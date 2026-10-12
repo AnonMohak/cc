@@ -42,21 +42,11 @@ describe('holeMarch', () => {
   });
 });
 
-describe('intro tier', () => {
-  it('overrides Auto and fixed tiers only for the intro scene', async () => {
-    const { activeTier, QUALITY, TIER_ORDER, QUALITY_OPTIONS } = await import('./quality.js');
+describe('activeTier', () => {
+  it('is the setting, or the governor tier on Auto', async () => {
+    const { activeTier } = await import('./quality.js');
     expect(activeTier('low', 'medium')).toBe('low');
     expect(activeTier('auto', 'medium')).toBe('medium');
-    expect(activeTier('low', 'medium', { intro: true })).toBe('intro');
-    expect(activeTier('auto', 'minimal', { intro: true, mobile: true })).toBe('introMobile');
-    for (const name of ['intro', 'introMobile']) {
-      expect(QUALITY[name].holeMarch).toBe(false);
-      expect(QUALITY[name].holeSamples).toBeGreaterThan(1);
-      expect(TIER_ORDER).not.toContain(name);
-      expect(QUALITY_OPTIONS).not.toContain(name);
-      expect(spikeStyle('jwst', name)).toBe(2);
-      expect(cinematicEnabled({ vignette: 0.3, grain: 0, aberration: 0 }, name)).toBe(true);
-    }
   });
 });
 

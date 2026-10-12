@@ -235,13 +235,12 @@ describe('GalaxyManager black holes', () => {
     expect(s[0].normal.y).toBeCloseTo(1, 6);
   });
 
-  it('the disc time runs at the hole spin', () => {
+  it('the disc time runs with the simulation', () => {
     const { store, actions, manager } = setup();
     store.dispatch(actions.addBlackHole(store.getState()));
     const hole = manager.get('id1');
     hole.tick(1);
-    hole.setHoleSpin(3);
-    hole.tick(1);
-    expect(hole.holeTime).toBeCloseTo(4, 9);
+    hole.tick(0.5);
+    expect(hole.holeTime).toBeCloseTo(1.5, 9);
   });
 });

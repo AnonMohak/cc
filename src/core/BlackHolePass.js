@@ -17,13 +17,6 @@ import {
   MARCH_INNER,
   MARCH_BLEND,
   MARCH_SCALE_MIN,
-  WARP_BEND,
-  WARP_REACH,
-  WARP_DEPTH,
-  WARP_SWIRL,
-  WARP_SHRINK,
-  WARP_SWIRL_EXACT,
-  warpedReach,
   lensScreenRect,
   marchScaleFor,
   shadowPixels,
@@ -344,7 +337,6 @@ const fragmentShader = glsl(
   uniform vec4 uLensCenter[MAX_LENSES]; // xyz: centre / Rs (view space), w: fade
   uniform vec4 uLensNormal[MAX_LENSES]; // xyz: disc normal (view space), w: time
   uniform vec4 uLensDisc[MAX_LENSES]; // x: disc outer radius (Rs), y: gain, z: glow, w: streak (0/1)
-  uniform float uLensWarp[MAX_LENSES]; // intro-fall warp 0–1 (blackHole.js WARP_*)
   uniform float uLensRs[MAX_LENSES]; // Rs (world units): rays pass from one lens's units to the next
   uniform vec2 uLensRipple[MAX_LENSES]; // merger ripple: radius (Rs), bend (rad); 0 = none
   uniform int uOrder[MAX_LENSES]; // lens indices, nearest first
@@ -367,15 +359,6 @@ const fragmentShader = glsl(
   uniform sampler2D tMarch;
   uniform vec2 uMarchTexel;
   uniform float uMarch;
-  // Extra lens rays on edge pixels (BH_REFINE: 2 or 4; quality.js
-  // holeSamples) and the finer streak octave (on with supersampling).
-  uniform int uSamples;
-  uniform float uDetail;
-  // Supersampling: the one-ray image (tLens), the edge contrast range that
-  // fades the extra rays in, and 1 while that image is drawn (no streak).
-  uniform sampler2D tLens;
-  uniform vec2 uEdge;
-  uniform float uLensOnly;
   // Exact light paths (galaxy/photonLut.js), RGBA32F.
   uniform sampler2D uLut;
   // Every texture read in this shader names its mip level (none has mips):
@@ -389,12 +372,6 @@ ${DISC_GLSL}
   const float SHADOW_B = ${f(SHADOW_B)};
   const float LENS_REACH = ${f(LENS_REACH)};
   const float MAX_DEFLECTION = ${f(MAX_DEFLECTION)};
-  const float WARP_BEND = ${f(WARP_BEND)};
-  const float WARP_REACH = ${f(WARP_REACH)};
-  const float WARP_DEPTH = ${f(WARP_DEPTH)};
-  const float WARP_SWIRL = ${f(WARP_SWIRL)};
-  const float WARP_SHRINK = ${f(WARP_SHRINK)};
-  const float WARP_SWIRL_EXACT = ${f(WARP_SWIRL_EXACT)};
   const float RIPPLE_WIDTH = ${f(RIPPLE_WIDTH)};
   const float RING_GAIN = 3.0;
   const float RING_TAIL = 0.12;
@@ -493,11 +470,6 @@ ${STREAK_GLSL}
     float s1 = textureLod(uNoise, vec2(r * STREAK_FREQ_R, turn), lod).r;
     float s2 = textureLod(uNoise, vec2(r * FINE_FREQ_R + 0.37, turn * 2.0 + 0.5), lod + log2(FINE_FREQ_R / STREAK_FREQ_R)).g;
     float s = 0.55 * s1 + 0.45 * s2;
-    if (uDetail > 0.5) {
-      // Finer streaks for close views (resolved by the supersampling).
-      float s3 = textureLod(uNoise, vec2(r * FINE_FREQ_R * 3.1 + 0.71, turn * 4.0 + 0.25), lod + log2(3.1 * FINE_FREQ_R / STREAK_FREQ_R)).r;
-      s = 0.45 * s1 + 0.35 * s2 + 0.2 * s3;
-    }
     float streak = gm_smoothstep(0.3, 0.7, mix(0.5, s, detail));
     float q = discFlux(r);
     float edge = discEdge(r);
@@ -621,10 +593,7 @@ ${STREAK_GLSL}
     float b = length(bv);
     vec3 pAbs = ro + p0; // closest approach, from the camera
 
-    // Intro-fall warp (blackHole.js WARP_*; 0 normally): a wider reach,
-    // more bend, deeper source light and a swirl.
-    float warp = uLensWarp[i];
-    float reach = LENS_REACH * (1.0 + WARP_REACH * warp);
+    float reach = LENS_REACH;
     vec2 ripple = uLensRipple[i];
     float rippleReach = ripple.y > 0.0 ? ripple.x + 3.0 * RIPPLE_WIDTH : 0.0;
     if (b >= max(reach, rippleReach)) return false;
@@ -657,14 +626,9 @@ ${STREAK_GLSL}
       // core of at least ~1 px with its energy kept, and a soft tail). The
       // march texture holds camera rays only, so a ray another lens bent
       // first takes the exact lens below.
-      float a = deflection(b) * (1.0 + WARP_BEND * warp) * reachFade + bendR;
+      float a = deflection(b) * reachFade + bendR;
       vec3 rd2 = normalize(rd * cos(a) - bv / max(b, 1e-4) * sin(a));
-      if (warp > 0.0) {
-        vec3 axis = normalize(cr);
-        float sw = WARP_SWIRL * warp * reachFade * min(SHADOW_B / b, 1.0) * PI;
-        rd2 = rd2 * cos(sw) + cross(axis, rd2) * sin(sw) + axis * dot(axis, rd2) * (1.0 - cos(sw));
-      }
-      src = normalize(pAbs + rd2 * SOURCE_DEPTH * (1.0 + WARP_DEPTH * warp));
+      src = normalize(pAbs + rd2 * SOURCE_DEPTH);
       float w = max(0.04, 0.6 * length(c) * uPixelAngle);
       float ringB = SHADOW_B * 1.015;
       float ring = exp(-pow((b - ringB) / w, 2.0)) * (0.04 / w)
@@ -691,14 +655,7 @@ ${STREAK_GLSL}
     float tl = length(tp);
     vec3 e2 = tp / max(tl, 1e-6);
     bool inward = vr < 0.0;
-    // Intro-fall warp, on the disc and the sky alike: a smaller impact
-    // parameter (more bend, a bigger shadow) and the ray's plane turned
-    // about the hole (a swirl).
-    float bw = b * (1.0 - WARP_SHRINK * warp * reachFade);
-    if (warp > 0.0) {
-      float sw = WARP_SWIRL_EXACT * warp * reachFade * min(SHADOW_B / b, 1.0) * PI;
-      e2 = e2 * cos(sw) + cross(e1, e2) * sin(sw);
-    }
+    float bw = b;
     bool esc = bw > B_CRIT;
     float row = lutRow(bw);
     float uEnd = esc ? periapsisU(bw) : 1.0;
@@ -745,7 +702,7 @@ ${STREAK_GLSL}
       float straight = inward ? PI - asin(clamp(tl, 0.0, 1.0)) : asin(clamp(tl, 0.0, 1.0));
       float sEnd = straight + (sweepEnd - straight) * reachFade + bendR;
       vec3 rdx = cos(sEnd) * e1 + sin(sEnd) * e2;
-      src = normalize(pAbs + rdx * SOURCE_DEPTH * (1.0 + WARP_DEPTH * warp));
+      src = normalize(pAbs + rdx * SOURCE_DEPTH);
       E += Td * (discHaze(bv, n, time, tc) + halo) * disc.z * outside * reachFade;
       T = Td * mix(CAVITY, 1.0, open * open) * gm_smoothstep(SHADOW_B, SHADOW_B * 2.5, length(cross(src, c)));
       rd = rdx;
@@ -754,8 +711,7 @@ ${STREAK_GLSL}
     return true;
   }
 
-  // The pass for one ray through screen point uv (one per pixel, or
-  // uSamples sub-pixel rays inside the lenses; see main). The lenses go
+  // The pass for one ray through screen point uv. The lenses go
   // nearest first (uOrder), each on the ray the one before it bent; the
   // scene light is read once at the end. One lens alone (or lenses that do
   // not overlap) gives exactly the single-lens result.
@@ -799,61 +755,10 @@ ${STREAK_GLSL}
     return mix(base, res, firstFade);
   }
 
-  // Inside any lens reach: true when the extra rays can change the pixel.
-  bool inLens(vec2 uv) {
-    vec3 rd = normalize(vec3((uv * 2.0 - 1.0) * uTanHalfFov, -1.0));
-    for (int i = 0; i < MAX_LENSES; i++) {
-      if (i >= uCount) break;
-      vec3 c = uLensCenter[i].xyz;
-      float tc = dot(c, rd);
-      if (tc <= 0.0 || c.z >= 0.0) continue;
-      if (length(rd * tc - c) < LENS_REACH * (1.0 + WARP_REACH * uLensWarp[i])) return true;
-    }
-    return false;
-  }
-
-#ifdef BH_REFINE
-  // Rotated-grid sub-pixel offsets for the extra rays.
-  const vec2 RGSS[4] = vec2[](vec2(0.125, 0.375), vec2(-0.125, -0.375), vec2(-0.375, 0.125), vec2(0.375, -0.125));
-
-  vec3 tone(vec3 c) { return c / (1.0 + c); }
-
-  // Supersampling, second step: tLens holds one ray per pixel. Only where it
-  // differs from a neighbour (the photon ring, the shadow edge, thin disc
-  // images, lensed stars) does the pixel add uSamples sub-pixel rays; the
-  // smooth rest keeps its one ray. The rays run in a loop with a per-pixel
-  // count: written out as calls, the compiler ran them for every pixel.
-  // Neighbours in all four directions, so an edge between two 2×2 pixel
-  // quads is found too (screen derivatives miss it).
   void main() {
-    ivec2 p = ivec2(gl_FragCoord.xy);
-    ivec2 hi = ivec2(uResolution) - 1;
-    vec3 c0 = texelFetch(tLens, p, 0).rgb;
-    vec3 t0 = tone(c0);
-    vec3 d = abs(tone(texelFetch(tLens, clamp(p + ivec2(1, 0), ivec2(0), hi), 0).rgb) - t0);
-    d = max(d, abs(tone(texelFetch(tLens, clamp(p - ivec2(1, 0), ivec2(0), hi), 0).rgb) - t0));
-    d = max(d, abs(tone(texelFetch(tLens, clamp(p + ivec2(0, 1), ivec2(0), hi), 0).rgb) - t0));
-    d = max(d, abs(tone(texelFetch(tLens, clamp(p - ivec2(0, 1), ivec2(0), hi), 0).rgb) - t0));
-    float w = gm_smoothstep(uEdge.x, uEdge.y, max(d.r, max(d.g, d.b)));
-    vec3 col = c0;
-    if (w > 0.0 && inLens(vUv)) {
-      vec2 px = 1.0 / uResolution;
-      vec3 sum = c0;
-      for (int s = 0; s < 4; s++) {
-        if (s >= uSamples) break;
-        sum += shade(vUv + RGSS[s] * px);
-      }
-      col = mix(c0, sum / float(uSamples + 1), w);
-    }
     vec3 streaks = uStreaks > 0.5 ? lensStreaks(vUv) : vec3(0.0);
-    gl_FragColor = vec4(col + streaks, 1.0);
-  }
-#else
-  void main() {
-    vec3 streaks = uStreaks > 0.5 && uLensOnly < 0.5 ? lensStreaks(vUv) : vec3(0.0);
     gl_FragColor = vec4(shade(vUv) + streaks, 1.0);
   }
-#endif
 `,
 );
 
@@ -875,13 +780,8 @@ ${STREAK_GLSL}
 // The lens rectangle covers at least this share of the screen: draw the lens
 // over all of it (the copy would only add work).
 const FULL_SCREEN_SHARE = 0.85;
-// Pixels added around the lens rectangle (rounding, and the edge test's
-// neighbours).
+// Pixels added around the lens rectangle (rounding).
 const RECT_MARGIN_PX = 3;
-// Edge contrast (tone-mapped channel difference to a neighbour) over which
-// the extra lens rays fade in.
-const EDGE_LO = 0.02;
-const EDGE_HI = 0.06;
 
 const _view = new THREE.Vector3();
 const _rect = [0, 0, 0, 0];
@@ -926,7 +826,6 @@ export class BlackHolePass extends Pass {
       gain: 1,
       glow: 1,
       streak: 1,
-      warp: 0, // intro-fall lens warp 0–1
       rippleRadius: 0, // merger ripple (consumption.js rippleState): radius (Rs), bend (rad)
       rippleAmp: 0,
       hot: new THREE.Color(),
@@ -946,7 +845,6 @@ export class BlackHolePass extends Pass {
         uLensCenter: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Vector4()) },
         uLensNormal: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Vector4()) },
         uLensDisc: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Vector4()) },
-        uLensWarp: { value: new Array(MAX_LENSES).fill(0) },
         uLensRs: { value: new Array(MAX_LENSES).fill(1) },
         uLensRipple: { value: Array.from({ length: MAX_LENSES }, () => new THREE.Vector2()) },
         uOrder: { value: Array.from({ length: MAX_LENSES }, (_, i) => i) },
@@ -965,13 +863,8 @@ export class BlackHolePass extends Pass {
         tMarch: { value: null },
         uMarchTexel: { value: new THREE.Vector2(1, 1) },
         uMarch: { value: 0 },
-        uSamples: { value: 1 },
-        uDetail: { value: 0 },
         uLut: { value: createLutTexture() },
         uStreaks: { value: 1 },
-        tLens: { value: null },
-        uEdge: { value: new THREE.Vector2(EDGE_LO, EDGE_HI) },
-        uLensOnly: { value: 0 },
       },
       vertexShader: /* glsl */ `
         varying vec2 vUv;
@@ -984,21 +877,6 @@ export class BlackHolePass extends Pass {
       depthWrite: false,
     });
     this.fsQuad = new FullScreenQuad(this.material);
-
-    // Supersampling (setSamples > 1): the lens draws one ray per pixel into
-    // lensTarget, then the refine material adds rays on edge pixels. Same
-    // uniforms object, so both see every update.
-    this.lensTarget = null;
-    this.refineMaterial = new THREE.ShaderMaterial({
-      name: 'BlackHoleRefine',
-      uniforms: this.material.uniforms,
-      defines: { BH_REFINE: '' },
-      vertexShader: this.material.vertexShader,
-      fragmentShader,
-      depthTest: false,
-      depthWrite: false,
-    });
-    this.refineQuad = new FullScreenQuad(this.refineMaterial);
 
     // Only the screen rectangle the lenses can reach runs the lens shader
     // (update() sets it); the rest gets this cheap copy.
@@ -1051,7 +929,6 @@ export class BlackHolePass extends Pass {
     this.width = width;
     this.height = height;
     this.material.uniforms.uResolution.value.set(width, height);
-    this.lensTarget?.setSize(width, height);
     this.setMarchScale(this.marchScale);
   }
 
@@ -1071,25 +948,6 @@ export class BlackHolePass extends Pass {
   setMarch(on, steps = 48) {
     this.march = on;
     this.marchMaterial.uniforms.uSteps.value = Math.min(steps, MAX_HOLE_STEPS);
-  }
-
-  /**
-   * Lens rays on edge pixels: 1, 2 or 4 (more adds the finer streak octave).
-   * Above 1, every lens pixel has one ray and edge pixels get `n` more.
-   */
-  setSamples(n) {
-    const samples = n >= 4 ? 4 : n >= 2 ? 2 : 1;
-    this.material.uniforms.uSamples.value = samples;
-    this.material.uniforms.uDetail.value = samples > 1 ? 1 : 0;
-    if (samples > 1 && !this.lensTarget) {
-      this.lensTarget = new THREE.WebGLRenderTarget(this.width, this.height, { type: THREE.HalfFloatType, depthBuffer: false });
-      this.material.uniforms.tLens.value = this.lensTarget.texture;
-    } else if (samples === 1 && this.lensTarget) {
-      // Only the intro supersamples: free the full-screen target after it.
-      this.lensTarget.dispose();
-      this.lensTarget = null;
-      this.material.uniforms.tLens.value = null;
-    }
   }
 
   /**
@@ -1141,7 +999,7 @@ export class BlackHolePass extends Pass {
       c.shadowPx = shadowPixels(c.rsWorld, depth, tanY, this.height);
       // In front of the camera and the lens reach (or a merger ripple) overlaps the screen.
       const ripple = c.rippleAmp > 0 ? c.rippleRadius + 3 * RIPPLE_WIDTH : 0;
-      const reach = (Math.max(warpedReach(c.warp), ripple) * c.rsWorld) / Math.max(depth, 1e-6);
+      const reach = (Math.max(LENS_REACH, ripple) * c.rsWorld) / Math.max(depth, 1e-6);
       c.visible = depth > 0 && Math.abs(_view.x / depth) < tanX + reach && Math.abs(_view.y / depth) < tanY + reach;
     }
     const n = pickLenses(this.candidates, count, MAX_LENSES, this.picked);
@@ -1153,7 +1011,6 @@ export class BlackHolePass extends Pass {
       _view.copy(c.normal).transformDirection(view);
       u.uLensNormal.value[i].set(_view.x, _view.y, _view.z, c.time);
       u.uLensDisc.value[i].set(c.discOuter, c.gain, c.glow, c.streak);
-      u.uLensWarp.value[i] = c.warp;
       u.uLensRs.value[i] = c.rsWorld;
       u.uLensRipple.value[i].set(c.rippleRadius, c.rippleAmp);
       _view.copy(c.center).applyMatrix4(view);
@@ -1197,7 +1054,7 @@ export class BlackHolePass extends Pass {
       const c = this.picked[i];
       const ripple = c.rippleAmp > 0 ? c.rippleRadius + 3 * RIPPLE_WIDTH : 0;
       _view.copy(c.center).applyMatrix4(view);
-      if (!lensScreenRect(_view, Math.max(warpedReach(c.warp), ripple) * c.rsWorld, tanX, tanY, _rect)) continue;
+      if (!lensScreenRect(_view, Math.max(LENS_REACH, ripple) * c.rsWorld, tanX, tanY, _rect)) continue;
       x0 = Math.min(x0, _rect[0]);
       y0 = Math.min(y0, _rect[1]);
       x1 = Math.max(x1, _rect[2]);
@@ -1233,25 +1090,15 @@ export class BlackHolePass extends Pass {
     const out = this.renderToScreen ? null : writeBuffer;
     const rect = out && !this.fullScreen ? this.scissor : null;
     if (rect) this.drawIn(renderer, out, this.copyQuad, null);
-    if (this.lensTarget && u.uSamples.value > 1) {
-      u.uLensOnly.value = 1;
-      this.drawIn(renderer, this.lensTarget, this.fsQuad, rect);
-      u.uLensOnly.value = 0;
-      this.drawIn(renderer, out, this.refineQuad, rect);
-    } else {
-      this.drawIn(renderer, out, this.fsQuad, rect);
-    }
+    this.drawIn(renderer, out, this.fsQuad, rect);
   }
 
   dispose() {
     this.material.uniforms.uLut.value?.dispose();
     this.material.dispose();
     this.fsQuad.dispose();
-    this.refineMaterial.dispose();
-    this.refineQuad.dispose();
     this.copyMaterial.dispose();
     this.copyQuad.dispose();
-    this.lensTarget?.dispose();
     this.marchMaterial.dispose();
     this.marchQuad.dispose();
     this.marchTarget.dispose();

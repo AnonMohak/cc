@@ -25,13 +25,6 @@ export const QUALITY = {
   // a thick disc volume instead of the thin exact-lens disc. Picked by hand only: Auto
   // never goes here (not in TIER_ORDER).
   accurate: { label: 'Accurate', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true, holeMarch: true, holeSteps: 40 },
-  // The intro scene (only the animation black hole, 6k stars, no volume) on
-  // every device, whatever the setting: the exact lens at its best (no ray
-  // march), supersampled (holeSamples rays per pixel inside the lens) with a
-  // finer streak octave. Not in TIER_ORDER / QUALITY_OPTIONS.
-  intro: { label: 'Intro (best)', volumeScale: 0.75, steps: 32, bloom: 'half', maxPixelRatio: 2, starCap: 200_000, volumeDust: true, maxPointPx: 18, spikes: true, cinematic: true, holeMarch: false, holeSamples: 4 },
-  // Phones: the same look with half the lens rays and fewer pixels.
-  introMobile: { label: 'Intro (best)', volumeScale: 0.5, steps: 20, bloom: 'half', maxPixelRatio: 1.5, starCap: 120_000, volumeDust: true, maxPointPx: 14, spikes: true, cinematic: true, holeMarch: false, holeSamples: 2 },
 };
 
 /** Cheapest first: the governor moves along this list. */
@@ -59,14 +52,11 @@ export function targetFrameMs(mobile) {
 }
 
 /**
- * The tier actually in use for a settings value. The intro scene overrides
- * both Auto and a fixed tier (it is cheap apart from the lens).
+ * The tier actually in use for a settings value.
  * @param {string} setting
  * @param {string} autoTier
- * @param {{ intro?: boolean, mobile?: boolean }} [scene]
  */
-export function activeTier(setting, autoTier, { intro = false, mobile = false } = {}) {
-  if (intro) return mobile ? 'introMobile' : 'intro';
+export function activeTier(setting, autoTier) {
   return setting === 'auto' ? autoTier : setting;
 }
 
