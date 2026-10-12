@@ -4,13 +4,12 @@ import { createCamera, CAMERA_LIMITS, CAMERA_HOME } from './core/createCamera.js
 import { createComposer } from './core/createComposer.js';
 import { createLoop } from './core/loop.js';
 import { createCameraFly, framingPosition, easeInOutCubic } from './core/cameraFly.js';
-import { createFall, fallPose, fallDistance, fallAngle, R_END, FILM_ELEVATION_DEG } from './core/blackHoleFall.js';
 import { captureScreenshot } from './core/screenshot.js';
 import { createStarfield } from './scene/starfield.js';
 import { createSky } from './scene/sky.js';
 import { GalaxyManager } from './scene/GalaxyManager.js';
 import { pickGalaxy } from './scene/picking.js';
-import { createStore, canAddGalaxy, isIntroScene, splitIntroStart, restorePending, reducer } from './state/store.js';
+import { createStore, createInitialState, canAddGalaxy, reducer } from './state/store.js';
 import { QUALITY, TIER_ORDER, isMobileDevice, startTier, targetFrameMs, activeTier, spikeStyle, cinematicEnabled, dofEnabled } from './core/quality.js';
 import { createQualityGovernor } from './core/qualityGovernor.js';
 import { createRenderGate } from './core/renderGate.js';
@@ -46,22 +45,18 @@ import { collisionBroken } from './galaxy/collision.js';
 import { consumeResult } from './galaxy/consumption.js';
 import { frameRadius, framingDistance, orbitViewTan, raiseDirection, createSpring, springTo, MIN_ELEVATION_DEG, TARGET_RATE, DISTANCE_RATE, DIRECTION_RATE, LOOK_AHEAD } from './core/consumeCamera.js';
 import { rumbleLevel, rumbleCutoff } from './audio/soundMix.js';
+import { IntroCinematic } from './intro/IntroCinematic.js';
+import { introPhase, INTRO_SECONDS, MUSIC_RISE_SECONDS } from './intro/introTimeline.js';
 
 const SAVE_DEBOUNCE_MS = 500;
 // The film shot is this much closer than the "disc fills the view" distance.
 const FILM_CLOSER = 0.9;
-// Intro fall: seconds for the fly back out, and for the elevation to settle.
-const FALL_ESCAPE_SECONDS = 1.5;
-const FALL_SETTLE_SECONDS = 10;
-// Intro fall: idle seconds after the start box before the fall starts.
-const FALL_IDLE_SECONDS = 5;
+// Camera height above the disc plane for the film shot (filmShot): high
+// enough that the near side of the disc hides the bottom of the shadow.
+const FILM_ELEVATION_DEG = 20;
+// Seconds for the black to fade into the scene after the intro.
+const INTRO_FADE_IN = 1.5;
 
-// Intro fall scratch objects (no per-frame allocation).
-const _fallCenter = new THREE.Vector3();
-const _fallNormal = new THREE.Vector3();
-const _fallE1 = new THREE.Vector3();
-const _fallE2 = new THREE.Vector3();
-const _fallOffset = new THREE.Vector3();
 // Depth-of-field focus scratch (no per-frame allocation).
 const _focusForward = new THREE.Vector3();
 const _focusPoint = new THREE.Vector3();
@@ -97,7 +92,6 @@ export function startApp(container, { startScreen } = {}) {
     renderer.domElement,
     container.clientWidth / container.clientHeight,
   );
-  // The normal field of view (the intro fall widens it for a while).
   const baseFov = camera.fov;
 
   const starfield = createStarfield({ pixelRatio: renderer.getPixelRatio() });
@@ -109,20 +103,16 @@ export function startApp(container, { startScreen } = {}) {
   // ── State ──────────────────────────────────────────────────────────────
   const storage = window.localStorage;
   const actions = createActions();
-  // Every load starts with the animation black hole, framed like the film
-  // shot. A saved scene waits in pendingScene and comes back when the intro
-  // ends (restoreSavedScene); on a fresh scene the first add replaces the
-  // hole (store.js withoutIntro).
-  const intro = splitIntroStart(persistence.load(storage));
-  const store = createStore(undefined, intro.state);
-  let pendingScene = intro.pending;
-  if (store.getState().galaxies.length === 0) store.dispatch(actions.addBlackHole(store.getState(), undefined, { intro: true }));
+  // Every load plays the intro cinematic first (src/intro/); the scene loads
+  // behind it and shows when it ends. A fresh or empty scene is one default
+  // galaxy (as on Reset scene).
+  const withDefaultGalaxy = (state) => {
+    if (state.galaxies.length > 0) return state;
+    return { ...reducer(state, actions.addGalaxy(state, 'spiral', [0, 0, 0])), selectedId: null };
+  };
+  const store = createStore(undefined, withDefaultGalaxy(persistence.load(storage) ?? createInitialState()));
 
-  // While the saved scene waits, keep saving it (with the current settings), not the intro.
-  const save = debounce(() => {
-    const state = store.getState();
-    persistence.save(pendingScene ? restorePending(state, pendingScene) : state, storage);
-  }, SAVE_DEBOUNCE_MS);
+  const save = debounce(() => persistence.save(store.getState(), storage), SAVE_DEBOUNCE_MS);
   store.subscribe(save);
   window.addEventListener('pagehide', () => save.flush());
 
@@ -130,8 +120,6 @@ export function startApp(container, { startScreen } = {}) {
 
   /** Replace the whole scene (share link or imported file). */
   function loadScene(state, message) {
-    // A shared or imported scene replaces the waiting saved one.
-    pendingScene = null;
     store.dispatch(actions.loadState(state));
     history.clear();
     showToast(container, message);
@@ -175,16 +163,6 @@ export function startApp(container, { startScreen } = {}) {
     const elevation = THREE.MathUtils.degToRad(FILM_ELEVATION_DEG);
     const dir = side.multiplyScalar(Math.cos(elevation)).addScaledVector(normal, Math.sin(elevation));
     return { center, position: center.clone().addScaledVector(dir, distance) };
-  }
-  // The camera is not saved: every load of the intro scene starts at the
-  // film shot (the home view would be far away).
-  if (isIntroScene(store.getState())) {
-    const shot = filmShot(store.getState().galaxies[0].id);
-    if (shot) {
-      controls.target.copy(shot.center);
-      camera.position.copy(shot.position);
-      controls.update();
-    }
   }
   const post = createComposer(renderer, scene, camera, {
     bloomStrength: store.getState().settings.bloomStrength,
@@ -279,14 +257,6 @@ export function startApp(container, { startScreen } = {}) {
 
   function setCameraMode(next) {
     if (next === cameraMode) return;
-    if (cameraMode === 'fall') {
-      controls.enabled = true;
-      controls.autoRotate = store.getState().settings.autoRotate;
-      fallRun?.galaxy.setHoleSpin(1);
-      // The lens warp eases out with the fov (no pop on escape).
-      if (fallRun && fallRun.galaxy.holeWarp > 0) warpEase = { galaxy: fallRun.galaxy, from: fallRun.galaxy.holeWarp, t: 0 };
-      fallRun = null;
-    }
     if (cameraMode === 'fly') {
       fly.disable();
       fly.lookTarget(Math.max(camera.position.distanceTo(controls.target), 8), controls.target);
@@ -308,11 +278,6 @@ export function startApp(container, { startScreen } = {}) {
       fly.enable();
     }
     if (next === 'tour') handleTourEvent(tour.start());
-    if (next === 'fall') {
-      cameraFly.cancel();
-      controls.enabled = false;
-      controls.autoRotate = false;
-    }
     if (next === 'consume') {
       // OrbitControls stays on (its 'start' event hands the camera back) but
       // is not updated: the loop places the camera (updateConsumeCamera).
@@ -362,19 +327,16 @@ export function startApp(container, { startScreen } = {}) {
     cameraFly.flyTo(center, position, seconds);
   }
 
-  // ── Intro fall into the black hole (core/blackHoleFall.js) ─────────────
-  // Idle after the start box on the intro scene (the animation black hole): the camera
-  // spirals in with the disc and falls in. A click, tap, wheel or the
-  // controls panel ends it and flies back out. Once per page load, for
-  // everyone (also with reduced motion: it is the intro, and any click ends it).
-  const fall = createFall({ idleSeconds: FALL_IDLE_SECONDS });
+  // ── Intro cinematic (src/intro/) ─────────────────────────────────────
+  // Every page load plays it once, from the start-box click; nothing can
+  // stop it. It renders instead of the scene, then is disposed, and the
+  // scene shows from the home view (fading in from black).
   const fallOverlay = createFallOverlay(container);
-  // Phones would sleep before the minute is over, and the waking tap would
-  // end the fall: keep the screen on while it waits and falls.
+  // Phones would sleep before it ends: keep the screen on while it plays.
   const wakeLock = createWakeLock();
-  // Sound: a quiet generated drone, and the fall music during the intro fall.
-  // Browsers allow audio only after a gesture: unlock on the first one (the
-  // start-box click or tap), then stop listening.
+  // Sound: a quiet generated drone, and the intro music. Browsers allow
+  // audio only after a gesture: unlock on the first one (the start-box click
+  // or tap), then stop listening.
   const soundscape = createSoundscape();
   const unlockEvents = ['pointerup', 'touchend', 'click', 'keydown'];
   const unlockSound = () => {
@@ -382,144 +344,49 @@ export function startApp(container, { startScreen } = {}) {
     for (const type of unlockEvents) window.removeEventListener(type, unlockSound, true);
   };
   for (const type of unlockEvents) window.addEventListener(type, unlockSound, true);
-  // The start box hint ("Stay still…") only fits the intro scene.
-  document.getElementById('start-hint')?.toggleAttribute('hidden', !isIntroScene(store.getState()));
-  /** The running fall: hole, basis and start pose (see beginFall). */
-  let fallRun = null;
-  let fallU = 0;
-  let fallTau = 0;
-  let fovEase = null; // { from, t } while the fov returns to baseFov
-  let warpEase = null; // { galaxy, from, t } while the lens warp returns to 0
 
-  /** Soundscape mode (audio/soundMix.js) for the intro state. */
-  function soundMode() {
-    const phase = fall.phase();
-    if (phase === 'done' || cameraMode !== 'fall' || (startScreen?.isOpen() ?? false)) return 'ambient';
-    return { waiting: 'wait', falling: 'fall', fallen: 'end' }[phase];
-  }
+  let intro = new IntroCinematic({ aspect: container.clientWidth / Math.max(container.clientHeight, 1) });
+  let introTime = 0;
+  intro.update(0);
+  document.body.classList.add('intro-active');
+  // No input reaches the app while it plays (stopPropagation, not
+  // stopImmediatePropagation: the sound unlock above still hears it). The
+  // start box handles its own input before.
+  const lockEvents = ['pointerdown', 'pointerup', 'pointermove', 'click', 'dblclick', 'wheel', 'keydown', 'keyup', 'contextmenu', 'touchstart', 'touchmove', 'touchend'];
+  const swallowInput = (event) => {
+    if (!intro || (startScreen?.isOpen() ?? false)) return;
+    event.stopPropagation();
+    if (event.cancelable) event.preventDefault();
+  };
+  for (const type of lockEvents) window.addEventListener(type, swallowInput, { capture: true, passive: false });
 
-  function fallEligible() {
-    return isIntroScene(store.getState()) && (cameraMode === 'orbit' || cameraMode === 'fall');
-  }
-
-  /** Start from wherever the camera is (after a reload it is at CAMERA_HOME). */
-  function beginFall() {
-    const id = store.getState().galaxies[0]?.id;
-    const galaxy = galaxies.get(id);
-    if (!galaxy) return;
-    const { center, normal } = galaxy.pickTarget();
-    _fallCenter.copy(center);
-    _fallNormal.copy(normal);
-    // In-plane basis with e2 = n x e1: the angle grows in the disc's spin direction.
-    _fallE1.set(1, 0, 0).addScaledVector(_fallNormal, -_fallNormal.x);
-    if (_fallE1.lengthSq() < 1e-6) _fallE1.set(0, 0, 1).addScaledVector(_fallNormal, -_fallNormal.z);
-    _fallE1.normalize();
-    _fallE2.crossVectors(_fallNormal, _fallE1);
-    _fallOffset.subVectors(camera.position, _fallCenter);
-    const r0 = Math.max(_fallOffset.length(), 1e-3);
-    fallRun = {
-      id,
-      galaxy,
-      r0,
-      rEnd: R_END * galaxy.rsUnit * galaxy.radius,
-      angle: Math.atan2(_fallOffset.dot(_fallE2), _fallOffset.dot(_fallE1)),
-      elevation0: Math.asin(THREE.MathUtils.clamp(_fallOffset.dot(_fallNormal) / r0, -1, 1)),
-      clock: 0,
-    };
-    fovEase = null;
-    warpEase = null;
-    setCameraMode('fall');
-    controls.target.copy(_fallCenter);
-  }
-
-  /**
-   * Place the camera for fall progress u and orbit clock tau (loop, real
-   * time). In the wait u is 0: the camera circles at the start distance.
-   */
-  function updateFallCamera(realDt, u, tau) {
-    const run = fallRun;
-    if (!run) return;
-    const pose = fallPose(u);
-    run.clock += realDt;
-    const r = fallDistance(run.r0, run.rEnd, pose.distanceT);
-    const angle = run.angle + fallAngle(tau);
-    const settle = easeInOutCubic(Math.min(1, run.clock / FALL_SETTLE_SECONDS));
-    const elevation = THREE.MathUtils.lerp(run.elevation0, THREE.MathUtils.degToRad(FILM_ELEVATION_DEG), settle);
-    const ring = Math.cos(elevation) * r;
-    camera.position
-      .copy(_fallCenter)
-      .addScaledVector(_fallE1, Math.cos(angle) * ring)
-      .addScaledVector(_fallE2, Math.sin(angle) * ring)
-      .addScaledVector(_fallNormal, Math.sin(elevation) * r);
-    camera.lookAt(_fallCenter);
-    const fov = baseFov + pose.fovAdd;
-    if (camera.fov !== fov) {
-      camera.fov = fov;
-      camera.updateProjectionMatrix();
-    }
-    run.galaxy.setHoleSpin(pose.spin);
-    run.galaxy.setHoleWarp(pose.warp);
-    fallOverlay.set(pose.vignette, pose.black);
-  }
-
-  /** Leave the fall: fade in, ease the fov back and (optionally) fly out. */
-  function escapeFall(flyBack = true) {
-    const id = fallRun?.id;
-    setCameraMode('orbit');
-    fallOverlay.fadeOut(0.6);
-    if (camera.fov !== baseFov) fovEase = { from: camera.fov, t: 0 };
-    const shot = flyBack && id ? filmShot(id) : null;
-    if (shot) cameraFly.flyTo(shot.center, shot.position, FALL_ESCAPE_SECONDS);
-  }
-
-  /** A real interaction (or a command that takes the camera) ends the fall for good. */
-  function interruptFall(flyBack = true) {
-    if (!fall || (startScreen?.isOpen() ?? false)) return false;
-    const result = fall.interact();
-    if (result === 'escape') escapeFall(flyBack);
-    // Cancelled in the wait: hand the camera back where it is (the same
-    // press then orbits; OrbitControls is enabled again before it sees it).
-    if (result === 'cancel' && cameraMode === 'fall') setCameraMode('orbit');
-    return result === 'escape';
-  }
-
-  if (fall) {
-    // Capture phase: an escaping click must not also select or orbit, and an
-    // escaping wheel must not zoom while the camera flies back.
-    const onInput = (event) => {
-      if (fall.phase() === 'done') return;
-      if (interruptFall() && event.target === renderer.domElement) {
-        event.stopPropagation();
-        event.preventDefault();
-      }
-    };
-    window.addEventListener('pointerdown', onInput, true);
-    window.addEventListener('wheel', onInput, { capture: true, passive: false });
-  }
-
-  // An add replaced the animation black hole: end the intro and frame the
-  // new object (the film-shot camera would sit inside a galaxy).
-  let restoring = false;
-  store.subscribe((next, prev) => {
-    if (restoring || !prev.galaxies.some((g) => g.intro) || next.galaxies.some((g) => g.intro)) return;
-    const added = next.galaxies.filter((g) => !prev.galaxies.some((p) => p.id === g.id));
-    if (added.length !== 1) return;
-    interruptFall(false);
-    setCameraMode('orbit');
-    focusGalaxy(added[0].id);
-  });
-
-  /** The intro is over: bring back the saved scene, seen from the home view. */
-  function restoreSavedScene() {
-    if (!pendingScene) return;
-    const pending = pendingScene;
-    pendingScene = null;
-    restoring = true;
-    store.dispatch(actions.loadState(restorePending(store.getState(), pending)));
-    restoring = false;
+  /** The intro is over: dispose it and show the scene from the home view. */
+  function endIntro() {
+    intro.dispose();
+    intro = null;
+    for (const type of lockEvents) window.removeEventListener(type, swallowInput, { capture: true });
+    document.body.classList.remove('intro-active');
+    wakeLock.set(false);
+    controls.target.copy(CAMERA_HOME.target);
+    camera.position.copy(CAMERA_HOME.position);
+    controls.update();
     history.clear();
-    if (cameraMode !== 'orbit') setCameraMode('orbit');
-    cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position, 2);
+    fallOverlay.fadeOut(INTRO_FADE_IN);
+    gate.invalidate();
+  }
+
+  /** Advance the intro (real time, from the start-box click). */
+  function updateIntro(realDt) {
+    if (!intro) return;
+    const starting = startScreen?.isOpen() ?? false;
+    if (!starting) introTime = Math.min(introTime + realDt, INTRO_SECONDS);
+    const phase = introPhase(introTime);
+    intro.update(introTime);
+    fallOverlay.set(phase.vignette, phase.black);
+    // The music starts at the click and rises (timed so black lands on its peak).
+    soundscape.setMode(starting ? 'ambient' : phase.sound, MUSIC_RISE_SECONDS - introTime);
+    wakeLock.set(!starting);
+    if (phase.done) endIntro();
   }
 
   // Depth of field: focus on the selected object (else the orbit target), as
@@ -584,7 +451,7 @@ export function startApp(container, { startScreen } = {}) {
   function applySettings(settings) {
     loop.setPaused(settings.paused);
     loop.setTimeScale(settings.timeScale);
-    if (cameraMode !== 'tour' && cameraMode !== 'fall' && cameraMode !== 'consume') controls.autoRotate = settings.autoRotate;
+    if (cameraMode !== 'tour' && cameraMode !== 'consume') controls.autoRotate = settings.autoRotate;
     post.setBloomStrength(settings.bloomStrength);
     post.setExposure(settings.exposure);
     applyAutoExposure(settings.autoExposure);
@@ -598,15 +465,13 @@ export function startApp(container, { startScreen } = {}) {
       applyCinematic();
     }
   }
-  /** The tier for the state: the intro scene gets the intro tier on every setting. */
-  const tierFor = (state) => activeTier(state.settings.quality, governor.tier(), { intro: isIntroScene(state), mobile });
+  const tierFor = (state) => activeTier(state.settings.quality, governor.tier(), { mobile });
   applySettings(store.getState().settings);
   applyTier(tierFor(store.getState()));
   store.subscribe((next, prev) => {
     if (next.settings !== prev.settings) applySettings(next.settings);
     if (next.settings.quality !== prev.settings.quality) {
-      // Switching to Auto starts measuring from the tier in use now (a real
-      // tier: the intro tier is not on the governor's list).
+      // Switching to Auto starts measuring from the tier in use now.
       if (next.settings.quality === 'auto') governor = makeGovernor(TIER_ORDER.includes(currentTier) ? currentTier : governor.tier());
     }
     applyTier(tierFor(next));
@@ -635,41 +500,9 @@ export function startApp(container, { startScreen } = {}) {
     }
     soundscape.setRumble(rumbleLevel(collision ? collision.status(_consumeStatus) : null), rumbleCutoff(collision ? _consumeStatus.orbitHz : 0));
     if (cameraMode === 'tour') handleTourEvent(tour.tick(realDt));
-    if (fall && fall.phase() !== 'done' && !(startScreen?.isOpen() ?? false)) {
-      // Opening the controls panel is an interaction too.
-      if (panel.isOpen()) interruptFall();
-      const { phase, u, tau } = fall.tick(realDt, fallEligible());
-      // The orbit starts in the wait already.
-      if (phase !== 'done' && cameraMode !== 'fall') beginFall();
-      if (cameraMode === 'fall') {
-        fallU = u;
-        fallTau = tau;
-      }
-      // The scene changed under the fall (e.g. N added a galaxy): leave it.
-      if (phase === 'done' && cameraMode === 'fall') escapeFall();
-    }
-    // Watched, skipped or interrupted: the saved scene comes back.
-    if (pendingScene && fall.phase() === 'done') restoreSavedScene();
-    // The fall music starts at the start-box click and rises through the
-    // wait (timed so the fall itself is unchanged), and fades out once fallen.
-    soundscape.setMode(soundMode(), FALL_IDLE_SECONDS - fallTau);
-    // Fallen in (held black) or done: the screen may sleep again.
-    const fallPhase = fall.phase();
-    wakeLock.set(fallPhase === 'falling' || (fallPhase === 'waiting' && !(startScreen?.isOpen() ?? false)));
-    if (fovEase) {
-      fovEase.t = Math.min(1, fovEase.t + realDt / FALL_ESCAPE_SECONDS);
-      camera.fov = THREE.MathUtils.lerp(fovEase.from, baseFov, easeInOutCubic(fovEase.t));
-      camera.updateProjectionMatrix();
-      if (fovEase.t >= 1) fovEase = null;
-    }
-    if (warpEase) {
-      warpEase.t = Math.min(1, warpEase.t + realDt / FALL_ESCAPE_SECONDS);
-      warpEase.galaxy.setHoleWarp(warpEase.from * (1 - easeInOutCubic(warpEase.t)));
-      if (warpEase.t >= 1) warpEase = null;
-    }
+    updateIntro(realDt);
     cameraFly.update(realDt);
     if (cameraMode === 'fly') fly.update(realDt);
-    else if (cameraMode === 'fall') updateFallCamera(realDt, fallU, fallTau);
     else if (cameraMode === 'consume') updateConsumeCamera(realDt);
     else controls.update();
     galaxies.updateCamera(camera, container.clientWidth, container.clientHeight);
@@ -732,8 +565,6 @@ export function startApp(container, { startScreen } = {}) {
       !loop.isPaused() ||
       cameraFly.isFlying() ||
       cameraMode !== 'orbit' ||
-      fovEase !== null ||
-      warpEase !== null ||
       (dofOn && (focus !== focusTarget || focusRange !== focusRangeTarget)) ||
       (dofOn && dofShare !== (collision ? 0 : 1)) ||
       controls.autoRotate ||
@@ -742,9 +573,12 @@ export function startApp(container, { startScreen } = {}) {
       video.isRecording() ||
       gif.isCapturing();
     const now = performance.now();
-    // Fallen in: the screen is held black by the overlay, so draw nothing.
-    if (fall?.phase() === 'fallen') {
+    // The intro draws instead of the scene (and is not measured: Auto
+    // quality is for the scene).
+    if (intro) {
       lastRender = null;
+      if (introPhase(introTime).black < 1) intro.render(renderer);
+      if (startScreen?.isOpen()) startScreen.ready();
       return;
     }
     if (!gate.shouldRender(active)) {
@@ -755,7 +589,6 @@ export function startApp(container, { startScreen } = {}) {
     // loop's dt is capped), so idle frames never look "fast". Frames behind
     // the start box also pay for its CSS blur, so they are not measured.
     const starting = startScreen?.isOpen() ?? false;
-    // The intro tier is fixed: nothing to measure.
     const measuring = store.getState().settings.quality === 'auto' && TIER_ORDER.includes(currentTier);
     if (lastRender !== null && !starting && measuring) {
       const next = governor.sample(now - lastRender);
@@ -773,6 +606,7 @@ export function startApp(container, { startScreen } = {}) {
     resizeRenderer(w, h);
     resizeCamera(w, h);
     post.resize(w, h);
+    intro?.setSize(w, h);
     starfield.setPixelRatio(renderer.getPixelRatio());
     galaxies.setPixelRatio(renderer.getPixelRatio());
     gate.invalidate();
@@ -838,7 +672,6 @@ export function startApp(container, { startScreen } = {}) {
       showToast(container, 'Collisions are not supported on this device');
       return;
     }
-    interruptFall(false);
     startConsumeCamera();
     notifyCollision();
   }
@@ -917,8 +750,6 @@ export function startApp(container, { startScreen } = {}) {
 
   const commands = {
     addGalaxy() {
-      // N during the intro adds to the saved scene, not in place of the hole.
-      restoreSavedScene();
       const state = store.getState();
       if (canAddGalaxy(state, PRESETS.spiral.shape.count)) {
         store.dispatch(actions.addGalaxy(state, 'spiral', getTarget()));
@@ -929,7 +760,6 @@ export function startApp(container, { startScreen } = {}) {
       if (selectedId) store.dispatch(actions.removeGalaxy(selectedId));
     },
     focusSelected() {
-      interruptFall(false);
       const { selectedId } = store.getState();
       if (selectedId) focusGalaxy(selectedId);
     },
@@ -944,15 +774,12 @@ export function startApp(container, { startScreen } = {}) {
       showToast(container, `View: ${bandFor(band).label}`);
     },
     toggleFly() {
-      interruptFall(false);
       setCameraMode(cameraMode === 'fly' ? 'orbit' : 'fly');
     },
     toggleTour() {
-      interruptFall(false);
       setCameraMode(cameraMode === 'tour' ? 'orbit' : 'tour');
     },
     resetView() {
-      interruptFall(false);
       setCameraMode('orbit');
       cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position);
     },
@@ -1017,14 +844,11 @@ export function startApp(container, { startScreen } = {}) {
       else showToast(container, 'That file is not a valid Galaxy Sandbox scene');
     },
     async reset() {
-      if (!(await confirmDialog('Delete everything and start again with one black hole?', { ok: 'Delete all' }))) return;
-      interruptFall(false);
+      if (!(await confirmDialog('Delete everything and start again with one galaxy?', { ok: 'Delete all' }))) return;
       setCameraMode('orbit');
       store.dispatch(actions.resetScene());
-      store.dispatch(actions.addBlackHole(store.getState(), undefined, { intro: true }));
-      const shot = filmShot(store.getState().selectedId);
-      if (shot) cameraFly.flyTo(shot.center, shot.position);
-      else cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position);
+      store.dispatch(actions.loadState(withDefaultGalaxy(store.getState())));
+      cameraFly.flyTo(CAMERA_HOME.target, CAMERA_HOME.position);
     },
   };
 
@@ -1097,6 +921,6 @@ export function startApp(container, { startScreen } = {}) {
   loop.start(renderer);
 
   if (import.meta.env.DEV) {
-    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history, soundscape, getCameraMode: () => cameraMode, startCollision, stopCollision, getCollision: () => collision };
+    window.__app = { scene, camera, controls, renderer, loop, store, actions, galaxies, focusGalaxy, post, commands, history, soundscape, getCameraMode: () => cameraMode, getIntro: () => (intro ? { time: introTime, camera: intro.camera } : null), startCollision, stopCollision, getCollision: () => collision };
   }
 }

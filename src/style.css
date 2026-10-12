@@ -726,3 +726,10 @@ canvas {
     font-size: 16px; /* no iOS zoom on focus */
   }
 }
+
+/* The intro cinematic (src/intro/) cannot be stopped: no controls show while it plays. */
+.intro-active .panel-open,
+.intro-active .hud,
+.intro-active .mode-badge {
+  visibility: hidden;
+}

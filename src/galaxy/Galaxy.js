@@ -418,7 +418,7 @@ export class Galaxy {
     this.starsAfterLens.visible = true;
   }
 
-  /** Disc spin multiplier (core/blackHoleFall.js fallPose spin); 1 = normal. */
+  /** Disc spin multiplier; 1 = normal. */
   setHoleSpin(k) {
     this.holeSpin = k;
   }

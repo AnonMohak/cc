@@ -15,7 +15,9 @@ import { BAND_OPTIONS } from '../galaxy/bands.js';
 
 // v2: density-wave renderer (structure group, new shape keys, quality/exposure).
 // v3: standalone black holes (entries may have kind 'blackhole' + a hole group).
-// v4: the animation black hole (a black hole entry may have intro: true).
+// v4: the old animation black hole (a black hole entry with intro: true). The
+// intro is now a cinematic (src/intro/), not a scene object: such entries are
+// dropped on load (persistence.js deserialize).
 export const STATE_VERSION = 4;
 
 export const SETTINGS_LIMITS = {
@@ -75,42 +77,8 @@ export function totalParticles(state, exceptId = null) {
   return state.galaxies.reduce((sum, g) => (g.id === exceptId ? sum : sum + g.shape.count), 0);
 }
 
-/**
- * The galaxy list without the animation black hole (intro: true): the next
- * add replaces it, so it never blocks the budget or the placement.
- */
-export function withoutIntro(galaxies) {
-  return galaxies.some((g) => g.intro) ? galaxies.filter((g) => !g.intro) : galaxies;
-}
-
-/** The intro scene: exactly the animation black hole (film shot + intro fall). */
-export function isIntroScene(state) {
-  return state.galaxies.length === 1 && state.galaxies[0].intro === true;
-}
-
-/**
- * Every load opens on the animation black hole. A saved scene with objects
- * is held back (`pending`) until the intro ends (app.js), with the saved
- * settings applied from the start.
- * @param {object | null} saved persistence.load() result
- * @returns {{ state: object, pending: { galaxies: object[], selectedId: string | null } | null }}
- */
-export function splitIntroStart(saved) {
-  if (!saved || saved.galaxies.length === 0 || isIntroScene(saved)) return { state: saved ?? createInitialState(), pending: null };
-  return {
-    state: { ...saved, galaxies: [], selectedId: null },
-    pending: { galaxies: saved.galaxies, selectedId: saved.selectedId },
-  };
-}
-
-/** The held-back scene with the current settings (splitIntroStart). */
-export function restorePending(state, pending) {
-  return { ...state, galaxies: pending.galaxies, selectedId: pending.selectedId };
-}
-
 export function canAddGalaxy(state, count) {
-  const galaxies = withoutIntro(state.galaxies);
-  return galaxies.length < MAX_GALAXIES && totalParticles({ galaxies }) + count <= MAX_TOTAL_PARTICLES;
+  return state.galaxies.length < MAX_GALAXIES && totalParticles(state) + count <= MAX_TOTAL_PARTICLES;
 }
 
 export function clampSettings(settings) {
@@ -153,8 +121,6 @@ export function sanitizeGalaxy(entry) {
   if (hole) {
     out.kind = 'blackhole';
     out.hole = clampHole(entry.hole);
-    // The animation black hole of the start scene: the next add replaces it.
-    if (entry.intro === true) out.intro = true;
   }
   return out;
 }
@@ -178,10 +144,8 @@ export function reducer(state, action) {
       const entry = sanitizeGalaxy(action.galaxy);
       if (!entry || state.galaxies.some((g) => g.id === entry.id)) return state;
       if (!canAddGalaxy(state, entry.shape.count)) return state;
-      // The first add replaces the animation black hole (one undo step).
-      const kept = withoutIntro(state.galaxies);
-      if (!action.galaxy.name) entry.name = nextName(kept, entry.kind === 'blackhole' ? BLACK_HOLE_TEMPLATE.label : PRESETS[entry.preset].label);
-      return { ...state, galaxies: [...kept, entry], selectedId: entry.id };
+      if (!action.galaxy.name) entry.name = nextName(state.galaxies, entry.kind === 'blackhole' ? BLACK_HOLE_TEMPLATE.label : PRESETS[entry.preset].label);
+      return { ...state, galaxies: [...state.galaxies, entry], selectedId: entry.id };
     }
 
     case 'galaxy/remove': {

@@ -42,6 +42,9 @@ export function deserialize(json) {
   const ids = new Set();
   let total = 0;
   for (const raw of Array.isArray(data.galaxies) ? data.galaxies : []) {
+    // The old animation black hole: the intro is a cinematic now, not a
+    // scene object (an intro-only save loads as the fresh scene).
+    if (raw?.intro === true) continue;
     const g = sanitizeGalaxy(raw);
     if (!g || ids.has(g.id)) continue;
     if (galaxies.length >= MAX_GALAXIES || total + g.shape.count > MAX_TOTAL_PARTICLES) break;
@@ -94,7 +97,8 @@ export function migrateV1(data) {
 
 /**
  * v3 → v4. v3 had no animation-black-hole flag: every scene that was exactly
- * one black hole played the intro. Such a scene becomes the intro scene.
+ * one black hole played the intro. Such a scene gets the flag (and is then
+ * dropped like every old intro entry).
  */
 export function migrateV3(data) {
   const list = Array.isArray(data.galaxies) ? data.galaxies : [];

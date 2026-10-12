@@ -1,6 +1,6 @@
 /**
- * Darkness for the intro fall (core/blackHoleFall.js): a vignette that
- * closes in from the edges and a solid black that ends the fall. Plain DOM,
+ * Darkness for the intro cinematic (src/intro/introTimeline.js): a vignette that
+ * closes in from the edges and a solid black that ends it. Plain DOM,
  * so it costs no GPU time and works on every quality tier (the cinematic
  * pass is off on Low/Minimal). Above the canvas and HUD, below the panel.
  *

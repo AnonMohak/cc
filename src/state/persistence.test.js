@@ -211,19 +211,25 @@ describe('standalone black holes', () => {
 describe('animation black hole (v4)', () => {
   const v3Of = (store) => ({ ...JSON.parse(serialize(store.getState())), version: 3 });
 
-  it('round-trips the intro flag', () => {
+  it('drops the old animation black hole: an intro-only save is the fresh scene', () => {
+    let n = 0;
+    const actions = createActions({ makeId: () => `g${++n}`, makeSeed: () => 3 });
     const store = createStore();
-    store.dispatch(createActions({ makeId: () => 'bh', makeSeed: () => 3 }).addBlackHole(store.getState(), [0, 0, 0], { intro: true }));
-    expect(deserialize(serialize(store.getState())).galaxies[0].intro).toBe(true);
+    store.dispatch(actions.addBlackHole(store.getState()));
+    store.dispatch(actions.addGalaxy(store.getState()));
+    const data = JSON.parse(serialize(store.getState()));
+    data.galaxies[0].intro = true;
+    const s = deserialize(JSON.stringify(data));
+    expect(s.galaxies.map((g) => g.id)).toEqual(['g2']);
   });
 
-  it('a v3 save that is one black hole becomes the intro scene', () => {
+  it('a v3 save that is one black hole loads empty (it was the intro)', () => {
     const store = createStore();
     store.dispatch(createActions({ makeId: () => 'bh', makeSeed: () => 3 }).addBlackHole(store.getState()));
     const storage = memoryStorage();
     storage.setItem('galaxy-sandbox:v3', JSON.stringify(v3Of(store)));
     const s = load(storage);
-    expect(s.galaxies[0].intro).toBe(true);
+    expect(s.galaxies).toEqual([]);
     expect(storage.getItem('galaxy-sandbox:v3')).toBeNull();
   });
 
