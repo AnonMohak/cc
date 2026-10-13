@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import { introCamera } from './introTimeline.js';
+import { introCamera, fallBoost } from './introTimeline.js';
 import { bakeNoise3d, NOISE3D_SIZE } from './noise3d.js';
 import { marchShader, compositeShader, lightShader, flareSourceShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
 import { MARCH_LOOK, COMPOSITE_LOOK } from './introLook.js';
@@ -67,6 +67,7 @@ export class IntroCinematic {
     this.exposure = 1;
     this.sparse = 1;
     this.haze = 1;
+    this.boost = [0, 0, 0];
 
     // The noise bakes in a worker (main-thread fallback); until it arrives
     // the cinematic is not ready (the start box keeps saying Loading).
@@ -122,6 +123,7 @@ export class IntroCinematic {
         uTanHalfFov1: { value: new THREE.Vector2(1, 1) },
         uPixelAngle: { value: 0.003 },
         uHaze: { value: 1 },
+        uBoost: { value: new THREE.Vector3() },
         tPrev: { value: null },
         uHistory: { value: 0 },
         uFrame: { value: 0 },
@@ -230,6 +232,9 @@ export class IntroCinematic {
     this.exposure = pose.exposure ?? 1;
     this.sparse = pose.sparse ?? 1;
     this.haze = pose.haze ?? 1;
+    // The fall's speed for the aberration (a fixed pose: at rest).
+    if (this.override) this.boost[0] = this.boost[1] = this.boost[2] = 0;
+    else fallBoost(t, this.boost);
     // The shutter's start: the same path SHUTTER_S earlier (a fixed pose: none).
     const shutter = this.march.uniforms.SHUTTER_S.value;
     placeCamera(this.shutterCamera, this.override ?? introCamera(t - shutter, _pose));
@@ -272,6 +277,7 @@ export class IntroCinematic {
     u.uFrame.value = this.frame % 1024;
     u.uSparse.value = this.sparse;
     u.uHaze.value = this.haze;
+    u.uBoost.value.fromArray(this.boost);
     const c = this.composite.uniforms;
     c.tMarch.value = write.texture;
     c.uExposure.value = this.exposure;

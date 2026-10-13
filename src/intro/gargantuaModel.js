@@ -73,6 +73,31 @@ export function kerrShadow(a = KERR_A) {
   return { prograde, retrograde, polar };
 }
 
+/** The event horizon (Rs): M + √(M² − a²), 0.9 Rs for a = 0.6 M. */
+export const HORIZON_R = KERR_M + Math.sqrt(KERR_M * KERR_M - KERR_A * KERR_A);
+
+/**
+ * Aberration: a look direction in the moving camera's frame → the same ray's
+ * look direction in the frame of the observer at rest (the one bendRay starts
+ * from). The camera moves at `boost` (velocity / c, |boost| < 1) in that
+ * frame. Light's velocity adds relativistically, so the view crowds toward
+ * the motion: a look square to it (camera) is 90° + asin β behind (rest).
+ * No Doppler shift of colour or brightness (the film left those out too).
+ * @param {number[]} look unit
+ * @param {number[]} boost
+ */
+export function aberrate(look, boost) {
+  const b2 = boost[0] ** 2 + boost[1] ** 2 + boost[2] ** 2;
+  if (b2 < 1e-12) return [...look];
+  const g = 1 / Math.sqrt(1 - b2);
+  // The photon travels against the look direction.
+  const k = look.map((x) => -x);
+  const bk = boost[0] * k[0] + boost[1] * k[1] + boost[2] * k[2];
+  const u = k.map((x, i) => (x / g + boost[i] + (g / (g + 1)) * bk * boost[i]) / (1 + bk));
+  const len = Math.hypot(...u);
+  return u.map((x) => -x / len);
+}
+
 /** Rays inside this radius (Rs) and moving inward are captured: the shadow. */
 export const CAPTURE_R = captureRadius();
 /** Rays past this radius (Rs) and moving outward have left: they see the sky. */

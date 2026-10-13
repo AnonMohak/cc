@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SPARSE_OUT, bendRay, kerrShadow, captureRadius, curveStep, CAPTURE_R, KERR_M, KERR_A, ESCAPE_R, CURVE_K, CURVE_MIN, CURVE_MAX, DISC_INNER, DISC_OUTER, H0, H1, SLAB_K, SPIN, GLOW_POWER, STEP_K, STEP_MIN, STEP_MAX, halfThickness, slabHeight, radialWindow, glow, angularSpeed, marchStep } from './gargantuaModel.js';
+import { aberrate, SPARSE_OUT, bendRay, kerrShadow, captureRadius, curveStep, CAPTURE_R, KERR_M, KERR_A, ESCAPE_R, CURVE_K, CURVE_MIN, CURVE_MAX, DISC_INNER, DISC_OUTER, H0, H1, SLAB_K, SPIN, GLOW_POWER, STEP_K, STEP_MIN, STEP_MAX, halfThickness, slabHeight, radialWindow, glow, angularSpeed, marchStep } from './gargantuaModel.js';
 import { marchShader } from './gargantuaShader.js';
 
 describe('gargantuaModel', () => {
@@ -115,5 +115,25 @@ describe('bendRay with spin (Kerr, a = 0.6 M)', () => {
     const bend = Math.atan2(-dir[1], dir[0]);
     expect(bend).toBeGreaterThan((2 / 20) * 0.85);
     expect(bend).toBeLessThan((2 / 20) * 1.15);
+  });
+});
+
+describe('aberrate (the falling camera)', () => {
+  const B = 0.6;
+  const boost = [B, 0, 0];
+  it('keeps the view at rest and straight ahead', () => {
+    expect(aberrate([0, 1, 0], [0, 0, 0])).toEqual([0, 1, 0]);
+    const ahead = aberrate([1, 0, 0], boost);
+    expect(ahead[0]).toBeCloseTo(1, 9);
+  });
+
+  it('crowds the view toward the motion: a look square to it is behind at rest', () => {
+    const side = aberrate([0, 1, 0], boost);
+    expect(side[0]).toBeCloseTo(-B, 9);
+    expect(Math.hypot(...side)).toBeCloseTo(1, 9);
+    // cos θ_rest = (cos θ − β) / (1 − β cos θ)
+    const c = Math.cos(0.7);
+    const look = aberrate([c, Math.sin(0.7), 0], boost);
+    expect(look[0]).toBeCloseTo((c - B) / (1 - B * c), 9);
   });
 });

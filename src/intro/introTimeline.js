@@ -1,4 +1,5 @@
 import { shotPose } from './shotSolve.js';
+import { HORIZON_R } from './gargantuaModel.js';
 
 /**
  * The intro cinematic's clock: the camera path (shots 1–5 of the reference,
@@ -53,8 +54,11 @@ export const CAMERA_KEYS = [
   { t: 50, r: 5, el: 2.5, az: 182, lead: -15, aimY: 0.4, roll: -6, fov: 62, exp: 0.55, sparse: 1, haze: 1 },
   // The fall: rise a little, turn to the shadow and plunge.
   { t: 55.5, r: 4, el: 12, az: 205, lead: 0, aimY: 0, roll: 2, fov: 64, exp: 1, sparse: 1, haze: 1 },
-  { t: 61.5, r: 1.9, el: 10, az: 222, lead: 0, aimY: 0, roll: 0, fov: 80, exp: 1, sparse: 1, haze: 1 },
-  { t: BLACK_FULL, r: 1.2, el: 10, az: 230, lead: 0, aimY: 0, roll: 0, fov: 85, exp: 1, sparse: 1, haze: 1 },
+  // With the fall's aberration the shadow shrinks as the camera nears it
+  // (the view crowds toward the motion): a lens that narrows keeps it
+  // growing on screen into the black.
+  { t: 61.5, r: 1.9, el: 10, az: 222, lead: 0, aimY: 0, roll: 0, fov: 52, exp: 1, sparse: 1, haze: 1 },
+  { t: BLACK_FULL, r: 1.2, el: 10, az: 230, lead: 0, aimY: 0, roll: 0, fov: 30, exp: 1, sparse: 1, haze: 1 },
 ];
 
 /**
@@ -131,6 +135,39 @@ export function introCamera(t, out, keys = CAMERA_KEYS) {
   out.exposure = catmullRom(k0.exp, k1.exp, k2.exp, k3.exp, s);
   out.sparse = Math.min(1, Math.max(0, catmullRom(k0.sparse, k1.sparse, k2.sparse, k3.sparse, s)));
   out.haze = Math.max(0, catmullRom(k0.haze, k1.haze, k2.haze, k3.haze, s));
+  return out;
+}
+
+/** The fall speed ramps in over these seconds (after reference shot 10). */
+export const FALL_START = 50;
+export const FALL_FULL = 56;
+/** The fall speed's cap (share of c). */
+export const FALL_BETA_MAX = 0.95;
+
+const _a = { position: [0, 0, 0], target: [0, 0, 0] };
+const _b = { position: [0, 0, 0], target: [0, 0, 0] };
+
+/**
+ * The camera's velocity (share of c) relative to an observer at rest there,
+ * for the aberration of the fall: along the path's direction of motion, the
+ * size of a free fall from far away (√(r₊ / r), capped), ramped in from
+ * FALL_START. Zero before (the reference shots are solved for a camera at
+ * rest).
+ * @param {number} t
+ * @param {number[]} out
+ */
+export function fallBoost(t, out = [0, 0, 0]) {
+  const ramp = smoothstep(FALL_START, FALL_FULL, t);
+  out[0] = out[1] = out[2] = 0;
+  if (ramp <= 0) return out;
+  const p0 = introCamera(t - 0.05, _a).position;
+  const p1 = introCamera(t + 0.05, _b).position;
+  // (No arrays: this runs every frame.)
+  const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+  if (len < 1e-9) return out;
+  const r = Math.hypot(p0[0] + p1[0], p0[1] + p1[1], p0[2] + p1[2]) / 2;
+  const k = (ramp * Math.min(FALL_BETA_MAX, Math.sqrt(HORIZON_R / r))) / len;
+  for (let i = 0; i < 3; i++) out[i] = (p1[i] - p0[i]) * k;
   return out;
 }
 

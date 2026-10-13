@@ -136,6 +136,9 @@ export const marchShader = /* glsl */ `
   uniform float uPixelAngle;
   // The camera key's haze share (per shot).
   uniform float uHaze;
+  // The camera's velocity (share of c) relative to an observer at rest there
+  // (the fall: introTimeline.js fallBoost).
+  uniform vec3 uBoost;
   // Accumulation: the last result and its weight (a film shutter's motion
   // blur, and the per-frame jitter averages out), and a frame counter.
   uniform sampler2D tPrev;
@@ -218,6 +221,14 @@ ${GAS_GLSL}
     vec3 v = normalize(basis * vec3((vUv * 2.0 - 1.0) * mix(uTanHalfFov, uTanHalfFov1, sh), -1.0));
     vec3 p = mix(uCamPos, uCamPos1, sh);
     gTime = uTime - sh * SHUTTER_S;
+    // Aberration (gargantuaModel.js aberrate): the moving camera's view
+    // crowds toward its motion; the ray starts from the observer at rest.
+    float b2 = dot(uBoost, uBoost);
+    if (b2 > 1e-8) {
+      float gam = inversesqrt(1.0 - b2);
+      float bk = dot(uBoost, -v);
+      v = normalize((-v / gam + uBoost + (gam / (gam + 1.0)) * bk * uBoost) / (1.0 + bk)) * -1.0;
+    }
     // Boyer–Lindquist r, θ and the azimuth as a unit vector e (x, z); the
     // constants from the camera's view (without spin: a static observer's,
     // b = r sin α / √(1 − 1/r)).

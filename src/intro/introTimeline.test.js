@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { introCamera, introPhase, keyPosition, keyTarget, CAMERA_KEYS, INTRO_SECONDS, BLACK_FULL, MUSIC_RISE_SECONDS } from './introTimeline.js';
+import { introCamera, fallBoost, FALL_START, FALL_FULL, FALL_BETA_MAX, introPhase, keyPosition, keyTarget, CAMERA_KEYS, INTRO_SECONDS, BLACK_FULL, MUSIC_RISE_SECONDS } from './introTimeline.js';
 
 const pose = () => ({ position: [0, 0, 0], target: [0, 0, 0], roll: 0, fov: 0, exposure: 1 });
 
@@ -55,5 +55,30 @@ describe('introPhase', () => {
     expect(introPhase(30).black).toBe(0);
     expect(introPhase(BLACK_FULL)).toEqual({ vignette: 1, black: 1, sound: 'end', done: false });
     expect(introPhase(INTRO_SECONDS).done).toBe(true);
+  });
+});
+
+describe('fallBoost', () => {
+  it('is zero for the reference shots, then ramps in along the motion', () => {
+    for (const t of [0, 25, 44, FALL_START]) expect(Math.hypot(...fallBoost(t))).toBe(0);
+    let last = 0;
+    for (let t = FALL_FULL; t <= BLACK_FULL; t += 1) {
+      const b = Math.hypot(...fallBoost(t));
+      expect(b).toBeGreaterThan(0.3);
+      expect(b).toBeLessThanOrEqual(FALL_BETA_MAX + 1e-9);
+      // Faster as it falls in.
+      expect(b).toBeGreaterThanOrEqual(last - 1e-9);
+      last = b;
+    }
+  });
+
+  it('points along the path', () => {
+    const t = 60;
+    const b = fallBoost(t);
+    const p0 = introCamera(t - 0.2, pose()).position;
+    const p1 = introCamera(t + 0.2, pose()).position;
+    const d = p1.map((x, i) => x - p0[i]);
+    const cos = (b[0] * d[0] + b[1] * d[1] + b[2] * d[2]) / (Math.hypot(...b) * Math.hypot(...d));
+    expect(cos).toBeGreaterThan(0.99);
   });
 });
