@@ -153,9 +153,13 @@ export function solveShot({ radius, center, fov, el, az }, aspect) {
 }
 
 /**
- * The shadow measured in each reference still (16:9 crop, bars trimmed):
- * radius as a share of the frame height, centre (u, v) from the top-left;
- * shots 7–9 show part of it, so a circle is fitted through its edge. The
+ * The shadow measured in each reference frame (the film clip's full 16:9
+ * frames, images/frame_NNN.png; tunerMath.js CLIP_FRAME_SHOTS): radius as a
+ * share of the frame height, centre (u, v) from the top-left, a circle
+ * fitted through the photon ring's arcs (shots 1–4), the dome's inner edge
+ * (shot 5). Shots 7–10 are not solved here: the near disc hides the bottom
+ * of the shadow, so no circle fits it; their keys were found by an image
+ * search (introTimeline.js). The
  * film's lens is not known: each shot keeps the field of view chosen for it
  * (deg, vertical) and its elevation and azimuth (deg), and the solve gives
  * the distance and aim that reproduce the still's framing. Shots 1–3 take a
@@ -163,20 +167,15 @@ export function solveShot({ radius, center, fov, el, az }, aspect) {
  * clear gap near the hole (r < DISC_INNER), not in the gas. Shots 4–5 take a
  * long 28° lens: the camera is then outside the inner edge (~9–10 Rs), just
  * over the cloud tops, with the dense disc in front (the dark surface under
- * the dome). In shots 7–9 the shadow sits above the near disc: the camera
- * is a little below the disc plane (el < 0), the cloud arc overhead is the
- * disc's underside.
+ * the dome).
  */
 export const STILL_ASPECT = 1261 / 710;
 export const SHOT_MEASURES = {
-  1: { radius: 0.49, center: [0.45, 0.41], fov: 90, el: 0, az: 0 },
-  2: { radius: 0.56, center: [0.5, 0.33], fov: 90, el: 0, az: 4 },
-  3: { radius: 0.49, center: [0.5, 0.46], fov: 90, el: 0, az: 8 },
-  4: { radius: 0.55, center: [0.51, 0.4], fov: 28, el: 4.7, az: 14 },
-  5: { radius: 0.6, center: [0.5, 0.4], fov: 28, el: 5, az: 19 },
-  7: { radius: 0.36, center: [0.0, 0.25], fov: 58, el: -6, az: 90 },
-  8: { radius: 0.43, center: [-0.036, 0.21], fov: 59, el: -6, az: 115 },
-  9: { radius: 0.4, center: [-0.049, 0.22], fov: 60, el: -6, az: 140 },
+  1: { radius: 0.518, center: [0.492, 0.369], fov: 90, el: 0, az: 0 },
+  2: { radius: 0.529, center: [0.492, 0.371], fov: 90, el: 0, az: 4 },
+  3: { radius: 0.54, center: [0.488, 0.359], fov: 90, el: 0, az: 8 },
+  4: { radius: 0.567, center: [0.48, 0.358], fov: 28, el: 4.7, az: 14 },
+  5: { radius: 0.579, center: [0.447, 0.347], fov: 28, el: 5, az: 19 },
 };
 
 /** The solved pose of a measured shot (r, lead, aimY plus its own el, az, fov). */

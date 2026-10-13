@@ -48,10 +48,17 @@ export const CAMERA_KEYS = [
   // beside the hole with it at the left and the cloud arc overhead (shots
   // 7–9), then through the thin inner fog.
   { t: 31, r: 12, el: 12, az: 50, lead: 0, aimY: 0, roll: 0, fov: 56, exp: 1.1, sparse: 0, haze: 1 },
-  shot(37.5, 7, { roll: -3, exp: 3.2, haze: 0.4 }),
-  shot(41, 8, { roll: -4, exp: 2.7, haze: 0.4 }),
-  shot(44, 9, { roll: -5, exp: 2.3, haze: 0.4 }),
-  { t: 50, r: 5, el: 2.5, az: 182, lead: -15, aimY: 0.4, roll: -6, fov: 62, exp: 0.55, sparse: 1, haze: 1 },
+  // Shots 7–10: just over the cloud tops (the near disc is the bright band
+  // and the dark clouds at the bottom of the frame, hiding the bottom of the
+  // shadow), the hole at the left, the far disc lensed over it. No circle
+  // fits a half-hidden shadow, so these keys come from an image search:
+  // small offline renders scored against the clip frames (correlation of
+  // log brightness), with the camera kept above the cloud slab.
+  { t: 37.5, r: 5.4, el: 5, az: 90, lead: -45.5, aimY: 0.3, roll: -5.4, fov: 61, exp: 3.2, sparse: 0, haze: 0.4 },
+  { t: 41, r: 6, el: 5, az: 115, lead: -54.5, aimY: 0.6, roll: -4.5, fov: 61, exp: 2.7, sparse: 0, haze: 0.4 },
+  { t: 44, r: 6.3, el: 6.2, az: 140, lead: -56, aimY: 0.7, roll: -5.3, fov: 60.6, exp: 2.3, sparse: 0, haze: 0.4 },
+  // Shot 10: skimming the cloud tops toward the shadow (top left).
+  { t: 50, r: 5.2, el: 5, az: 182, lead: -41.6, aimY: 0.35, roll: -5.8, fov: 71.6, exp: 0.55, sparse: 0, haze: 1 },
   // The fall: rise a little, turn to the shadow and plunge.
   { t: 55.5, r: 4, el: 12, az: 205, lead: 0, aimY: 0, roll: 2, fov: 64, exp: 1, sparse: 1, haze: 1 },
   // With the fall's aberration the shadow shrinks as the camera nears it
