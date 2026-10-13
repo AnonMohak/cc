@@ -89,7 +89,11 @@ export const COMPOSITE_LOOK = {
   // Grade.
   SHADOW_TINT: [0, 0, 0],
   SATURATION: 1.15,
-  GRAIN: 0.022,
+  // Film grain (display space): strength at mid-grey, clump size (px) and
+  // the share that differs between the colour layers.
+  GRAIN: 0.05,
+  GRAIN_SIZE: 1.2,
+  GRAIN_CHROMA: 0.3,
   // Colour fit to the reference stills: a tone curve per channel (display
   // space), the output at each of CURVE_KNOTS, fitted to the mean colour of
   // matching brightness bands of our frames (with the film-stock gas colour) and shots 1–3 and 7–9 (shots 4–5
@@ -150,7 +154,9 @@ export const LOOK_LIMITS = {
   GHOST_POS: [-2, 3, 0.05],
   HALATION: [0, 1, 0.005],
   SATURATION: [0, 2, 0.01],
-  GRAIN: [0, 0.1, 0.001],
+  GRAIN: [0, 0.2, 0.001],
+  GRAIN_SIZE: [0.5, 4, 0.05],
+  GRAIN_CHROMA: [0, 1, 0.01],
 };
 
 /** GLSL uniform declarations for a look (float or vec3 by value). */

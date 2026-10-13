@@ -387,6 +387,17 @@ ${CURVE_KNOTS.slice(1)
     return vec3(curveChannel(x.r, 0), curveChannel(x.g, 1), curveChannel(x.b, 2));
   }
 
+  // Value noise on a GRAIN_SIZE px lattice (bilinear between hashed corners),
+  // a new pattern each frame: the grain clumps, not one-pixel static.
+  float grainNoise(vec2 px, float seed) {
+    vec2 q = px / GRAIN_SIZE + seed;
+    vec2 i = floor(q);
+    vec2 f = q - i;
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), f.x),
+               mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y) - 0.5;
+  }
+
   vec3 aces(vec3 x) {
     return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
   }
@@ -459,10 +470,18 @@ ${CURVE_KNOTS.slice(1)
     col = max(mix(vec3(luma), col, SATURATION), 0.0);
     col += SHADOW_TINT * pow(1.0 - luma, 4.0);
     col = mix(col, col * vec3(1.03, 1.0, 0.94), smoothstep(0.4, 1.0, luma));
-    col += (hash12(gl_FragCoord.xy + fract(uTime * 7.31) * 311.0) - 0.5) * GRAIN;
     vec3 display = pow(max(col, 0.0), vec3(1.0 / 2.2));
     // The colour fit to the stills, then the manual grade (display space).
     display = toneCurve(clamp(display, 0.0, 1.0));
+    // Film grain (fine, like a 65 mm negative): in display space, strongest in
+    // the mid-tones (4d(1 - d)) and faint in the blacks and the clipped
+    // highlights, so the shadow stays clean. Mostly one pattern for all three
+    // dye layers, with a little colour of its own (GRAIN_CHROMA).
+    float seed = fract(uTime * 7.31) * 311.0;
+    float gl = grainNoise(gl_FragCoord.xy, seed);
+    vec3 gc = vec3(grainNoise(gl_FragCoord.xy, seed + 17.3), grainNoise(gl_FragCoord.xy, seed + 41.9), grainNoise(gl_FragCoord.xy, seed + 73.1));
+    vec3 tone = 0.08 + 0.92 * 4.0 * display * (1.0 - display);
+    display += GRAIN * tone * mix(vec3(gl), gc, GRAIN_CHROMA);
     display = pow(clamp(display * CDL_SLOPE + CDL_OFFSET, 1e-4, 1.0), CDL_POWER);
     gl_FragColor = vec4(display, 1.0);
   }
