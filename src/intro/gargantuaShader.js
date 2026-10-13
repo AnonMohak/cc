@@ -309,6 +309,9 @@ ${GAS_GLSL}
       // a jump down toward the gas slab from above it.
       float rc = length(p.xz);
       float dt = curveStep(r);
+      // Near the spin axis the azimuth swings fast: no step longer than the
+      // distance to the axis (rays over the pole drew a seam).
+      dt = min(dt, max(0.2 * r * abs(sT), 0.002));
       float above = abs(p.y) - SLAB_K * halfThickness(rc);
       // The clear gap inside the inner edge has no gas: no slab steps there
       // (rays along the plane spent every step in it), only no jump past

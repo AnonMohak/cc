@@ -137,7 +137,7 @@ export function glow(r) {
 }
 
 /** Keplerian angular speed (rad per second of film time) at r. */
-export const SPIN = 0.35;
+export const SPIN = 0.7;
 export function angularSpeed(r) {
   return SPIN * Math.pow(DISC_INNER / Math.max(r, DISC_INNER), 1.5);
 }
