@@ -98,6 +98,7 @@ export class IntroCinematic {
         ...camUniforms,
         ...gasUniforms,
         uSteps: { value: MARCH_STEPS },
+        uPixelAngle: { value: 0.003 },
         tPrev: { value: null },
         uHistory: { value: 0 },
         uFrame: { value: 0 },
@@ -228,6 +229,7 @@ export class IntroCinematic {
     u.uCamBasis.value.setFromMatrix4(cam.matrixWorld);
     const tanY = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     u.uTanHalfFov.value.set(tanY * cam.aspect, tanY);
+    u.uPixelAngle.value = (2 * tanY) / h;
     u.uTime.value = this.time;
     u.tPrev.value = read.texture;
     u.uHistory.value = fresh ? 0 : Math.exp(-dt / SHUTTER);

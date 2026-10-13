@@ -52,6 +52,10 @@ ${LOOK}
   float marchStep(float r) { return clamp(STEP_K * halfThickness(r), STEP_MIN, STEP_MAX); }
 
 
+  // Rs covered by one pixel at the point gas() is sampled (the march sets it;
+  // 0 = full detail).
+  float gFootprint = 0.0;
+
   // The gas at p: x = extinction (per Rs), y = hot-core light, z = dust 0–1.
   vec3 gas(vec3 p) {
     float r = length(p.xz);
@@ -74,6 +78,17 @@ ${LOOK}
     float fl = texture(uNoise, q * vec3(FLAME_RAD, FLAME_ANG, 2.0) + vec3(0.71, 0.0, 0.17)).r;
     float ridge = 1.0 - abs(2.0 * fl - 1.0);
     float cloud = mix(0.6 * n.r + 0.4 * fine, 0.45 * n.r + 0.55 * ridge * ridge, FLAME);
+    // Close-up detail (the film added procedural detail for its close shots):
+    // a finer octave, faded out where one pixel covers more than its cells
+    // (gFootprint: Rs per pixel at p, set by the caller). Off by default: at
+    // the half-resolution march it does not show and costs ~25% (a 128³
+    // noise texture cost ~50%: 3D-texture cache misses on integrated GPUs).
+    float cell = 0.008 * r;
+    float detailFade = 1.0 - smoothstep(0.5, 2.0, gFootprint / cell);
+    if (DETAIL > 0.0 && detailFade > 0.0) {
+      float detail = texture(uNoise, q * vec3(7.3, 6.0, 5.1) + vec3(0.13, 0.0, 0.47)).r - 0.5;
+      cloud += DETAIL * detailFade * detail;
+    }
     // Cloud tops: the gas thins with height, with a noisy, smoky surface.
     float body = exp(-0.6 * zn * zn);
     // Near the inner edge the gas thins into sparse clumps.
@@ -117,6 +132,8 @@ export const marchShader = /* glsl */ `
   uniform mat3 uCamBasis; // camera to world: right, up, back
   uniform vec2 uTanHalfFov;
   uniform int uSteps;
+  // Radians per march pixel (for the detail fade).
+  uniform float uPixelAngle;
   // Accumulation: the last result and its weight (a film shutter's motion
   // blur, and the per-frame jitter averages out), and a frame counter.
   uniform sampler2D tPrev;
@@ -203,6 +220,7 @@ ${GAS_GLSL}
       else if (rc < DISC_OUTER && p.y * v.y < 0.0 && abs(v.y) > 1e-4) dt = min(dt, max(marchStep(rc), 0.8 * above / abs(v.y)));
       if (i == 0) dt *= jitter;
       if (inSlab) {
+        gFootprint = max(dist, 1e-3) * uPixelAngle;
         vec3 g = gas(p);
         if (g.x > 0.0) {
           float sigma = g.x * (1.0 + 2.0 * g.z);
@@ -246,6 +264,8 @@ export const lightShader = /* glsl */ `
   varying vec2 vUv;
 ${GAS_GLSL}
   void main() {
+    // The light texture is coarse: no close-up detail here (it is costly).
+    gFootprint = 1e3;
     float theta = vUv.x * 2.0 * PI;
     float lr0 = log(DISC_INNER);
     float lr1 = log(DISC_INNER) + vUv.y * log(DISC_OUTER / DISC_INNER);
