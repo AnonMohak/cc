@@ -48,6 +48,7 @@ import { rumbleLevel, rumbleCutoff } from './audio/soundMix.js';
 import { IntroCinematic } from './intro/IntroCinematic.js';
 import { introPhase, INTRO_SECONDS, MUSIC_RISE_SECONDS } from './intro/introTimeline.js';
 import { createIntroTuner } from './intro/introTuner.js';
+import { createIntroVideo } from './intro/introVideo.js';
 
 const SAVE_DEBOUNCE_MS = 500;
 // The film shot is this much closer than the "disc fills the view" distance.
@@ -351,6 +352,9 @@ export function startApp(container, { startScreen } = {}) {
   // ?tune: the tuning view (src/intro/introTuner.js). The intro then neither
   // ends nor locks the input, and the tuner sets the time.
   const tuner = new URLSearchParams(window.location.search).has('tune') ? createIntroTuner({ intro, container }) : null;
+  // The pre-rendered intro (src/intro/introVideo.js): it takes over from the
+  // real-time renderer once downloaded; ?tune stays real-time.
+  const introVideo = tuner ? null : createIntroVideo(container, { base: import.meta.env.BASE_URL, before: container.querySelector('.fall-overlay') });
   let introTime = 0;
   intro.update(0);
   document.body.classList.add('intro-active');
@@ -368,6 +372,7 @@ export function startApp(container, { startScreen } = {}) {
   /** The intro is over: dispose it and show the scene from the home view. */
   function endIntro() {
     intro.dispose();
+    introVideo?.dispose();
     intro = null;
     for (const type of lockEvents) window.removeEventListener(type, swallowInput, { capture: true });
     document.body.classList.remove('intro-active');
@@ -395,6 +400,7 @@ export function startApp(container, { startScreen } = {}) {
     else if (!starting) introTime = Math.min(introTime + dt, INTRO_SECONDS);
     const phase = introPhase(introTime);
     intro.update(introTime);
+    introVideo?.sync(introTime, !starting);
     fallOverlay.set(phase.vignette, phase.black);
     // The music starts at the click and rises (timed so black lands on its peak).
     soundscape.setMode(starting || tuner ? 'ambient' : phase.sound, MUSIC_RISE_SECONDS - introTime);
@@ -590,6 +596,8 @@ export function startApp(container, { startScreen } = {}) {
     // quality is for the scene).
     if (intro) {
       lastRender = null;
+      // The video plays instead: no GPU work.
+      if (introVideo?.active) return;
       if (!intro.ready) return; // the disc noise is still baking
       if (introPhase(introTime).black < 1) intro.render(renderer);
       if (startScreen?.isOpen()) startScreen.ready();

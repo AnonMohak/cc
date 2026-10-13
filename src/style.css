@@ -593,6 +593,23 @@ canvas {
   display: none;
 }
 
+/* The pre-rendered intro (src/intro/introVideo.js): over the canvas, under
+   the fall overlay (same layer, earlier in the DOM). */
+.intro-video {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+  pointer-events: none;
+  background: #000;
+}
+
+.intro-video[hidden] {
+  display: none;
+}
+
 /* Intro fall into the black hole (ui/fallOverlay.js): above the canvas and
    HUD (which have no z-index), below the panel and its button (1001). */
 .fall-overlay {

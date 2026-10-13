@@ -7,11 +7,12 @@
 //   node scripts/render-intro.mjs --from 0 --to 66 --fps 24  # a sequence
 //
 // Options: --out renders  --width 1920  --height 1080  --samples 16
-//          --steps 1500  --tile 256
+//          --steps 1500  --tile 256  --format png|jpg  --resume (skip
+//          frames already written, to continue a stopped render)
 // Output: <out>/t<seconds>.png for --times, <out>/frame_00001.png… for a
 // sequence. renders/ is gitignored.
 import { spawn, execSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -31,18 +32,19 @@ const width = num('width', 1920);
 const height = num('height', 1080);
 const options = { width, height, samples: num('samples', 16), steps: num('steps', 1500), tile: num('tile', 256) };
 const out = args.out || 'renders';
+const format = args.format === 'jpg' ? 'jpg' : 'png';
 const VITE_PORT = 5299;
 const CDP_PORT = 9533;
 const BROWSER = process.env.BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
 /** The frames to render: [file name, seconds]. */
 function frameList() {
-  if (args.times) return args.times.split(',').map((t) => [`t${Number(t)}.png`, Number(t)]);
+  if (args.times) return args.times.split(',').map((t) => [`t${Number(t)}.${format}`, Number(t)]);
   const from = num('from', 0);
   const to = num('to', 66);
   const fps = num('fps', 24);
   const list = [];
-  for (let i = 0; from + i / fps <= to + 1e-9; i++) list.push([`frame_${String(i + 1).padStart(5, '0')}.png`, from + i / fps]);
+  for (let i = 0; from + i / fps <= to + 1e-9; i++) list.push([`frame_${String(i + 1).padStart(5, '0')}.${format}`, from + i / fps]);
   return list;
 }
 
@@ -67,7 +69,7 @@ function kill(child) {
 }
 
 async function main() {
-  const frames = frameList();
+  const frames = frameList().filter(([name]) => !('resume' in args && existsSync(join(out, name))));
   mkdirSync(out, { recursive: true });
   const vite = spawn(`npx vite --port ${VITE_PORT} --strictPort`, { shell: true, stdio: 'ignore' });
   const browser = spawn(
@@ -135,7 +137,7 @@ async function main() {
         const img = ctx.createImageData(W, H);
         for (let y = 0; y < H; y++) img.data.set(px.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
         ctx.putImageData(img, 0, 0);
-        const bytes = new Uint8Array(await (await canvas.convertToBlob({ type: 'image/png' })).arrayBuffer());
+        const bytes = new Uint8Array(await (await canvas.convertToBlob(${format === 'jpg' ? "{ type: 'image/jpeg', quality: 0.95 }" : "{ type: 'image/png' }"})).arrayBuffer());
         let text = '';
         for (let k = 0; k < bytes.length; k += 0x8000) text += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
         return btoa(text);

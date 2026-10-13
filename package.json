@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "render:intro": "node scripts/render-intro.mjs"
+    "render:intro": "node scripts/render-intro.mjs",
+    "encode:intro": "node scripts/encode-intro.mjs"
   },
   "dependencies": {
     "lil-gui": "^0.21.0",
