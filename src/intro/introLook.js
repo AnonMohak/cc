@@ -30,6 +30,12 @@ export const MARCH_LOOK = {
   FLAME_RAD: 5,
   FLAME_ANG: 2,
   WISP: 0.25,
+  // The thin bright midplane sheet: Gaussian half-thickness (Rs), optical
+  // depth across it, its glow (× EMIT) and how fast that falls off with r.
+  SHEET_H: 0.015,
+  SHEET_TAU: 1.5,
+  SHEET_GLOW: 1.5,
+  SHEET_POWER: 1.2,
   // Self-shadowing: the height (half-thicknesses) the inner disc's light runs
   // out at, how strongly the gas on the way blocks it, and its strength.
   LIGHT_HEIGHT: 1.6,
@@ -55,7 +61,7 @@ export const COMPOSITE_LOOK = {
   VEIL: 0.09,
   BLOOM: 0.22,
   // Lens ghosts and the halo ring, from light above the threshold only.
-  FLARE_THRESHOLD: 1.6,
+  FLARE_THRESHOLD: 3,
   GHOSTS: 0.025,
   HALO: 0.035,
   HALO_RADIUS: 0.42,
@@ -100,6 +106,10 @@ export const LOOK_LIMITS = {
   FLAME_RAD: [0.5, 16, 0.1],
   FLAME_ANG: [1, 8, 1],
   WISP: [0, 1, 0.01],
+  SHEET_H: [0.002, 0.2, 0.001],
+  SHEET_TAU: [0, 10, 0.05],
+  SHEET_GLOW: [0, 6, 0.05],
+  SHEET_POWER: [0, 4, 0.05],
   LIGHT_HEIGHT: [0, 3, 0.05],
   LIGHT_K: [0, 2, 0.01],
   LIGHT_GAIN: [0, 4, 0.05],

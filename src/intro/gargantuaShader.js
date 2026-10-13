@@ -90,7 +90,16 @@ ${LOOK}
     // The upper layers are smoke: more extinction with height, so the glowing
     // core shows through gaps and the surface reads dark (reference shots 4–5).
     float smoke = 1.0 + SMOKE_K * smoothstep(0.4, 1.8, abs(zn));
-    return vec3(dens * smoke * TAU / (2.0 * h), hot, dust);
+    float sigmaCloud = dens * smoke * TAU / (2.0 * h);
+    // A thin, dense, glowing sheet at the midplane, under the clouds and
+    // not thinned by sparse: edge-on it is the thin bright line across shots
+    // 1–3. Its light falls off slowly (r^-SHEET_POWER), so the line stays
+    // bright across the frame. Mixed with the cloud by extinction.
+    float sigmaSheet = win * SHEET_TAU / (1.7725 * SHEET_H) * exp(-(p.y * p.y) / (SHEET_H * SHEET_H));
+    float hotSheet = SHEET_GLOW * pow(DISC_INNER / max(r, DISC_INNER), SHEET_POWER);
+    float sigma = sigmaCloud + sigmaSheet;
+    if (sigma <= 0.0) return vec3(0.0);
+    return vec3(sigma, (sigmaCloud * hot + sigmaSheet * hotSheet) / sigma, dust * sigmaCloud / sigma);
   }
 
 `;
