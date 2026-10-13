@@ -34,15 +34,17 @@ export const MUSIC_RISE_SECONDS = 5;
 const shot = (t, n, { roll = 0, exp = 1, sparse = 0, haze = 1 } = {}) => ({ t, ...shotPose(n), roll, exp, sparse, haze });
 
 export const CAMERA_KEYS = [
-  // Shots 1–3: in the disc plane inside the clear gap near the hole; the
-  // shadow fills the view, the thin ring and sparse clumps around it.
+  // Shots 1–4: in the disc plane inside the clear gap near the hole (the
+  // clip runs them as one move); the shadow fills the view, the thin ring,
+  // the disc's thin line and sparse clumps around it, brighter by shot 4
+  // (the lower lensed arc shows below the line through deep black).
   shot(0, 1, { exp: 0.057, sparse: 1, haze: 0 }),
   shot(6, 2, { exp: 0.041, sparse: 1, haze: 0 }),
   shot(12, 3, { exp: 0.39, sparse: 1, haze: 0 }),
-  // Rise out of the gap over the inner edge.
-  { t: 15.5, r: 4.2, el: 12, az: 11, lead: 0, aimY: 0.2, roll: 0, fov: 72, exp: 1.05, sparse: 0.5, haze: 0.5 },
-  // Shots 4–5: just over the cloud tops; the shadow is a dome with the arches.
-  shot(19.5, 4, { exp: 0.27, haze: 1.5 }),
+  shot(19.5, 4, { exp: 0.5, sparse: 0.85, haze: 1 }),
+  // Rise out of the gap over the inner edge to the cloud tops.
+  { t: 22.3, r: 6, el: 7, az: 17, lead: -5, aimY: -0.4, roll: 0, fov: 45, exp: 0.7, sparse: 0.2, haze: 2 },
+  // Shot 5: just over the cloud tops; the shadow is a dome with the arches.
   shot(25, 5, { exp: 0.88, haze: 2.5 }),
   // The turn around the disc (references 6–10): above the clouds, then low
   // beside the hole with it at the left and the cloud arc overhead (shots

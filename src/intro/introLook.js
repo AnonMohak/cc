@@ -15,10 +15,13 @@ export const MARCH_LOOK = {
   // Light of the hot midplane, and the share of the smoke lit by it.
   EMIT: 14,
   // How fast the gas's own light falls off with radius (r^-EMIT_POWER).
-  EMIT_POWER: 3,
+  EMIT_POWER: 2.2,
+  // How fast the gas's own light fades with height (× (z / H)²): lower, the
+  // cloud tops glow too (the film's flames).
+  EMIT_DEPTH: 0.4,
   ALBEDO: 0.6,
   // Noise frequencies: many streaks across the radius, few long arcs around.
-  RAD_FREQ: 4,
+  RAD_FREQ: 10,
   ANG_TILES: 7, // per turn: an integer, so the angle wraps without a seam
   VERT_FREQ: 0.3,
   // Shutter (s): the motion blur's length. Longer than a film camera's 1/48 s:
@@ -32,9 +35,19 @@ export const MARCH_LOOK = {
   // the clouds, its radial frequency and its whole tiles around the turn
   // (× ANG_TILES); and thin wisps above the cloud tops.
   FLAME: 1,
-  FLAME_RAD: 5,
+  FLAME_RAD: 16,
   FLAME_ANG: 2,
   WISP: 0.25,
+  // Near the hole (camera key sparse) the gas keeps only clumps where the
+  // cloud field passes this level (higher: fewer, smaller clumps).
+  // Dark gaps between the flame tongues (0: none).
+  FLAME_DARK: 1,
+  CLUMP_LO: 0.6,
+  // Their size: noise cells per log radius and whole tiles per turn (few
+  // and large: the lensed images squeeze a whole ring of the disc into a
+  // thin band, where many small clumps would average into a smooth glow).
+  CLUMP_RAD: 3,
+  CLUMP_TILES: 5,
   // Close-up detail: the weight of a finer octave (faded with distance).
   // 0 skips it: at the half-resolution march it does not show (gargantuaShader.js).
   DETAIL: 0,
@@ -43,6 +56,10 @@ export const MARCH_LOOK = {
   SHEET_TAU: 1.5,
   SHEET_GLOW: 1.5,
   SHEET_POWER: 1.2,
+  // In the gap views (camera key sparse) only a rim of the sheet glows:
+  // its radius and width (Rs).
+  SHEET_RIM: 4.6,
+  SHEET_RIM_W: 0.1,
   // Haze around the hole (lit by the disc, collected by every ray): its
   // light per Rs at the inner edge, scale height (Rs) and colour.
   HAZE: 0.06,
@@ -54,7 +71,7 @@ export const MARCH_LOOK = {
   LIGHT_K: 0.1,
   LIGHT_GAIN: 2.5,
   // Extra extinction of the upper smoke layers (× at the cloud tops).
-  SMOKE_K: 7,
+  SMOKE_K: 1,
   // The gas colour: 4500 K black body through the camera film, as the film
   // did it (filmColour.js); one temperature, so the outer gas and the hot
   // inner gas share it (the inner disc looks white-hot from exposure alone).
@@ -122,6 +139,7 @@ export const LOOK_LIMITS = {
   TAU: [0.2, 8, 0.05],
   EMIT: [0, 60, 0.5],
   EMIT_POWER: [0.5, 6, 0.05],
+  EMIT_DEPTH: [0, 4, 0.05],
   ALBEDO: [0, 2, 0.01],
   RAD_FREQ: [0.5, 12, 0.1],
   ANG_TILES: [1, 24, 1],
@@ -132,10 +150,16 @@ export const LOOK_LIMITS = {
   FLAME_RAD: [0.5, 16, 0.1],
   FLAME_ANG: [1, 8, 1],
   WISP: [0, 1, 0.01],
+  FLAME_DARK: [0, 1, 0.01],
+  CLUMP_LO: [0.3, 0.9, 0.005],
+  CLUMP_RAD: [1, 40, 0.5],
+  CLUMP_TILES: [4, 120, 1],
   DETAIL: [0, 1, 0.01],
   SHEET_TAU: [0, 10, 0.05],
   SHEET_GLOW: [0, 6, 0.05],
   SHEET_POWER: [0, 4, 0.05],
+  SHEET_RIM: [3, 10, 0.05],
+  SHEET_RIM_W: [0.02, 3, 0.01],
   HAZE: [0, 1, 0.005],
   HAZE_HEIGHT: [0.1, 10, 0.05],
   LIGHT_HEIGHT: [0, 3, 0.05],
@@ -171,5 +195,5 @@ export function clampLook(name, value) {
   const limit = LOOK_LIMITS[name];
   if (!limit || !Number.isFinite(value)) return value;
   const v = Math.min(limit[1], Math.max(limit[0], value));
-  return name === 'ANG_TILES' || name === 'FLAME_ANG' ? Math.round(v) : v;
+  return name === 'ANG_TILES' || name === 'FLAME_ANG' || name === 'CLUMP_TILES' ? Math.round(v) : v;
 }

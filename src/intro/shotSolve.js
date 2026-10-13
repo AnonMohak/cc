@@ -174,7 +174,7 @@ export const SHOT_MEASURES = {
   1: { radius: 0.518, center: [0.492, 0.369], fov: 90, el: 0, az: 0 },
   2: { radius: 0.529, center: [0.492, 0.371], fov: 90, el: 0, az: 4 },
   3: { radius: 0.54, center: [0.488, 0.359], fov: 90, el: 0, az: 8 },
-  4: { radius: 0.567, center: [0.48, 0.358], fov: 28, el: 4.7, az: 14 },
+  4: { radius: 0.567, center: [0.48, 0.358], fov: 70, el: 0.5, az: 14 },
   5: { radius: 0.579, center: [0.447, 0.347], fov: 28, el: 5, az: 19 },
 };
 

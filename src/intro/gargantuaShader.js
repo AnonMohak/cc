@@ -96,15 +96,34 @@ ${LOOK}
     float body = exp(-0.6 * zn * zn);
     // Near the inner edge the gas thins into sparse clumps.
     float sparse = uSparse * (1.0 - smoothstep(DISC_INNER, DISC_INNER * SPARSE_OUT, r));
-    float dens = win * body * smoothstep(0.32, 0.62, cloud + 0.35 * (body - 0.6) - 0.22 * sparse);
+    float dens = win * body * smoothstep(0.32, 0.62, cloud + 0.35 * (body - 0.6));
+    // There it breaks into compact clumps with clear space between (the
+    // film's shots 1–4: a few hot clumps, a thin line, deep black): a high
+    // threshold on the cloud field, low over the midplane.
+    // Compact: their own noise, much finer along the orbit than the clouds
+    // (whole tiles around the turn: no seam).
+    float clump = 0.0;
+    if (uSparse > 0.0) {
+      float cn = texture(uNoise, vec3(log(r) * CLUMP_RAD, ang * (CLUMP_TILES / (2.0 * PI)), zn * 0.6) + vec3(0.41, 0.0, 0.83)).r;
+      clump = smoothstep(CLUMP_LO, CLUMP_LO + 0.1, cn) * exp(-1.5 * zn * zn) * (1.0 - smoothstep(DISC_INNER * SPARSE_OUT, DISC_INNER * SPARSE_OUT * 1.3, r));
+      dens = mix(dens, win * clump, sparse);
+    }
     // Thin wisps above the cloud tops, along the ridges.
     float wisp = WISP * win * smoothstep(0.9, 1.5, abs(zn)) * (1.0 - smoothstep(2.2, 3.0, abs(zn))) * smoothstep(0.6, 0.9, ridge);
-    dens = max(dens, wisp);
+    dens = max(dens, wisp * (1.0 - uSparse));
     // Large dark dust clumps (the black patches).
     float dust = smoothstep(0.5, 0.66, n.g + 0.25 * (fine - 0.5));
+    // Seen from the clear gap (camera key sparse) the rest of the disc is a
+    // dark silhouette: only the clumps glow (shots 1–4).
+    // Dark gaps between the flame tongues (the film's streaky orange flames
+    // with black between): the low parts of the ridged flame noise.
+    dust = max(dust, FLAME_DARK * (1.0 - smoothstep(0.25, 0.65, ridge)));
+    dust = mix(dust, 1.0, uSparse * (1.0 - clump));
     // The gas's own light falls off faster than the light on the smoke: the
     // outer disc reads as dark smoke, the inner disc glows (shots 4–5 vs 7–9).
-    float hot = exp(-2.2 * zn * zn) * pow(DISC_INNER / max(r, DISC_INNER), EMIT_POWER);
+    float hot = exp(-EMIT_DEPTH * zn * zn) * pow(DISC_INNER / max(r, DISC_INNER), EMIT_POWER);
+    // (From the gap, only the clumps glow; the rest is the dark silhouette.)
+    hot *= 1.0 - uSparse * (1.0 - clump);
     // The upper layers are smoke: more extinction with height, so the glowing
     // core shows through gaps and the surface reads dark (reference shots 4–5).
     float smoke = 1.0 + SMOKE_K * smoothstep(0.4, 1.8, abs(zn));
@@ -317,7 +336,7 @@ ${GAS_GLSL}
           vec3 hotCol = mix(GAS_WARM, GAS_HOT, smoothstep(0.25, 0.9, g.y));
           vec3 emit = hotCol * g.y * EMIT * (1.0 - 0.9 * g.z);
           // Lit by the inner disc through the gas between (self-shadowing).
-          vec3 lit = (GAS_WARM * glowAt(rc) * LIGHT_GAIN * lightAt(p, rc) + SMOKE_COOL) * ALBEDO * (1.0 - 0.8 * g.z);
+          vec3 lit = (GAS_WARM * glowAt(rc) * LIGHT_GAIN * lightAt(p, rc) + SMOKE_COOL) * ALBEDO * (1.0 - mix(0.8, 1.0, uSparse) * g.z);
           light += w * (emit + lit);
           T *= exp(-sigma * dt);
           if (depth < 0.0 && T < 0.5) depth = dist;
@@ -365,6 +384,10 @@ ${GAS_GLSL}
           float cosA = max(abs(v.y) / length(v), 1e-3);
           float alpha = win * (1.0 - exp(-SHEET_TAU / cosA));
           float hotSheet = SHEET_GLOW * pow(DISC_INNER / max(rx, DISC_INNER), SHEET_POWER);
+          // Seen from the clear gap only a thin rim of it glows, just
+          // outside the inner edge: its lensed images are the thin, sharp
+          // arcs of the film's shots 1–4.
+          hotSheet *= mix(1.0, exp(-pow((rx - SHEET_RIM) / SHEET_RIM_W, 2.0)), uSparse);
           light += T * alpha * mix(GAS_WARM, GAS_HOT, smoothstep(0.25, 0.9, hotSheet)) * hotSheet * EMIT;
           T *= 1.0 - alpha;
           if (depth < 0.0 && T < 0.5) depth = dist;

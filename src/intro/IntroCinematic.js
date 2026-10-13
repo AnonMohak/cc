@@ -41,6 +41,8 @@ const MARCH_STEPS = 500;
  * last. About a 180° film shutter's blur, and it averages the step jitter.
  */
 const SHUTTER = 0.06;
+/** The detail octave's strength in offline frames (renderStill). */
+const OFFLINE_DETAIL = 1;
 /** The light pass runs every this many frames. */
 const LIGHT_EVERY = 2;
 
@@ -375,6 +377,9 @@ export class IntroCinematic {
     const rs = this.resolve.uniforms;
     u.uSteps.value = Math.min(steps, MAX_STEPS);
     u.uInterleave.value = 0;
+    // The close-up detail octave: too costly live, free offline.
+    const detail = u.DETAIL.value;
+    u.DETAIL.value = OFFLINE_DETAIL;
     rs.uInterleave.value = 0;
     renderer.setRenderTarget(this.lightTarget);
     this.lightQuad.render(renderer);
@@ -411,6 +416,7 @@ export class IntroCinematic {
 
     // Back to live frames.
     u.uSteps.value = MARCH_STEPS;
+    u.DETAIL.value = detail;
     u.uInterleave.value = 1;
     rs.uInterleave.value = 1;
     u.uShutterSample.value.set(0, 0);
