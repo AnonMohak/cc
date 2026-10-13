@@ -1,13 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { shadowAngle, distanceForShadow, holeOnScreen, solveShot, shotPose, SHOT_MEASURES, STILL_ASPECT, B_CRIT } from './shotSolve.js';
+import { shadowAngle, distanceForShadow, holeOnScreen, solveShot, shotPose, SHOT_MEASURES, STILL_ASPECT, B_CRIT, SHADOW_SHIFT, shadowCentre } from './shotSolve.js';
 import { bendRay } from './gargantuaModel.js';
 
 const DEG = Math.PI / 180;
 
 describe('shadowAngle / distanceForShadow', () => {
-  it('fills half the view at b_c and is b_c / r far away', () => {
-    expect(shadowAngle(B_CRIT)).toBeCloseTo(Math.PI / 2, 6);
-    expect(Math.sin(shadowAngle(1000))).toBeCloseTo(B_CRIT / 1000, 9);
+  it('is b_c √(1 − 1/r) / r, as a static observer sees it, and fills the view near the photon sphere', () => {
+    expect(shadowAngle(1.5)).toBeGreaterThan(1.2);
+    expect(Math.sin(shadowAngle(1000))).toBeCloseTo((B_CRIT * Math.sqrt(1 - 1 / 1000)) / 1000, 9);
+    expect(shadowAngle(20)).toBeLessThan(shadowAngle(5));
   });
 
   it('inverts', () => {
@@ -28,7 +29,7 @@ describe('solveShot', () => {
   it('reproduces the measured framing of every shot', () => {
     for (const [n, m] of Object.entries(SHOT_MEASURES)) {
       const pose = shotPose(n);
-      const [u, v] = holeOnScreen(pose, m.fov, STILL_ASPECT);
+      const [u, v] = holeOnScreen(pose, m.fov, STILL_ASPECT, shadowCentre(pose));
       expect(u).toBeCloseTo(m.center[0], 3);
       expect(v).toBeCloseTo(m.center[1], 3);
       // The shadow's radius on screen (share of the frame height).
@@ -39,9 +40,32 @@ describe('solveShot', () => {
     }
   });
 
-  it('aims at the hole when it sits at the centre', () => {
-    const pose = solveShot({ radius: 0.3, center: [0.5, 0.5], fov: 60, el: 0, az: 30 }, 16 / 9);
-    expect(pose.lead).toBeCloseTo(0, 4);
+  it('aims at the shadow centre, beside the hole on the retrograde side', () => {
+    const shot = { radius: 0.3, center: [0.5, 0.5], fov: 60, el: 0, az: 30 };
+    const pose = { ...solveShot(shot, 16 / 9), el: 0, az: 30 };
+    const [u, v] = holeOnScreen(pose, 60, 16 / 9, shadowCentre(pose));
+    expect(u).toBeCloseTo(0.5, 4);
+    expect(v).toBeCloseTo(0.5, 4);
     expect(pose.aimY).toBeCloseTo(0, 4);
+    expect(Math.hypot(...shadowCentre(pose))).toBeCloseTo(SHADOW_SHIFT * Math.sqrt(1 - 1 / pose.r), 9);
+  });
+
+  it('puts the shadow centre where the traced shadow is', () => {
+    // From far out along -x: the traced edges across the view (z) are
+    // symmetric about the centre's z.
+    const pose = { r: 80, el: 0, az: 180, lead: 0, aimY: 0 };
+    const c = shadowCentre(pose);
+    const edge = (side) => {
+      let lo = 1;
+      let hi = 4;
+      for (let i = 0; i < 20; i++) {
+        const b = (lo + hi) / 2;
+        if (bendRay([-80, 0, side * b], [1, 0, 0], 20000).captured) lo = b;
+        else hi = b;
+      }
+      return side * lo;
+    };
+    expect((edge(1) + edge(-1)) / 2).toBeCloseTo(c[2], 2);
+    expect(c[0]).toBeCloseTo(0, 9);
   });
 });

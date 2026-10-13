@@ -1,4 +1,4 @@
-import { DISC_INNER, SPARSE_OUT, DISC_OUTER, H0, H1, SLAB_K, SPIN, GLOW_POWER, STEP_K, STEP_MIN, STEP_MAX, PHOTON_SPHERE, ESCAPE_R, CURVE_K, CURVE_MIN, CURVE_MAX } from './gargantuaModel.js';
+import { DISC_INNER, SPARSE_OUT, DISC_OUTER, H0, H1, SLAB_K, SPIN, GLOW_POWER, STEP_K, STEP_MIN, STEP_MAX, CAPTURE_R, KERR_M, KERR_A, ESCAPE_R, CURVE_K, CURVE_MIN, CURVE_MAX } from './gargantuaModel.js';
 import { MARCH_LOOK, COMPOSITE_LOOK, CURVE_KNOTS, lookDeclarations } from './introLook.js';
 
 const f = (x) => x.toFixed(4);
@@ -146,7 +146,10 @@ export const marchShader = /* glsl */ `
   varying vec2 vUv;
 ${GAS_GLSL}
   #define MAX_STEPS ${MAX_STEPS}
-  const float PHOTON_SPHERE = ${f(PHOTON_SPHERE)};
+  const float CAPTURE_R = ${f(CAPTURE_R)};
+  const float KERR_M = ${f(KERR_M)};
+  const float KERR_A = ${f(KERR_A)};
+  const float A2 = KERR_A * KERR_A;
   const float ESCAPE_R = ${f(ESCAPE_R)};
   const float CURVE_K = ${f(CURVE_K)};
   const float CURVE_MIN = ${f(CURVE_MIN)};
@@ -154,10 +157,21 @@ ${GAS_GLSL}
   const float FAR_DEPTH = 1000.0;
 
   float curveStep(float r) { return clamp(CURVE_K * r, CURVE_MIN, CURVE_MAX); }
-  // Schwarzschild light path, units of Rs (gargantuaModel.js bendRay).
-  vec3 accel(vec3 p, float h2) {
-    float r2 = dot(p, p);
-    return p * (-1.5 * h2 / (r2 * r2 * sqrt(r2)));
+  // Kerr light path in Mino time (gargantuaModel.js bendRay): the ray's
+  // constants L and K = (L − a)² + Q, E = 1. R(r), Θ(θ) are the radial and
+  // polar potentials (speed² in Mino time), kerrAccR/Th half their slopes.
+  float gL = 0.0;
+  float gQ = 0.0;
+  float gK = 0.0;
+  float kerrDelta(float r) { return r * r - 2.0 * KERR_M * r + A2; }
+  float kerrR(float r) { float w = r * r + A2 - KERR_A * gL; return w * w - kerrDelta(r) * gK; }
+  float kerrAccR(float r) { return 2.0 * r * (r * r + A2 - KERR_A * gL) - (r - KERR_M) * gK; }
+  float kerrAccTh(float s, float c) {
+    float ss = s >= 0.0 ? max(s, 1e-3) : min(s, -1e-3);
+    return -A2 * c * s + gL * gL * c / (ss * ss * ss);
+  }
+  float kerrPhi(float r, float s) {
+    return KERR_A * (r * r + A2 - KERR_A * gL) / kerrDelta(r) - KERR_A + gL / max(s * s, 1e-8);
   }
 
   float hash12(vec2 p) {
@@ -204,9 +218,33 @@ ${GAS_GLSL}
     vec3 v = normalize(basis * vec3((vUv * 2.0 - 1.0) * mix(uTanHalfFov, uTanHalfFov1, sh), -1.0));
     vec3 p = mix(uCamPos, uCamPos1, sh);
     gTime = uTime - sh * SHUTTER_S;
-    vec3 cr = cross(p, v);
-    float h2 = dot(cr, cr);
-    vec3 acc = accel(p, h2);
+    // Boyer–Lindquist r, θ and the azimuth as a unit vector e (x, z); the
+    // constants from the camera's view (without spin: a static observer's,
+    // b = r sin α / √(1 − 1/r)).
+    float r = length(p);
+    float th = acos(clamp(p.y / r, -1.0, 1.0));
+    vec2 e = length(p.xz) > 1e-6 ? normalize(p.xz) : vec2(1.0, 0.0);
+    float sT = sin(th);
+    float cT = cos(th);
+    vec3 rHat = vec3(sT * e.x, cT, sT * e.y);
+    vec3 tHat = vec3(cT * e.x, -sT, cT * e.y);
+    vec3 pHat = vec3(-e.y, 0.0, e.x);
+    // The camera is a zero-angular-momentum observer, v its direction in its
+    // own frame (James et al. 2015, appendix A): a real light ray, R(r0) =
+    // rd² (flat-space constants gave R < 0 for rays square to the hole: a seam).
+    float del = kerrDelta(r);
+    float sig = r * r + A2 * cT * cT;
+    float big = (r * r + A2) * (r * r + A2) - A2 * del * sT * sT;
+    float varpi = sqrt(big / sig) * sT;
+    float eF = 1.0 / (sqrt(sig * del / big) + 2.0 * KERR_M * KERR_A * r / big * varpi * dot(v, pHat));
+    gL = eF * varpi * dot(v, pHat);
+    float thd = eF * sqrt(sig) * dot(v, tHat);
+    gQ = thd * thd + cT * cT * (gL * gL / max(sT * sT, 1e-8) - A2);
+    gK = (gL - KERR_A) * (gL - KERR_A) + gQ;
+    float rd = eF * sqrt(sig * del) * dot(v, rHat);
+    float accR = kerrAccR(r);
+    float accTh = kerrAccTh(sT, cT);
+    float phd = kerrPhi(r, sT);
     vec3 light = vec3(0.0);
     float T = 1.0;
     bool captured = false;
@@ -218,17 +256,23 @@ ${GAS_GLSL}
     float depth = -1.0;
     for (int i = 0; i < MAX_STEPS; i++) {
       if (i >= uSteps || T < 0.01) break;
-      float r = length(p);
-      float radial = dot(p, v);
-      if (r < PHOTON_SPHERE && radial < 0.0) { captured = true; break; }
-      if (r > ESCAPE_R && radial > 0.0) break;
+      // The direction (coordinate space) and speed in Mino time.
+      vec3 vel = rd * rHat + r * thd * tHat + r * sT * phd * pHat;
+      float speed = length(vel);
+      v = vel / speed;
+      if (r < CAPTURE_R && rd < 0.0) { captured = true; break; }
+      if (r > ESCAPE_R && rd > 0.0) break;
       // Step: fine near the hole (the path bends), finer in the gas, and
       // a jump down toward the gas slab from above it.
       float rc = length(p.xz);
       float dt = curveStep(r);
       float above = abs(p.y) - SLAB_K * halfThickness(rc);
-      bool inSlab = above <= 0.0 && rc < DISC_OUTER;
+      // The clear gap inside the inner edge has no gas: no slab steps there
+      // (rays along the plane spent every step in it), only no jump past
+      // the inner edge.
+      bool inSlab = above <= 0.0 && rc < DISC_OUTER && rc > DISC_INNER * 0.98;
       if (inSlab) dt = min(dt, marchStep(rc));
+      else if (above <= 0.0 && rc <= DISC_INNER * 0.98) dt = min(dt, max(DISC_INNER - rc, marchStep(rc)));
       else if (rc < DISC_OUTER && p.y * v.y < 0.0 && abs(v.y) > 1e-4) dt = min(dt, max(marchStep(rc), 0.8 * above / abs(v.y)));
       if (i == 0) dt *= jitter;
       // Haze: a thin glowing medium around the hole, lit by the disc, that
@@ -256,9 +300,34 @@ ${GAS_GLSL}
         }
       }
       dist += dt;
-      // Velocity Verlet: the light bends toward the hole.
+      // Velocity Verlet in Mino time over dt of coordinate path. The radial
+      // speed is put back on its potential (the step follows the speed, so a
+      // drift would feed itself). Past a turning point (R < 0 by a step's
+      // overshoot) Verlet carries on: set to 0 there, the ray stalled.
+      // Not the polar one: near the plane and the poles Θ cancels in float
+      // and lost the small swings (gaps in the plane line, a seam).
       vec3 pPrev = p;
-      p += v * dt + 0.5 * acc * dt * dt;
+      float dtau = dt / speed;
+      r += rd * dtau + 0.5 * accR * dtau * dtau;
+      th += thd * dtau + 0.5 * accTh * dtau * dtau;
+      sT = sin(th);
+      cT = cos(th);
+      float accR1 = kerrAccR(r);
+      float accTh1 = kerrAccTh(sT, cT);
+      float phd1 = kerrPhi(r, sT);
+      rd += 0.5 * (accR + accR1) * dtau;
+      float Rr = kerrR(r);
+      if (Rr > 0.0) rd = sign(rd) * sqrt(Rr);
+      thd += 0.5 * (accTh + accTh1) * dtau;
+      float dphi = 0.5 * (phd + phd1) * dtau;
+      e = normalize(e * cos(dphi) + vec2(-e.y, e.x) * sin(dphi));
+      accR = accR1;
+      accTh = accTh1;
+      phd = phd1;
+      rHat = vec3(sT * e.x, cT, sT * e.y);
+      tHat = vec3(cT * e.x, -sT, cT * e.y);
+      pHat = vec3(-e.y, 0.0, e.x);
+      p = r * rHat;
       // The thin bright midplane sheet, exactly where the path crosses the
       // plane (thinner than a step: sampled as volume it broke the lensed
       // rings and the edge-on line into beads). Edge-on it is the thin
@@ -277,9 +346,6 @@ ${GAS_GLSL}
           if (depth < 0.0 && T < 0.5) depth = dist;
         }
       }
-      vec3 acc1 = accel(p, h2);
-      v += 0.5 * (acc + acc1) * dt;
-      acc = acc1;
     }
     // Rays that leave see the stars where they point; captured rays are the shadow.
     if (!captured) light += T * stars(normalize(v));
