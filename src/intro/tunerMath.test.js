@@ -8,6 +8,14 @@ describe('shotNumberFromName', () => {
     expect(shotNumberFromName('2024_clip_03.jpeg')).toBe(3);
     expect(shotNumberFromName('reference.jpg')).toBeNull();
   });
+
+  it('maps the clip frames to their shots and skips the rest', () => {
+    expect(shotNumberFromName('frame_001.png')).toBe(1);
+    expect(shotNumberFromName('frame_006.png')).toBe(5);
+    expect(shotNumberFromName('frame_018.png')).toBe(8);
+    expect(shotNumberFromName('frame_026.png')).toBe(10);
+    expect(shotNumberFromName('frame_007.png')).toBeNull();
+  });
 });
 
 describe('contentBounds', () => {

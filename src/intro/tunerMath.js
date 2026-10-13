@@ -3,12 +3,22 @@
  */
 
 /**
- * The reference shot number in a file name: the last number in it
- * ("shot-7.jpg" → 7, "img_03.png" → 3); null when there is none.
+ * The film clip's frames (images/frame_NNN.png, one per second; never
+ * committed) that match a reference shot: frame number → shot number. The
+ * other frames show actors or spacecraft, or repeat a shot.
+ */
+export const CLIP_FRAME_SHOTS = { 1: 1, 2: 2, 3: 3, 4: 4, 6: 5, 13: 7, 18: 8, 20: 9, 26: 10 };
+
+/**
+ * The reference shot number in a file name: a clip frame ("frame_018.png")
+ * by CLIP_FRAME_SHOTS (null when it matches no shot), else the last number
+ * in it ("shot-7.jpg" → 7, "img_03.png" → 3); null when there is none.
  * @param {string} name
  */
 export function shotNumberFromName(name) {
   const base = name.replace(/\.[^.]*$/, '');
+  const frame = /^frame_(\d+)$/.exec(base);
+  if (frame) return CLIP_FRAME_SHOTS[Number(frame[1])] ?? null;
   const m = /(\d+)(?!.*\d)/.exec(base);
   return m ? Number(m[1]) : null;
 }
