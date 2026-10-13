@@ -68,12 +68,20 @@ ${LOOK}
     q += vec3(wq.x, wq.y, 0.5 * wq.x) * WARP;
     vec2 n = texture(uNoise, q).rg;
     float fine = texture(uNoise, q * vec3(3.1, 3.0, 2.7) + vec3(0.37, 0.0, 0.61)).r;
-    float cloud = 0.6 * n.r + 0.4 * fine;
+    // Flame tongues: ridged noise stretched far along the orbit (FLAME_ANG
+    // whole tiles around the turn: no seam), for the tongues and black gaps
+    // of shots 7–9.
+    float fl = texture(uNoise, q * vec3(FLAME_RAD, FLAME_ANG, 2.0) + vec3(0.71, 0.0, 0.17)).r;
+    float ridge = 1.0 - abs(2.0 * fl - 1.0);
+    float cloud = mix(0.6 * n.r + 0.4 * fine, 0.45 * n.r + 0.55 * ridge * ridge, FLAME);
     // Cloud tops: the gas thins with height, with a noisy, smoky surface.
     float body = exp(-0.6 * zn * zn);
     // Near the inner edge the gas thins into sparse clumps.
     float sparse = uSparse * (1.0 - smoothstep(DISC_INNER, DISC_INNER * SPARSE_OUT, r));
     float dens = win * body * smoothstep(0.32, 0.62, cloud + 0.35 * (body - 0.6) - 0.22 * sparse);
+    // Thin wisps above the cloud tops, along the ridges.
+    float wisp = WISP * win * smoothstep(0.9, 1.5, abs(zn)) * (1.0 - smoothstep(2.2, 3.0, abs(zn))) * smoothstep(0.6, 0.9, ridge);
+    dens = max(dens, wisp);
     // Large dark dust clumps (the black patches).
     float dust = smoothstep(0.5, 0.66, n.g + 0.25 * (fine - 0.5));
     // The gas's own light falls off faster than the light on the smoke: the

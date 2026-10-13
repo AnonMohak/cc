@@ -22,12 +22,19 @@ export const MARCH_LOOK = {
   ANG_TILES: 7, // per turn: an integer, so the angle wraps without a seam
   VERT_FREQ: 0.3,
   // Domain warp (texture units): breaks the even rings into clumps.
-  WARP: 0.55,
+  WARP: 1.1,
+  // Flame tongues: how much of the ridged, orbit-stretched layer goes into
+  // the clouds, its radial frequency and its whole tiles around the turn
+  // (× ANG_TILES); and thin wisps above the cloud tops.
+  FLAME: 1,
+  FLAME_RAD: 5,
+  FLAME_ANG: 2,
+  WISP: 0.25,
   // Self-shadowing: the height (half-thicknesses) the inner disc's light runs
   // out at, how strongly the gas on the way blocks it, and its strength.
   LIGHT_HEIGHT: 1.6,
-  LIGHT_K: 0.35,
-  LIGHT_GAIN: 1,
+  LIGHT_K: 0.1,
+  LIGHT_GAIN: 2.5,
   // Extra extinction of the upper smoke layers (× at the cloud tops).
   SMOKE_K: 7,
   // The gas colour: 4500 K black body through the camera film, as the film
@@ -36,7 +43,7 @@ export const MARCH_LOOK = {
   // The smoke is lit by the same light from below and a little cool by the sky.
   GAS_WARM: DISC_COLOUR,
   GAS_HOT: DISC_COLOUR,
-  SMOKE_COOL: [0.16, 0.19, 0.24],
+  SMOKE_COOL: [0.06, 0.07, 0.09],
 };
 
 /** The full-resolution composite (gargantuaShader.js compositeShader). */
@@ -89,6 +96,10 @@ export const LOOK_LIMITS = {
   ANG_TILES: [1, 24, 1],
   VERT_FREQ: [0.05, 1.5, 0.01],
   WARP: [0, 2, 0.01],
+  FLAME: [0, 1, 0.01],
+  FLAME_RAD: [0.5, 16, 0.1],
+  FLAME_ANG: [1, 8, 1],
+  WISP: [0, 1, 0.01],
   LIGHT_HEIGHT: [0, 3, 0.05],
   LIGHT_K: [0, 2, 0.01],
   LIGHT_GAIN: [0, 4, 0.05],
@@ -117,5 +128,5 @@ export function clampLook(name, value) {
   const limit = LOOK_LIMITS[name];
   if (!limit || !Number.isFinite(value)) return value;
   const v = Math.min(limit[1], Math.max(limit[0], value));
-  return name === 'ANG_TILES' ? Math.round(v) : v;
+  return name === 'ANG_TILES' || name === 'FLAME_ANG' ? Math.round(v) : v;
 }

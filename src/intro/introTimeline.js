@@ -34,8 +34,8 @@ const shot = (t, n, { roll = 0, exp = 1, sparse = 0 } = {}) => ({ t, ...shotPose
 export const CAMERA_KEYS = [
   // Shots 1–3: in the disc plane inside the clear gap near the hole; the
   // shadow fills the view, the thin ring and sparse clumps around it.
-  shot(0, 1, { exp: 0.04, sparse: 1 }),
-  shot(6, 2, { exp: 0.042, sparse: 1 }),
+  shot(0, 1, { exp: 0.031, sparse: 1 }),
+  shot(6, 2, { exp: 0.032, sparse: 1 }),
   shot(12, 3, { exp: 0.46, sparse: 1 }),
   // Rise out of the gap over the inner edge.
   { t: 15.5, r: 4.2, el: 12, az: 11, lead: 0, aimY: 0.2, roll: 0, fov: 72, exp: 1.05, sparse: 0.5 },
@@ -46,9 +46,9 @@ export const CAMERA_KEYS = [
   // beside the hole with it at the left and the cloud arc overhead (shots
   // 7–9), then through the thin inner fog.
   { t: 31, r: 12, el: 12, az: 50, lead: 0, aimY: 0, roll: 0, fov: 56, exp: 1.1, sparse: 0 },
-  shot(37.5, 7, { roll: -3, exp: 6.3 }),
-  shot(41, 8, { roll: -4, exp: 4.6 }),
-  shot(44, 9, { roll: -5, exp: 3.3 }),
+  shot(37.5, 7, { roll: -3, exp: 2.4 }),
+  shot(41, 8, { roll: -4, exp: 2.0 }),
+  shot(44, 9, { roll: -5, exp: 1.7 }),
   { t: 50, r: 5, el: 2.5, az: 182, lead: -15, aimY: 0.4, roll: -6, fov: 62, exp: 0.55, sparse: 1 },
   // The fall: rise a little, turn to the shadow and plunge.
   { t: 55.5, r: 4, el: 12, az: 205, lead: 0, aimY: 0, roll: 2, fov: 64, exp: 1, sparse: 1 },
