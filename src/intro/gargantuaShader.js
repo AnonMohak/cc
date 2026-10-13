@@ -499,6 +499,8 @@ export const compositeShader = /* glsl */ `
   uniform sampler2D tMarch;
   uniform vec2 uResolution;
   uniform float uExposure;
+  // The camera key's saturation (× SATURATION: the film graded each scene).
+  uniform float uSat;
   uniform float uFocus; // Rs: the depth in focus
   uniform float uTime;
   // The flare source (flareSourceShader): weighted centre (uv) and strength.
@@ -547,7 +549,9 @@ ${CURVE_KNOTS.slice(1)
   void main() {
     vec4 c0 = textureLod(tMarch, vUv, 0.0);
     // Depth of field: a golden-angle gather by this pixel's blur radius.
-    float coc = min(DOF_K * abs(1.0 - uFocus / max(c0.a, 1e-3)), DOF_MAX);
+    // Blur radii are px of a 720-line frame, scaled to this one.
+    float pxScale = uResolution.y / 720.0;
+    float coc = min(DOF_K * abs(1.0 - uFocus / max(c0.a, 1e-3)), DOF_MAX) * pxScale;
     vec3 col = c0.rgb;
     if (coc > 0.75) {
       vec2 px = coc / uResolution;
@@ -559,7 +563,7 @@ ${CURVE_KNOTS.slice(1)
         float ang = fi * 2.39996;
         vec4 s = textureLod(tMarch, vUv + vec2(cos(ang), sin(ang)) * rad * px, 0.0);
         // A sharp, nearer neighbour does not smear over a blurred pixel.
-        float sc = min(DOF_K * abs(1.0 - uFocus / max(s.a, 1e-3)), DOF_MAX);
+        float sc = min(DOF_K * abs(1.0 - uFocus / max(s.a, 1e-3)), DOF_MAX) * pxScale;
         float w = smoothstep(rad * coc * 0.5, rad * coc, sc + 0.5);
         sum += s.rgb * w;
         wsum += w;
@@ -605,7 +609,7 @@ ${CURVE_KNOTS.slice(1)
     col = aces(col * uExposure);
     // Film grade: teal in the darks, the highlights kept warm.
     float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
-    col = max(mix(vec3(luma), col, SATURATION), 0.0);
+    col = max(mix(vec3(luma), col, SATURATION * uSat), 0.0);
     col += SHADOW_TINT * pow(1.0 - luma, 4.0);
     col = mix(col, col * vec3(1.03, 1.0, 0.94), smoothstep(0.4, 1.0, luma));
     vec3 display = pow(max(col, 0.0), vec3(1.0 / 2.2));

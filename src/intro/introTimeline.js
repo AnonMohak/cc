@@ -31,21 +31,21 @@ export const MUSIC_RISE_SECONDS = 5;
  * hole: the film tuned its atmosphere per shot).
  */
 // A key at a reference shot: the pose solved from the still (shotSolve.js).
-const shot = (t, n, { roll = 0, exp = 1, sparse = 0, haze = 1 } = {}) => ({ t, ...shotPose(n), roll, exp, sparse, haze });
+const shot = (t, n, { roll = 0, exp = 1, sparse = 0, haze = 1, sat = 1 } = {}) => ({ t, ...shotPose(n), roll, exp, sparse, haze, sat });
 
 export const CAMERA_KEYS = [
   // Shots 1–4: in the disc plane inside the clear gap near the hole (the
   // clip runs them as one move); the shadow fills the view, the thin ring,
   // the disc's thin line and sparse clumps around it, brighter by shot 4
   // (the lower lensed arc shows below the line through deep black).
-  shot(0, 1, { exp: 0.057, sparse: 1, haze: 0 }),
-  shot(6, 2, { exp: 0.041, sparse: 1, haze: 0 }),
-  shot(12, 3, { exp: 0.39, sparse: 1, haze: 0 }),
-  shot(19.5, 4, { exp: 0.5, sparse: 0.85, haze: 1 }),
+  shot(0, 1, { exp: 0.0916, sparse: 1, haze: 0, sat: 0.5 }),
+  shot(6, 2, { exp: 0.0517, sparse: 1, haze: 0, sat: 0.5 }),
+  shot(12, 3, { exp: 0.267, sparse: 1, haze: 0, sat: 0.5 }),
+  shot(19.5, 4, { exp: 0.887, sparse: 0.85, haze: 1 }),
   // Rise out of the gap over the inner edge to the cloud tops.
   { t: 22.3, r: 6, el: 7, az: 17, lead: -5, aimY: -0.4, roll: 0, fov: 45, exp: 0.7, sparse: 0.2, haze: 2 },
   // Shot 5: just over the cloud tops; the shadow is a dome with the arches.
-  shot(25, 5, { exp: 0.88, haze: 2.5 }),
+  shot(25, 5, { exp: 0.891, haze: 2.5, sat: 0.4 }),
   // The turn around the disc (references 6–10): above the clouds, then low
   // beside the hole with it at the left and the cloud arc overhead (shots
   // 7–9), then through the thin inner fog.
@@ -56,11 +56,11 @@ export const CAMERA_KEYS = [
   // fits a half-hidden shadow, so these keys come from an image search:
   // small offline renders scored against the clip frames (correlation of
   // log brightness), with the camera kept above the cloud slab.
-  { t: 37.5, r: 5.4, el: 5, az: 90, lead: -45.5, aimY: 0.3, roll: -5.4, fov: 61, exp: 3.2, sparse: 0, haze: 0.4 },
-  { t: 41, r: 6, el: 5, az: 115, lead: -54.5, aimY: 0.6, roll: -4.5, fov: 61, exp: 2.7, sparse: 0, haze: 0.4 },
-  { t: 44, r: 6.3, el: 6.2, az: 140, lead: -56, aimY: 0.7, roll: -5.3, fov: 60.6, exp: 2.3, sparse: 0, haze: 0.4 },
+  { t: 37.5, r: 5.4, el: 5, az: 90, lead: -45.5, aimY: 0.3, roll: -5.4, fov: 61, exp: 3.94, sparse: 0, haze: 0.1, sat: 1.9 },
+  { t: 41, r: 6, el: 5, az: 115, lead: -54.5, aimY: 0.6, roll: -4.5, fov: 61, exp: 2.43, sparse: 0, haze: 0.1, sat: 1.6 },
+  { t: 44, r: 6.3, el: 6.2, az: 140, lead: -56, aimY: 0.7, roll: -5.3, fov: 60.6, exp: 1.65, sparse: 0, haze: 0.1, sat: 1.7 },
   // Shot 10: skimming the cloud tops toward the shadow (top left).
-  { t: 50, r: 5.2, el: 5, az: 182, lead: -41.6, aimY: 0.35, roll: -5.8, fov: 71.6, exp: 0.55, sparse: 0, haze: 1 },
+  { t: 50, r: 5.2, el: 5, az: 182, lead: -41.6, aimY: 0.35, roll: -5.8, fov: 71.6, exp: 0.74, sparse: 0, haze: 1, sat: 0.8 },
   // The fall: rise a little, turn to the shadow and plunge.
   { t: 55.5, r: 4, el: 12, az: 205, lead: 0, aimY: 0, roll: 2, fov: 64, exp: 1, sparse: 1, haze: 1 },
   // With the fall's aberration the shadow shrinks as the camera nears it
@@ -144,6 +144,7 @@ export function introCamera(t, out, keys = CAMERA_KEYS) {
   out.exposure = catmullRom(k0.exp, k1.exp, k2.exp, k3.exp, s);
   out.sparse = Math.min(1, Math.max(0, catmullRom(k0.sparse, k1.sparse, k2.sparse, k3.sparse, s)));
   out.haze = Math.max(0, catmullRom(k0.haze, k1.haze, k2.haze, k3.haze, s));
+  out.sat = Math.max(0, catmullRom(k0.sat ?? 1, k1.sat ?? 1, k2.sat ?? 1, k3.sat ?? 1, s));
   return out;
 }
 

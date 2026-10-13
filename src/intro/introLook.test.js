@@ -35,12 +35,12 @@ describe('introLook', () => {
 });
 
 describe('colour fit tone curve', () => {
-  it('has one point per knot, keeps black black and never falls', async () => {
+  it('has one point per knot, lifts black only a little (as the film does) and never falls', async () => {
     const { CURVE_KNOTS } = await import('./introLook.js');
     const points = CURVE_KNOTS.map((_, i) => COMPOSITE_LOOK[`CURVE_${i}`]);
     expect(points.every(Boolean)).toBe(true);
     expect(COMPOSITE_LOOK[`CURVE_${CURVE_KNOTS.length}`]).toBeUndefined();
-    expect(points[0]).toEqual([0, 0, 0]);
+    for (const v of points[0]) expect(v).toBeLessThan(0.05);
     for (let c = 0; c < 3; c++) {
       for (let i = 1; i < points.length; i++) expect(points[i][c]).toBeGreaterThanOrEqual(points[i - 1][c]);
     }
