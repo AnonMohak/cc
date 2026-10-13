@@ -48,6 +48,7 @@ export class IntroCinematic {
     this.time = 0;
     this.exposure = 1;
     this.sparse = 1;
+    this.haze = 1;
 
     // The noise bakes in a worker (main-thread fallback); until it arrives
     // the cinematic is not ready (the start box keeps saying Loading).
@@ -99,6 +100,7 @@ export class IntroCinematic {
         ...gasUniforms,
         uSteps: { value: MARCH_STEPS },
         uPixelAngle: { value: 0.003 },
+        uHaze: { value: 1 },
         tPrev: { value: null },
         uHistory: { value: 0 },
         uFrame: { value: 0 },
@@ -197,6 +199,7 @@ export class IntroCinematic {
     cam.lookAt(_target);
     this.exposure = pose.exposure ?? 1;
     this.sparse = pose.sparse ?? 1;
+    this.haze = pose.haze ?? 1;
     if (cam.fov !== pose.fov) {
       cam.fov = pose.fov;
       cam.updateProjectionMatrix();
@@ -235,6 +238,7 @@ export class IntroCinematic {
     u.uHistory.value = fresh ? 0 : Math.exp(-dt / SHUTTER);
     u.uFrame.value = this.frame % 1024;
     u.uSparse.value = this.sparse;
+    u.uHaze.value = this.haze;
     const c = this.composite.uniforms;
     c.tMarch.value = write.texture;
     c.uExposure.value = this.exposure;

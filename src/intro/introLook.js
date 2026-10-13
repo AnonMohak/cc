@@ -39,6 +39,11 @@ export const MARCH_LOOK = {
   SHEET_TAU: 1.5,
   SHEET_GLOW: 1.5,
   SHEET_POWER: 1.2,
+  // Haze around the hole (lit by the disc, collected by every ray): its
+  // light per Rs at the inner edge, scale height (Rs) and colour.
+  HAZE: 0.06,
+  HAZE_HEIGHT: 2,
+  HAZE_COL: [0.42, 0.58, 0.95],
   // Self-shadowing: the height (half-thicknesses) the inner disc's light runs
   // out at, how strongly the gas on the way blocks it, and its strength.
   LIGHT_HEIGHT: 1.6,
@@ -60,8 +65,11 @@ export const COMPOSITE_LOOK = {
   // Depth of field: blur radius (px) per unit of |1 − focus/depth|, and its cap.
   DOF_K: 9,
   DOF_MAX: 10,
-  // Veiling glow (the film's IMAX lens glow) and bloom, from the mips.
-  VEIL: 0.09,
+  // Veiling glow (the film's IMAX lens glow: a long-tailed PSF from the
+  // mips; share, tail exponent, tint) and bloom.
+  VEIL: 0.2,
+  VEIL_BETA: 2.5,
+  VEIL_TINT: [1, 1, 1],
   BLOOM: 0.22,
   // Lens ghosts and the halo ring, from light above the threshold only.
   FLARE_THRESHOLD: 3,
@@ -114,13 +122,16 @@ export const LOOK_LIMITS = {
   SHEET_TAU: [0, 10, 0.05],
   SHEET_GLOW: [0, 6, 0.05],
   SHEET_POWER: [0, 4, 0.05],
+  HAZE: [0, 1, 0.005],
+  HAZE_HEIGHT: [0.1, 10, 0.05],
   LIGHT_HEIGHT: [0, 3, 0.05],
   LIGHT_K: [0, 2, 0.01],
   LIGHT_GAIN: [0, 4, 0.05],
   SMOKE_K: [0, 12, 0.1],
   DOF_K: [0, 30, 0.5],
   DOF_MAX: [0, 30, 0.5],
-  VEIL: [0, 0.5, 0.005],
+  VEIL: [0, 0.9, 0.005],
+  VEIL_BETA: [1.2, 4, 0.05],
   BLOOM: [0, 1, 0.01],
   FLARE_THRESHOLD: [0, 6, 0.05],
   GHOSTS: [0, 0.3, 0.005],

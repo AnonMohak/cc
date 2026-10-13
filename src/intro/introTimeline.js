@@ -25,35 +25,36 @@ export const MUSIC_RISE_SECONDS = 5;
  * Camera keys: t (s), r (Rs), elevation above the disc plane (deg), azimuth
  * (deg, the disc turns toward +azimuth), lead (deg: the view turns from the
  * hole toward the direction of motion; 0 aims at the hole), aimY (Rs: the
- * height of the aim point), roll (deg), fov (deg), exposure and sparse (0–1:
- * how much the inner gas thins into clumps).
+ * height of the aim point), roll (deg), fov (deg), exposure, sparse (0–1:
+ * how much the inner gas thins into clumps) and haze (× the haze around the
+ * hole: the film tuned its atmosphere per shot).
  */
 // A key at a reference shot: the pose solved from the still (shotSolve.js).
-const shot = (t, n, { roll = 0, exp = 1, sparse = 0 } = {}) => ({ t, ...shotPose(n), roll, exp, sparse });
+const shot = (t, n, { roll = 0, exp = 1, sparse = 0, haze = 1 } = {}) => ({ t, ...shotPose(n), roll, exp, sparse, haze });
 
 export const CAMERA_KEYS = [
   // Shots 1–3: in the disc plane inside the clear gap near the hole; the
   // shadow fills the view, the thin ring and sparse clumps around it.
-  shot(0, 1, { exp: 0.015, sparse: 1 }),
-  shot(6, 2, { exp: 0.0145, sparse: 1 }),
-  shot(12, 3, { exp: 0.344, sparse: 1 }),
+  shot(0, 1, { exp: 0.015, sparse: 1, haze: 0 }),
+  shot(6, 2, { exp: 0.0145, sparse: 1, haze: 0 }),
+  shot(12, 3, { exp: 0.344, sparse: 1, haze: 0 }),
   // Rise out of the gap over the inner edge.
-  { t: 15.5, r: 4.2, el: 12, az: 11, lead: 0, aimY: 0.2, roll: 0, fov: 72, exp: 1.05, sparse: 0.5 },
+  { t: 15.5, r: 4.2, el: 12, az: 11, lead: 0, aimY: 0.2, roll: 0, fov: 72, exp: 1.05, sparse: 0.5, haze: 0.5 },
   // Shots 4–5: just over the cloud tops; the shadow is a dome with the arches.
-  shot(19.5, 4, { exp: 0.27 }),
-  shot(25, 5, { exp: 0.88 }),
+  shot(19.5, 4, { exp: 0.27, haze: 1.5 }),
+  shot(25, 5, { exp: 0.88, haze: 2.5 }),
   // The turn around the disc (references 6–10): above the clouds, then low
   // beside the hole with it at the left and the cloud arc overhead (shots
   // 7–9), then through the thin inner fog.
-  { t: 31, r: 12, el: 12, az: 50, lead: 0, aimY: 0, roll: 0, fov: 56, exp: 1.1, sparse: 0 },
-  shot(37.5, 7, { roll: -3, exp: 2.4 }),
-  shot(41, 8, { roll: -4, exp: 2.0 }),
-  shot(44, 9, { roll: -5, exp: 1.7 }),
-  { t: 50, r: 5, el: 2.5, az: 182, lead: -15, aimY: 0.4, roll: -6, fov: 62, exp: 0.55, sparse: 1 },
+  { t: 31, r: 12, el: 12, az: 50, lead: 0, aimY: 0, roll: 0, fov: 56, exp: 1.1, sparse: 0, haze: 1 },
+  shot(37.5, 7, { roll: -3, exp: 3.2, haze: 0.4 }),
+  shot(41, 8, { roll: -4, exp: 2.7, haze: 0.4 }),
+  shot(44, 9, { roll: -5, exp: 2.3, haze: 0.4 }),
+  { t: 50, r: 5, el: 2.5, az: 182, lead: -15, aimY: 0.4, roll: -6, fov: 62, exp: 0.55, sparse: 1, haze: 1 },
   // The fall: rise a little, turn to the shadow and plunge.
-  { t: 55.5, r: 4, el: 12, az: 205, lead: 0, aimY: 0, roll: 2, fov: 64, exp: 1, sparse: 1 },
-  { t: 61.5, r: 1.9, el: 10, az: 222, lead: 0, aimY: 0, roll: 0, fov: 80, exp: 1, sparse: 1 },
-  { t: BLACK_FULL, r: 1.2, el: 10, az: 230, lead: 0, aimY: 0, roll: 0, fov: 85, exp: 1, sparse: 1 },
+  { t: 55.5, r: 4, el: 12, az: 205, lead: 0, aimY: 0, roll: 2, fov: 64, exp: 1, sparse: 1, haze: 1 },
+  { t: 61.5, r: 1.9, el: 10, az: 222, lead: 0, aimY: 0, roll: 0, fov: 80, exp: 1, sparse: 1, haze: 1 },
+  { t: BLACK_FULL, r: 1.2, el: 10, az: 230, lead: 0, aimY: 0, roll: 0, fov: 85, exp: 1, sparse: 1, haze: 1 },
 ];
 
 /**
@@ -129,6 +130,7 @@ export function introCamera(t, out, keys = CAMERA_KEYS) {
   out.fov = catmullRom(k0.fov, k1.fov, k2.fov, k3.fov, s);
   out.exposure = catmullRom(k0.exp, k1.exp, k2.exp, k3.exp, s);
   out.sparse = Math.min(1, Math.max(0, catmullRom(k0.sparse, k1.sparse, k2.sparse, k3.sparse, s)));
+  out.haze = Math.max(0, catmullRom(k0.haze, k1.haze, k2.haze, k3.haze, s));
   return out;
 }
 

@@ -134,6 +134,8 @@ export const marchShader = /* glsl */ `
   uniform int uSteps;
   // Radians per march pixel (for the detail fade).
   uniform float uPixelAngle;
+  // The camera key's haze share (per shot).
+  uniform float uHaze;
   // Accumulation: the last result and its weight (a film shutter's motion
   // blur, and the per-frame jitter averages out), and a frame counter.
   uniform sampler2D tPrev;
@@ -219,6 +221,15 @@ ${GAS_GLSL}
       if (inSlab) dt = min(dt, marchStep(rc));
       else if (rc < DISC_OUTER && p.y * v.y < 0.0 && abs(v.y) > 1e-4) dt = min(dt, max(marchStep(rc), 0.8 * above / abs(v.y)));
       if (i == 0) dt *= jitter;
+      // Haze: a thin glowing medium around the hole, lit by the disc, that
+      // every ray collects on its way (also the rays that end in the
+      // shadow): it lifts the dome from black to the film's blue-grey
+      // (shots 4–5), lighter near the arches.
+      // None inside the inner edge: the gap is clear, so the shadow keeps
+      // its dark core. uHaze: the camera key's share (per shot).
+      float rr = max(r, DISC_INNER);
+      float hazeIn = smoothstep(DISC_INNER * 0.8, DISC_INNER * 1.2, r);
+      light += T * HAZE * uHaze * hazeIn * HAZE_COL * exp(-abs(p.y) / HAZE_HEIGHT) * (DISC_INNER * DISC_INNER) / (rr * rr) * dt;
       if (inSlab) {
         gFootprint = max(dist, 1e-3) * uPixelAngle;
         vec3 g = gas(p);
@@ -344,8 +355,20 @@ ${CURVE_KNOTS.slice(1)
       }
       col = sum / wsum;
     }
-    // Veiling glow and bloom: wide, soft, over everything (the shadow too).
-    col += VEIL * textureLod(tMarch, vUv, 6.0).rgb;
+    // Veiling glow (the film's IMAX lens glow, from a measured lens PSF): a
+    // long-tailed point-spread r^-VEIL_BETA as a sum of the march's mips
+    // (mip k blurs ~2^k px; weights 2^{k(2 - β)}). VEIL is the share of the
+    // light it spreads, over everything (the shadow too: the dome turns from
+    // black to haze); VEIL_TINT can cool it toward the film's blue-grey dome.
+    vec3 veil = vec3(0.0);
+    float veilSum = 0.0;
+    for (int k = 1; k <= 8; k++) {
+      float w = pow(2.0, float(k) * (2.0 - VEIL_BETA));
+      veil += w * textureLod(tMarch, vUv, float(k)).rgb;
+      veilSum += w;
+    }
+    col = col * (1.0 - VEIL) + VEIL * VEIL_TINT * veil / veilSum;
+    // Bloom: tight, around the brightest light.
     col += BLOOM * (0.5 * textureLod(tMarch, vUv, 3.0).rgb + 0.35 * textureLod(tMarch, vUv, 4.0).rgb + 0.15 * textureLod(tMarch, vUv, 5.0).rgb);
     // Ghosts along the line through the centre, and the halo ring.
     vec2 toCentre = vec2(0.5) - vUv;
