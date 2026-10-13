@@ -21,6 +21,11 @@ export const MARCH_LOOK = {
   RAD_FREQ: 4,
   ANG_TILES: 7, // per turn: an integer, so the angle wraps without a seam
   VERT_FREQ: 0.3,
+  // Shutter (s): the motion blur's length. Longer than a film camera's 1/48 s:
+  // the film's ship moved much faster than this camera does. One random
+  // moment per pixel per frame, so a long shutter turns grainy (1–2 s is
+  // noisy at our frame rates); 0.25 s shows the blur with little grain.
+  SHUTTER_S: 0.25,
   // Domain warp (texture units): breaks the even rings into clumps.
   WARP: 1.1,
   // Flame tongues: how much of the ridged, orbit-stretched layer goes into
@@ -112,6 +117,7 @@ export const LOOK_LIMITS = {
   RAD_FREQ: [0.5, 12, 0.1],
   ANG_TILES: [1, 24, 1],
   VERT_FREQ: [0.05, 1.5, 0.01],
+  SHUTTER_S: [0, 3, 0.01],
   WARP: [0, 2, 0.01],
   FLAME: [0, 1, 0.01],
   FLAME_RAD: [0.5, 16, 0.1],

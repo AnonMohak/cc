@@ -55,6 +55,9 @@ ${LOOK}
   // Rs covered by one pixel at the point gas() is sampled (the march sets it;
   // 0 = full detail).
   float gFootprint = 0.0;
+  // The gas's time (the march moves it back inside the shutter; the light
+  // pass uses uTime).
+  float gTime = 0.0;
 
   // The gas at p: x = extinction (per Rs), y = hot-core light, z = dust 0–1.
   vec3 gas(vec3 p) {
@@ -65,7 +68,7 @@ ${LOOK}
     if (win <= 0.0 || abs(zn) > SLAB_K) return vec3(0.0);
     // Polar coordinates that turn with the gas (inner gas laps the outer, so
     // the clouds shear into streaks along the orbit).
-    float ang = atan(p.z, p.x) - angularSpeed(r) * uTime;
+    float ang = atan(p.z, p.x) - angularSpeed(r) * gTime;
     vec3 q = vec3(log(r) * RAD_FREQ, ang * (ANG_TILES / (2.0 * PI)), zn * VERT_FREQ);
     // Warp by the low-frequency channel (around the turn only by whole tiles: no seam).
     vec2 wq = texture(uNoise, q * vec3(0.5, 1.0, 0.5) + vec3(0.13, 0.0, 0.29)).rg - 0.5;
@@ -131,6 +134,10 @@ export const marchShader = /* glsl */ `
   uniform vec3 uCamPos;
   uniform mat3 uCamBasis; // camera to world: right, up, back
   uniform vec2 uTanHalfFov;
+  // The camera at the start of the shutter (SHUTTER_S earlier).
+  uniform vec3 uCamPos1;
+  uniform mat3 uCamBasis1;
+  uniform vec2 uTanHalfFov1;
   uniform int uSteps;
   // Radians per march pixel (for the detail fade).
   uniform float uPixelAngle;
@@ -192,8 +199,18 @@ ${GAS_GLSL}
   }
 
   void main() {
-    vec3 v = normalize(uCamBasis * vec3((vUv * 2.0 - 1.0) * uTanHalfFov, -1.0));
-    vec3 p = uCamPos;
+    // Shutter motion blur: each pixel takes its own moment inside the
+    // shutter every frame (the accumulation averages them), with the camera
+    // and the disc's time at that moment. Its length is SHUTTER_S, not the
+    // frame rate.
+    float sh = hash12(gl_FragCoord.xy * 1.37 + vec2(uFrame * 3.71, uFrame * 9.13));
+    mat3 basis = mat3(
+      normalize(mix(uCamBasis[0], uCamBasis1[0], sh)),
+      normalize(mix(uCamBasis[1], uCamBasis1[1], sh)),
+      normalize(mix(uCamBasis[2], uCamBasis1[2], sh)));
+    vec3 v = normalize(basis * vec3((vUv * 2.0 - 1.0) * mix(uTanHalfFov, uTanHalfFov1, sh), -1.0));
+    vec3 p = mix(uCamPos, uCamPos1, sh);
+    gTime = uTime - sh * SHUTTER_S;
     vec3 cr = cross(p, v);
     float h2 = dot(cr, cr);
     vec3 acc = accel(p, h2);
@@ -277,6 +294,7 @@ ${GAS_GLSL}
   void main() {
     // The light texture is coarse: no close-up detail here (it is costly).
     gFootprint = 1e3;
+    gTime = uTime;
     float theta = vUv.x * 2.0 * PI;
     float lr0 = log(DISC_INNER);
     float lr1 = log(DISC_INNER) + vUv.y * log(DISC_OUTER / DISC_INNER);

@@ -16,6 +16,22 @@ const _forward = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _size = new THREE.Vector2();
 
+/** Put a camera at a pose (position, aim, roll in radians, fov in degrees). */
+function placeCamera(cam, pose) {
+  cam.position.fromArray(pose.position);
+  _target.fromArray(pose.target);
+  // Roll: tilt the up vector about the view direction.
+  _forward.subVectors(_target, cam.position).normalize();
+  _right.crossVectors(_forward, THREE.Object3D.DEFAULT_UP).normalize();
+  cam.up.copy(THREE.Object3D.DEFAULT_UP).multiplyScalar(Math.cos(pose.roll)).addScaledVector(_right, Math.sin(pose.roll));
+  cam.lookAt(_target);
+  if (cam.fov !== pose.fov) {
+    cam.fov = pose.fov;
+    cam.updateProjectionMatrix();
+  }
+  cam.updateMatrixWorld();
+}
+
 /** Ray-march resolution as a share of the drawing buffer. */
 const MARCH_SCALE = 0.5;
 /** Steps per ray (≤ gargantuaShader.js MAX_STEPS). */
@@ -41,6 +57,8 @@ export class IntroCinematic {
   /** @param {{ aspect: number }} options */
   constructor({ aspect }) {
     this.camera = new THREE.PerspectiveCamera(60, aspect, 0.01, 1000);
+    // The camera at the start of the shutter (motion blur).
+    this.shutterCamera = new THREE.PerspectiveCamera(60, aspect, 0.01, 1000);
     /** For tuning: a fixed pose ({ position, target, roll, fov }) instead of the timeline. */
     this.override = null;
     /** For tuning: a fixed time (s) instead of the clock. */
@@ -99,6 +117,9 @@ export class IntroCinematic {
         ...camUniforms,
         ...gasUniforms,
         uSteps: { value: MARCH_STEPS },
+        uCamPos1: { value: new THREE.Vector3() },
+        uCamBasis1: { value: new THREE.Matrix3() },
+        uTanHalfFov1: { value: new THREE.Vector2(1, 1) },
         uPixelAngle: { value: 0.003 },
         uHaze: { value: 1 },
         tPrev: { value: null },
@@ -180,8 +201,10 @@ export class IntroCinematic {
   }
 
   setSize(width, height) {
-    this.camera.aspect = width / Math.max(height, 1);
-    this.camera.updateProjectionMatrix();
+    for (const cam of [this.camera, this.shutterCamera]) {
+      cam.aspect = width / Math.max(height, 1);
+      cam.updateProjectionMatrix();
+    }
   }
 
   /** Place the camera for t seconds since the start-box click. */
@@ -189,22 +212,13 @@ export class IntroCinematic {
     const t = this.fixedTime ?? clock;
     this.time = t;
     const pose = this.override ?? introCamera(t, _pose);
-    const cam = this.camera;
-    cam.position.fromArray(pose.position);
-    _target.fromArray(pose.target);
-    // Roll: tilt the up vector about the view direction.
-    _forward.subVectors(_target, cam.position).normalize();
-    _right.crossVectors(_forward, THREE.Object3D.DEFAULT_UP).normalize();
-    cam.up.copy(THREE.Object3D.DEFAULT_UP).multiplyScalar(Math.cos(pose.roll)).addScaledVector(_right, Math.sin(pose.roll));
-    cam.lookAt(_target);
+    placeCamera(this.camera, pose);
     this.exposure = pose.exposure ?? 1;
     this.sparse = pose.sparse ?? 1;
     this.haze = pose.haze ?? 1;
-    if (cam.fov !== pose.fov) {
-      cam.fov = pose.fov;
-      cam.updateProjectionMatrix();
-    }
-    cam.updateMatrixWorld();
+    // The shutter's start: the same path SHUTTER_S earlier (a fixed pose: none).
+    const shutter = this.march.uniforms.SHUTTER_S.value;
+    placeCamera(this.shutterCamera, this.override ?? introCamera(t - shutter, _pose));
   }
 
   /** @param {THREE.WebGLRenderer} renderer */
@@ -232,6 +246,11 @@ export class IntroCinematic {
     u.uCamBasis.value.setFromMatrix4(cam.matrixWorld);
     const tanY = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     u.uTanHalfFov.value.set(tanY * cam.aspect, tanY);
+    const cam1 = this.shutterCamera;
+    u.uCamPos1.value.copy(cam1.position);
+    u.uCamBasis1.value.setFromMatrix4(cam1.matrixWorld);
+    const tanY1 = Math.tan(THREE.MathUtils.degToRad(cam1.fov / 2));
+    u.uTanHalfFov1.value.set(tanY1 * cam1.aspect, tanY1);
     u.uPixelAngle.value = (2 * tanY) / h;
     u.uTime.value = this.time;
     u.tPrev.value = read.texture;
