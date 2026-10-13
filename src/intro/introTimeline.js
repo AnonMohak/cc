@@ -31,7 +31,7 @@ export const MUSIC_RISE_SECONDS = 5;
  * hole: the film tuned its atmosphere per shot).
  */
 // A key at a reference shot: the pose solved from the still (shotSolve.js).
-const shot = (t, n, { roll = 0, exp = 1, sparse = 0, haze = 1, sat = 1 } = {}) => ({ t, ...shotPose(n), roll, exp, sparse, haze, sat });
+const shot = (t, n, { roll = 0, exp = 1, sparse = 0, haze = 1, sat = 1, ghost = 0 } = {}) => ({ t, ...shotPose(n), roll, exp, sparse, haze, sat, ghost });
 
 export const CAMERA_KEYS = [
   // Shots 1–4: in the disc plane inside the clear gap near the hole (the
@@ -56,9 +56,9 @@ export const CAMERA_KEYS = [
   // fits a half-hidden shadow, so these keys come from an image search:
   // small offline renders scored against the clip frames (correlation of
   // log brightness), with the camera kept above the cloud slab.
-  { t: 37.5, r: 5.4, el: 5, az: 90, lead: -45.5, aimY: 0.3, roll: -5.4, fov: 61, exp: 3.94, sparse: 0, haze: 0.1, sat: 1.9 },
-  { t: 41, r: 6, el: 5, az: 115, lead: -54.5, aimY: 0.6, roll: -4.5, fov: 61, exp: 2.43, sparse: 0, haze: 0.1, sat: 1.6 },
-  { t: 44, r: 6.3, el: 6.2, az: 140, lead: -56, aimY: 0.7, roll: -5.3, fov: 60.6, exp: 1.65, sparse: 0, haze: 0.1, sat: 1.7 },
+  { t: 37.5, r: 5.4, el: 5, az: 90, lead: -45.5, aimY: 0.3, roll: -5.4, fov: 61, exp: 3.94, sparse: 0, haze: 0.1, sat: 1.9, ghost: 1 },
+  { t: 41, r: 6, el: 5, az: 115, lead: -54.5, aimY: 0.6, roll: -4.5, fov: 61, exp: 2.43, sparse: 0, haze: 0.1, sat: 1.6, ghost: 1 },
+  { t: 44, r: 6.3, el: 6.2, az: 140, lead: -56, aimY: 0.7, roll: -5.3, fov: 60.6, exp: 1.65, sparse: 0, haze: 0.1, sat: 1.7, ghost: 1 },
   // Shot 10: skimming the cloud tops toward the shadow (top left).
   { t: 50, r: 5.2, el: 5, az: 182, lead: -41.6, aimY: 0.35, roll: -5.8, fov: 71.6, exp: 0.74, sparse: 0, haze: 1, sat: 0.8 },
   // The fall: rise a little, turn to the shadow and plunge.
@@ -145,6 +145,7 @@ export function introCamera(t, out, keys = CAMERA_KEYS) {
   out.sparse = Math.min(1, Math.max(0, catmullRom(k0.sparse, k1.sparse, k2.sparse, k3.sparse, s)));
   out.haze = Math.max(0, catmullRom(k0.haze, k1.haze, k2.haze, k3.haze, s));
   out.sat = Math.max(0, catmullRom(k0.sat ?? 1, k1.sat ?? 1, k2.sat ?? 1, k3.sat ?? 1, s));
+  out.ghost = Math.min(1, Math.max(0, catmullRom(k0.ghost ?? 0, k1.ghost ?? 0, k2.ghost ?? 0, k3.ghost ?? 0, s)));
   return out;
 }
 

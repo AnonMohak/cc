@@ -72,6 +72,7 @@ export class IntroCinematic {
     this.sparse = 1;
     this.haze = 1;
     this.sat = 1;
+    this.ghost = 0;
     this.boost = [0, 0, 0];
     /** For the offline render script: skip live frames (renderStill draws instead). */
     this.holdLive = false;
@@ -165,6 +166,7 @@ export class IntroCinematic {
         uResolution: { value: new THREE.Vector2(1, 1) },
         uExposure: { value: 1 },
         uSat: { value: 1 },
+        uGhost: { value: 0 },
         uFocus: { value: 10 },
         uTime: { value: 0 },
         tFlareSource: { value: this.flareTarget.texture },
@@ -263,6 +265,7 @@ export class IntroCinematic {
     this.sparse = pose.sparse ?? 1;
     this.haze = pose.haze ?? 1;
     this.sat = pose.sat ?? 1;
+    this.ghost = pose.ghost ?? 0;
     // The fall's speed for the aberration (a fixed pose: at rest).
     if (this.override) this.boost[0] = this.boost[1] = this.boost[2] = 0;
     else fallBoost(t, this.boost);
@@ -297,6 +300,7 @@ export class IntroCinematic {
     const c = this.composite.uniforms;
     c.uExposure.value = this.exposure;
     c.uSat.value = this.sat;
+    c.uGhost.value = this.ghost;
     c.uResolution.value.set(outW, outH);
     // In focus: the hole (its distance from the camera, in Rs).
     c.uFocus.value = cam.position.length();

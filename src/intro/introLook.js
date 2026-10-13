@@ -99,9 +99,9 @@ export const COMPOSITE_LOOK = {
   // from the centre, mirrored). And halation: film's red glow around
   // bright edges.
   GHOST_RING: 0.6,
-  GHOST_R: 0.12,
+  GHOST_R: 0.14,
   GHOST_W: 0.012,
-  GHOST_POS: 1.6,
+  GHOST_POS: 2.4,
   HALATION: 0.06,
   // Grade.
   SHADOW_TINT: [0, 0, 0],

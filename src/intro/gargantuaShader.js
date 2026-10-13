@@ -501,6 +501,8 @@ export const compositeShader = /* glsl */ `
   uniform float uExposure;
   // The camera key's saturation (× SATURATION: the film graded each scene).
   uniform float uSat;
+  // The camera key's lens-ghost share (the film shows it in shots 7–9 only).
+  uniform float uGhost;
   uniform float uFocus; // Rs: the depth in focus
   uniform float uTime;
   // The flare source (flareSourceShader): weighted centre (uv) and strength.
@@ -600,7 +602,7 @@ ${CURVE_KNOTS.slice(1)
       // A lens ghost needs the light off the axis: none for light around the
       // centre (shot 3's symmetric lobes), full past ~0.3 of the frame out.
       float offAxis = smoothstep(0.12, 0.3, length((src.xy - 0.5) * vec2(uResolution.x / uResolution.y, 1.0)));
-      col += GHOST_RING * offAxis * min(src.z, 4.0) * (ring * vec3(1.0, 0.55, 0.85) + 0.25 * inside);
+      col += GHOST_RING * uGhost * offAxis * min(src.z, 4.0) * (ring * vec3(1.0, 0.55, 0.85) + 0.25 * inside);
     }
     // Halation: film's red glow around bright edges (light scattered back
     // through the emulsion from the film base).
