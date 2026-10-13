@@ -139,11 +139,11 @@ export const marchShader = /* glsl */ `
   // The camera's velocity (share of c) relative to an observer at rest there
   // (the fall: introTimeline.js fallBoost).
   uniform vec3 uBoost;
-  // Accumulation: the last result and its weight (a film shutter's motion
-  // blur, and the per-frame jitter averages out), and a frame counter.
-  uniform sampler2D tPrev;
-  uniform float uHistory;
+  // A frame counter; the march's full size (px) and this frame's parity:
+  // each frame traces every other pixel of each row (resolveShader).
   uniform float uFrame;
+  uniform vec2 uFullSize;
+  uniform float uParity;
   // Light reaching the smoke from the hot inner disc (the light pass).
   uniform sampler2D uLight;
   varying vec2 vUv;
@@ -209,16 +209,23 @@ ${GAS_GLSL}
   }
 
   void main() {
+    // Interleaved: this frame traces the pixels of parity uParity (a
+    // checkerboard), packed two to a texel column in a half-width target;
+    // the resolve pass puts them in place. (Skipping pixels inside one pass
+    // saves nothing: GPU lanes run the loop together.)
+    vec2 cell = floor(gl_FragCoord.xy);
+    vec2 fc = vec2(2.0 * cell.x + mod(cell.y + uParity, 2.0), cell.y) + 0.5;
+    vec2 uv = fc / uFullSize;
     // Shutter motion blur: each pixel takes its own moment inside the
     // shutter every frame (the accumulation averages them), with the camera
     // and the disc's time at that moment. Its length is SHUTTER_S, not the
     // frame rate.
-    float sh = hash12(gl_FragCoord.xy * 1.37 + vec2(uFrame * 3.71, uFrame * 9.13));
+    float sh = hash12(fc * 1.37 + vec2(uFrame * 3.71, uFrame * 9.13));
     mat3 basis = mat3(
       normalize(mix(uCamBasis[0], uCamBasis1[0], sh)),
       normalize(mix(uCamBasis[1], uCamBasis1[1], sh)),
       normalize(mix(uCamBasis[2], uCamBasis1[2], sh)));
-    vec3 v = normalize(basis * vec3((vUv * 2.0 - 1.0) * mix(uTanHalfFov, uTanHalfFov1, sh), -1.0));
+    vec3 v = normalize(basis * vec3((uv * 2.0 - 1.0) * mix(uTanHalfFov, uTanHalfFov1, sh), -1.0));
     vec3 p = mix(uCamPos, uCamPos1, sh);
     gTime = uTime - sh * SHUTTER_S;
     // Aberration (gargantuaModel.js aberrate): the moving camera's view
@@ -260,7 +267,7 @@ ${GAS_GLSL}
     float T = 1.0;
     bool captured = false;
     // A new offset of the first step every frame; the accumulation averages it.
-    float jitter = hash12(gl_FragCoord.xy + vec2(uFrame * 13.17, uFrame * 7.73));
+    float jitter = hash12(fc + vec2(uFrame * 13.17, uFrame * 7.73));
     // Depth for the depth of field: the path length where the gas becomes
     // half opaque (far when it never does).
     float dist = 0.0;
@@ -362,13 +369,36 @@ ${GAS_GLSL}
     if (!captured) light += T * stars(normalize(v));
     if (depth < 0.0) depth = FAR_DEPTH;
     vec4 cur = vec4(light, depth);
-    gl_FragColor = mix(cur, texture2D(tPrev, vUv), uHistory);
+    gl_FragColor = cur;
+  }
+`;
+
+/**
+ * The resolve (full march resolution): this frame's traced pixels (packed,
+ * half width) into place, each mixed with its last value (accumulation: a
+ * film shutter's blur, and the per-frame jitter averages out); the other
+ * half keep theirs. On a fresh start they borrow their traced neighbour.
+ */
+export const resolveShader = /* glsl */ `
+  uniform sampler2D tTraced;
+  uniform sampler2D tPrev;
+  uniform float uHistory;
+  uniform float uParity;
+  void main() {
+    ivec2 c = ivec2(gl_FragCoord.xy);
+    vec4 traced = texelFetch(tTraced, ivec2(c.x / 2, c.y), 0);
+    bool mine = (c.x - 2 * (c.x / 2)) == int(mod(float(c.y) + uParity, 2.0));
+    if (uHistory <= 0.0) gl_FragColor = traced;
+    else {
+      vec4 prev = texelFetch(tPrev, c, 0);
+      gl_FragColor = mine ? mix(traced, prev, uHistory) : prev;
+    }
   }
 `;
 
 /** Light texture size (angle × log radius) and radial steps per texel. */
 export const LIGHT_SIZE = [256, 96];
-const LIGHT_STEPS = 48;
+const LIGHT_STEPS = 32;
 
 /**
  * The light pass (once per frame): for each angle and radius over the disc,

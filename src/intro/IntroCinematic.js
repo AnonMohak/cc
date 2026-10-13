@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { introCamera, fallBoost } from './introTimeline.js';
 import { bakeNoise3d, NOISE3D_SIZE } from './noise3d.js';
-import { marchShader, compositeShader, lightShader, flareSourceShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
+import { marchShader, resolveShader, compositeShader, lightShader, flareSourceShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
 import { MARCH_LOOK, COMPOSITE_LOOK } from './introLook.js';
 
 /** Uniform objects for a look: numbers, or THREE.Vector3 for colours. */
@@ -41,6 +41,8 @@ const MARCH_STEPS = 500;
  * last. About a 180° film shutter's blur, and it averages the step jitter.
  */
 const SHUTTER = 0.06;
+/** The light pass runs every this many frames. */
+const LIGHT_EVERY = 2;
 
 /**
  * The intro cinematic: the animation black hole (Gargantua), its own camera
@@ -92,6 +94,7 @@ export class IntroCinematic {
     this.targets = [new THREE.WebGLRenderTarget(1, 1, targetOptions), new THREE.WebGLRenderTarget(1, 1, targetOptions)];
     this.frame = 0;
     this.lastRender = null;
+    this.lightTime = null;
     // The gas uniforms, shared by the march and the light pass (by reference).
     const gasUniforms = {
       uNoise: { value: this.noise },
@@ -124,9 +127,9 @@ export class IntroCinematic {
         uPixelAngle: { value: 0.003 },
         uHaze: { value: 1 },
         uBoost: { value: new THREE.Vector3() },
-        tPrev: { value: null },
-        uHistory: { value: 0 },
         uFrame: { value: 0 },
+        uFullSize: { value: new THREE.Vector2(1, 1) },
+        uParity: { value: 0 },
         uLight: { value: this.lightTarget.texture },
       },
       vertexShader: QUAD_VERTEX,
@@ -164,6 +167,23 @@ export class IntroCinematic {
       depthWrite: false,
     });
     this.marchQuad = new FullScreenQuad(this.march);
+    // Interleaved march: half the pixels per frame into a packed half-width
+    // target, then the resolve into the accumulation (about half the cost).
+    this.tracedTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+    this.resolve = new THREE.ShaderMaterial({
+      name: 'IntroResolve',
+      uniforms: {
+        tTraced: { value: this.tracedTarget.texture },
+        tPrev: { value: null },
+        uHistory: { value: 0 },
+        uParity: { value: 0 },
+      },
+      vertexShader: QUAD_VERTEX,
+      fragmentShader: resolveShader,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.resolveQuad = new FullScreenQuad(this.resolve);
     this.compositeQuad = new FullScreenQuad(this.composite);
   }
 
@@ -272,9 +292,16 @@ export class IntroCinematic {
     u.uTanHalfFov1.value.set(tanY1 * cam1.aspect, tanY1);
     u.uPixelAngle.value = (2 * tanY) / h;
     u.uTime.value = this.time;
-    u.tPrev.value = read.texture;
-    u.uHistory.value = fresh ? 0 : Math.exp(-dt / SHUTTER);
     u.uFrame.value = this.frame % 1024;
+    u.uFullSize.value.set(w, h);
+    u.uParity.value = this.frame % 2;
+    const rs = this.resolve.uniforms;
+    rs.tPrev.value = read.texture;
+    // A traced pixel's last value is two frames old.
+    rs.uHistory.value = fresh ? 0 : Math.exp((-2 * dt) / SHUTTER);
+    rs.uParity.value = this.frame % 2;
+    const tracedWidth = Math.ceil(w / 2);
+    if (this.tracedTarget.width !== tracedWidth || this.tracedTarget.height !== h) this.tracedTarget.setSize(tracedWidth, h);
     u.uSparse.value = this.sparse;
     u.uHaze.value = this.haze;
     u.uBoost.value.fromArray(this.boost);
@@ -286,10 +313,19 @@ export class IntroCinematic {
     c.uFocus.value = cam.position.length();
     c.uTime.value = this.time;
 
-    renderer.setRenderTarget(this.lightTarget);
-    this.lightQuad.render(renderer);
-    renderer.setRenderTarget(write);
+    // The light over the disc changes slowly (the gas turns ~0.35 rad/s at
+    // the inner edge): refresh it every LIGHT_EVERY frames, at once after a
+    // jump in time. It was the largest single cost (~12 ms on a UHD 630).
+    const jump = this.lightTime === null || Math.abs(this.time - this.lightTime) > 0.5;
+    if (fresh || jump || this.frame % LIGHT_EVERY === 0) {
+      renderer.setRenderTarget(this.lightTarget);
+      this.lightQuad.render(renderer);
+      this.lightTime = this.time;
+    }
+    renderer.setRenderTarget(this.tracedTarget);
     this.marchQuad.render(renderer);
+    renderer.setRenderTarget(write);
+    this.resolveQuad.render(renderer);
     this.flareSource.uniforms.tMarch.value = write.texture;
     renderer.setRenderTarget(this.flareTarget);
     this.flareQuad.render(renderer);
@@ -312,6 +348,9 @@ export class IntroCinematic {
     this.march.dispose();
     this.composite.dispose();
     this.marchQuad.dispose();
+    this.tracedTarget.dispose();
+    this.resolve.dispose();
+    this.resolveQuad.dispose();
     this.compositeQuad.dispose();
   }
 }
