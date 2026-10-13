@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { introCamera, fallBoost } from './introTimeline.js';
 import { bakeNoise3d, NOISE3D_SIZE } from './noise3d.js';
-import { marchShader, resolveShader, compositeShader, lightShader, flareSourceShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
+import { MAX_STEPS, marchShader, resolveShader, compositeShader, lightShader, flareSourceShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
 import { MARCH_LOOK, COMPOSITE_LOOK } from './introLook.js';
 
 /** Uniform objects for a look: numbers, or THREE.Vector3 for colours. */
@@ -70,6 +70,9 @@ export class IntroCinematic {
     this.sparse = 1;
     this.haze = 1;
     this.boost = [0, 0, 0];
+    /** For the offline render script: skip live frames (renderStill draws instead). */
+    this.holdLive = false;
+    this.outTarget = null;
 
     // The noise bakes in a worker (main-thread fallback); until it arrives
     // the cinematic is not ready (the start box keeps saying Loading).
@@ -130,6 +133,8 @@ export class IntroCinematic {
         uFrame: { value: 0 },
         uFullSize: { value: new THREE.Vector2(1, 1) },
         uParity: { value: 0 },
+        uInterleave: { value: 1 },
+        uShutterSample: { value: new THREE.Vector2(0, 0) },
         uLight: { value: this.lightTarget.texture },
       },
       vertexShader: QUAD_VERTEX,
@@ -177,6 +182,7 @@ export class IntroCinematic {
         tPrev: { value: null },
         uHistory: { value: 0 },
         uParity: { value: 0 },
+        uInterleave: { value: 1 },
       },
       vertexShader: QUAD_VERTEX,
       fragmentShader: resolveShader,
@@ -261,7 +267,38 @@ export class IntroCinematic {
   }
 
   /** @param {THREE.WebGLRenderer} renderer */
+  /**
+   * The march and composite uniforms shared by live and offline frames: the
+   * cameras, the shot's values, the march size (w × h) and the output size.
+   */
+  setFrameUniforms(w, h, outW, outH) {
+    const u = this.march.uniforms;
+    const cam = this.camera;
+    u.uCamPos.value.copy(cam.position);
+    u.uCamBasis.value.setFromMatrix4(cam.matrixWorld);
+    const tanY = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+    u.uTanHalfFov.value.set(tanY * cam.aspect, tanY);
+    const cam1 = this.shutterCamera;
+    u.uCamPos1.value.copy(cam1.position);
+    u.uCamBasis1.value.setFromMatrix4(cam1.matrixWorld);
+    const tanY1 = Math.tan(THREE.MathUtils.degToRad(cam1.fov / 2));
+    u.uTanHalfFov1.value.set(tanY1 * cam1.aspect, tanY1);
+    u.uPixelAngle.value = (2 * tanY) / h;
+    u.uTime.value = this.time;
+    u.uFullSize.value.set(w, h);
+    u.uSparse.value = this.sparse;
+    u.uHaze.value = this.haze;
+    u.uBoost.value.fromArray(this.boost);
+    const c = this.composite.uniforms;
+    c.uExposure.value = this.exposure;
+    c.uResolution.value.set(outW, outH);
+    // In focus: the hole (its distance from the camera, in Rs).
+    c.uFocus.value = cam.position.length();
+    c.uTime.value = this.time;
+  }
+
   render(renderer) {
+    if (this.holdLive) return;
     renderer.getDrawingBufferSize(_size);
     const w = Math.max(1, Math.round(_size.x * MARCH_SCALE));
     const h = Math.max(1, Math.round(_size.y * MARCH_SCALE));
@@ -279,21 +316,9 @@ export class IntroCinematic {
     const [read, write] = this.frame % 2 === 0 ? this.targets : [this.targets[1], this.targets[0]];
     this.frame++;
 
+    this.setFrameUniforms(w, h, _size.x, _size.y);
     const u = this.march.uniforms;
-    const cam = this.camera;
-    u.uCamPos.value.copy(cam.position);
-    u.uCamBasis.value.setFromMatrix4(cam.matrixWorld);
-    const tanY = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
-    u.uTanHalfFov.value.set(tanY * cam.aspect, tanY);
-    const cam1 = this.shutterCamera;
-    u.uCamPos1.value.copy(cam1.position);
-    u.uCamBasis1.value.setFromMatrix4(cam1.matrixWorld);
-    const tanY1 = Math.tan(THREE.MathUtils.degToRad(cam1.fov / 2));
-    u.uTanHalfFov1.value.set(tanY1 * cam1.aspect, tanY1);
-    u.uPixelAngle.value = (2 * tanY) / h;
-    u.uTime.value = this.time;
     u.uFrame.value = this.frame % 1024;
-    u.uFullSize.value.set(w, h);
     u.uParity.value = this.frame % 2;
     const rs = this.resolve.uniforms;
     rs.tPrev.value = read.texture;
@@ -302,16 +327,7 @@ export class IntroCinematic {
     rs.uParity.value = this.frame % 2;
     const tracedWidth = Math.ceil(w / 2);
     if (this.tracedTarget.width !== tracedWidth || this.tracedTarget.height !== h) this.tracedTarget.setSize(tracedWidth, h);
-    u.uSparse.value = this.sparse;
-    u.uHaze.value = this.haze;
-    u.uBoost.value.fromArray(this.boost);
-    const c = this.composite.uniforms;
-    c.tMarch.value = write.texture;
-    c.uExposure.value = this.exposure;
-    c.uResolution.value.copy(_size);
-    // In focus: the hole (its distance from the camera, in Rs).
-    c.uFocus.value = cam.position.length();
-    c.uTime.value = this.time;
+    this.composite.uniforms.tMarch.value = write.texture;
 
     // The light over the disc changes slowly (the gas turns ~0.35 rad/s at
     // the inner edge): refresh it every LIGHT_EVERY frames, at once after a
@@ -333,7 +349,80 @@ export class IntroCinematic {
     this.compositeQuad.render(renderer);
   }
 
+  /**
+   * Offline (the pre-rendered video): one finished frame at t seconds. Every
+   * pixel is traced (no interleave) at width × height with `steps` steps,
+   * `samples` times at stratified moments of the shutter, and the samples
+   * are averaged exactly: clean motion blur, no grain from the shutter. The
+   * march draws in tiles so no single GPU draw runs long (Windows resets a
+   * driver after ~2 s). Live frames start fresh afterwards.
+   * @param {THREE.WebGLRenderer} renderer
+   * @param {number} t seconds
+   * @returns {Uint8Array} RGBA, rows bottom to top
+   */
+  renderStill(renderer, t, { width = 1920, height = 1080, samples = 16, steps = 1500, tile = 256 } = {}) {
+    const fixed = this.fixedTime;
+    const aspect = this.camera.aspect;
+    this.fixedTime = null;
+    for (const cam of [this.camera, this.shutterCamera]) cam.aspect = width / height;
+    this.update(t);
+    for (const target of [...this.targets, this.tracedTarget]) target.setSize(width, height);
+    if (!this.outTarget) this.outTarget = new THREE.WebGLRenderTarget(width, height, { depthBuffer: false });
+    this.outTarget.setSize(width, height);
+
+    this.setFrameUniforms(width, height, width, height);
+    const u = this.march.uniforms;
+    const rs = this.resolve.uniforms;
+    u.uSteps.value = Math.min(steps, MAX_STEPS);
+    u.uInterleave.value = 0;
+    rs.uInterleave.value = 0;
+    renderer.setRenderTarget(this.lightTarget);
+    this.lightQuad.render(renderer);
+    let [read, write] = this.targets;
+    const traced = this.tracedTarget;
+    for (let s = 0; s < samples; s++) {
+      u.uFrame.value = s;
+      u.uShutterSample.value.set(s, samples);
+      traced.scissorTest = true;
+      for (let y = 0; y < height; y += tile) {
+        for (let x = 0; x < width; x += tile) {
+          traced.scissor.set(x, y, Math.min(tile, width - x), Math.min(tile, height - y));
+          renderer.setRenderTarget(traced);
+          this.marchQuad.render(renderer);
+        }
+      }
+      traced.scissorTest = false;
+      // A running mean: sample s weighs 1 / (s + 1).
+      rs.tPrev.value = read.texture;
+      rs.uHistory.value = s / (s + 1);
+      renderer.setRenderTarget(write);
+      this.resolveQuad.render(renderer);
+      [read, write] = [write, read];
+    }
+    this.flareSource.uniforms.tMarch.value = read.texture;
+    renderer.setRenderTarget(this.flareTarget);
+    this.flareQuad.render(renderer);
+    this.composite.uniforms.tMarch.value = read.texture;
+    renderer.setRenderTarget(this.outTarget);
+    this.compositeQuad.render(renderer);
+    const pixels = new Uint8Array(width * height * 4);
+    renderer.readRenderTargetPixels(this.outTarget, 0, 0, width, height, pixels);
+    renderer.setRenderTarget(null);
+
+    // Back to live frames.
+    u.uSteps.value = MARCH_STEPS;
+    u.uInterleave.value = 1;
+    rs.uInterleave.value = 1;
+    u.uShutterSample.value.set(0, 0);
+    for (const cam of [this.camera, this.shutterCamera]) cam.aspect = aspect;
+    this.fixedTime = fixed;
+    this.frame = 0;
+    this.lightTime = null;
+    return pixels;
+  }
+
   dispose() {
+    this.outTarget?.dispose();
     this.flareTarget.dispose();
     this.flareSource.dispose();
     this.flareQuad.dispose();

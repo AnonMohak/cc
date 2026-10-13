@@ -12,7 +12,7 @@ export const QUAD_VERTEX = /* glsl */ `
 `;
 
 /** Max steps per ray (uSteps ≤ this). */
-export const MAX_STEPS = 600;
+export const MAX_STEPS = 2000;
 
 // The look constants are uniforms (introLook.js), so the ?tune view changes them live.
 const LOOK = lookDeclarations(MARCH_LOOK);
@@ -144,6 +144,11 @@ export const marchShader = /* glsl */ `
   uniform float uFrame;
   uniform vec2 uFullSize;
   uniform float uParity;
+  // 1: interleaved (live); 0: every pixel (offline, IntroCinematic.renderStill).
+  uniform float uInterleave;
+  // Offline: this sample's index and the sample count; the shutter is split
+  // into that many strata (count 0: one random moment per pixel, live).
+  uniform vec2 uShutterSample;
   // Light reaching the smoke from the hot inner disc (the light pass).
   uniform sampler2D uLight;
   varying vec2 vUv;
@@ -214,13 +219,14 @@ ${GAS_GLSL}
     // the resolve pass puts them in place. (Skipping pixels inside one pass
     // saves nothing: GPU lanes run the loop together.)
     vec2 cell = floor(gl_FragCoord.xy);
-    vec2 fc = vec2(2.0 * cell.x + mod(cell.y + uParity, 2.0), cell.y) + 0.5;
+    vec2 fc = uInterleave > 0.5 ? vec2(2.0 * cell.x + mod(cell.y + uParity, 2.0), cell.y) + 0.5 : gl_FragCoord.xy;
     vec2 uv = fc / uFullSize;
     // Shutter motion blur: each pixel takes its own moment inside the
     // shutter every frame (the accumulation averages them), with the camera
     // and the disc's time at that moment. Its length is SHUTTER_S, not the
     // frame rate.
     float sh = hash12(fc * 1.37 + vec2(uFrame * 3.71, uFrame * 9.13));
+    if (uShutterSample.y > 0.0) sh = (uShutterSample.x + sh) / uShutterSample.y;
     mat3 basis = mat3(
       normalize(mix(uCamBasis[0], uCamBasis1[0], sh)),
       normalize(mix(uCamBasis[1], uCamBasis1[1], sh)),
@@ -384,10 +390,12 @@ export const resolveShader = /* glsl */ `
   uniform sampler2D tPrev;
   uniform float uHistory;
   uniform float uParity;
+  uniform float uInterleave;
   void main() {
     ivec2 c = ivec2(gl_FragCoord.xy);
-    vec4 traced = texelFetch(tTraced, ivec2(c.x / 2, c.y), 0);
-    bool mine = (c.x - 2 * (c.x / 2)) == int(mod(float(c.y) + uParity, 2.0));
+    bool split = uInterleave > 0.5;
+    vec4 traced = texelFetch(tTraced, split ? ivec2(c.x / 2, c.y) : c, 0);
+    bool mine = !split || (c.x - 2 * (c.x / 2)) == int(mod(float(c.y) + uParity, 2.0));
     if (uHistory <= 0.0) gl_FragColor = traced;
     else {
       vec4 prev = texelFetch(tPrev, c, 0);

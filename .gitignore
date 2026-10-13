@@ -4,3 +4,6 @@ dist
 
 # Reference frames from video clips (never committed)
 images/
+
+# Offline intro renders (scripts/render-intro.mjs)
+renders/

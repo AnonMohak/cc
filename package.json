@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "render:intro": "node scripts/render-intro.mjs"
   },
   "dependencies": {
     "lil-gui": "^0.21.0",
