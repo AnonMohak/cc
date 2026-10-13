@@ -38,9 +38,8 @@ export const MARCH_LOOK = {
   // Close-up detail: the weight of a finer octave (faded with distance).
   // 0 skips it: at the half-resolution march it does not show (gargantuaShader.js).
   DETAIL: 0,
-  // The thin bright midplane sheet: Gaussian half-thickness (Rs), optical
-  // depth across it, its glow (× EMIT) and how fast that falls off with r.
-  SHEET_H: 0.015,
+  // The thin bright midplane sheet (added where a ray crosses the plane):
+  // optical depth across it, its glow (× EMIT) and how fast that falls off.
   SHEET_TAU: 1.5,
   SHEET_GLOW: 1.5,
   SHEET_POWER: 1.2,
@@ -124,7 +123,6 @@ export const LOOK_LIMITS = {
   FLAME_ANG: [1, 8, 1],
   WISP: [0, 1, 0.01],
   DETAIL: [0, 1, 0.01],
-  SHEET_H: [0.002, 0.2, 0.001],
   SHEET_TAU: [0, 10, 0.05],
   SHEET_GLOW: [0, 6, 0.05],
   SHEET_POWER: [0, 4, 0.05],

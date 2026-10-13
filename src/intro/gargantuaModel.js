@@ -91,7 +91,7 @@ export function marchStep(r) {
  * Lensing step (Rs): the light path bends most near the hole, so the step
  * shrinks with r (the gas step is used where it is smaller).
  */
-export const CURVE_K = 0.08;
+export const CURVE_K = 0.04;
 export const CURVE_MIN = 0.008;
 export const CURVE_MAX = 3;
 export function curveStep(r) {

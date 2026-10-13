@@ -108,16 +108,9 @@ ${LOOK}
     // The upper layers are smoke: more extinction with height, so the glowing
     // core shows through gaps and the surface reads dark (reference shots 4–5).
     float smoke = 1.0 + SMOKE_K * smoothstep(0.4, 1.8, abs(zn));
-    float sigmaCloud = dens * smoke * TAU / (2.0 * h);
-    // A thin, dense, glowing sheet at the midplane, under the clouds and
-    // not thinned by sparse: edge-on it is the thin bright line across shots
-    // 1–3. Its light falls off slowly (r^-SHEET_POWER), so the line stays
-    // bright across the frame. Mixed with the cloud by extinction.
-    float sigmaSheet = win * SHEET_TAU / (1.7725 * SHEET_H) * exp(-(p.y * p.y) / (SHEET_H * SHEET_H));
-    float hotSheet = SHEET_GLOW * pow(DISC_INNER / max(r, DISC_INNER), SHEET_POWER);
-    float sigma = sigmaCloud + sigmaSheet;
-    if (sigma <= 0.0) return vec3(0.0);
-    return vec3(sigma, (sigmaCloud * hot + sigmaSheet * hotSheet) / sigma, dust * sigmaCloud / sigma);
+    // (The thin midplane sheet is added where a ray crosses the plane:
+    // sheetCrossing, in the march.)
+    return vec3(dens * smoke * TAU / (2.0 * h), hot, dust);
   }
 
 `;
@@ -264,7 +257,26 @@ ${GAS_GLSL}
       }
       dist += dt;
       // Velocity Verlet: the light bends toward the hole.
+      vec3 pPrev = p;
       p += v * dt + 0.5 * acc * dt * dt;
+      // The thin bright midplane sheet, exactly where the path crosses the
+      // plane (thinner than a step: sampled as volume it broke the lensed
+      // rings and the edge-on line into beads). Edge-on it is the thin
+      // bright line across shots 1–3; its light falls off slowly
+      // (r^-SHEET_POWER), so the line stays bright across the frame.
+      if (pPrev.y * p.y < 0.0) {
+        vec3 x = mix(pPrev, p, pPrev.y / (pPrev.y - p.y));
+        float rx = length(x.xz);
+        float win = radialWindow(rx);
+        if (win > 0.0) {
+          float cosA = max(abs(v.y) / length(v), 1e-3);
+          float alpha = win * (1.0 - exp(-SHEET_TAU / cosA));
+          float hotSheet = SHEET_GLOW * pow(DISC_INNER / max(rx, DISC_INNER), SHEET_POWER);
+          light += T * alpha * mix(GAS_WARM, GAS_HOT, smoothstep(0.25, 0.9, hotSheet)) * hotSheet * EMIT;
+          T *= 1.0 - alpha;
+          if (depth < 0.0 && T < 0.5) depth = dist;
+        }
+      }
       vec3 acc1 = accel(p, h2);
       v += 0.5 * (acc + acc1) * dt;
       acc = acc1;
