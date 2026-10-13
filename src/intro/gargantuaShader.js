@@ -322,6 +322,36 @@ ${GAS_GLSL}
   }
 `;
 
+/** The march mip the flare source reads (~1/32 of the march resolution). */
+const FLARE_MIP = 5;
+
+/**
+ * The flare source (one texel, once per frame): the brightness-weighted
+ * centre (uv) of the light above FLARE_THRESHOLD in a low mip of the march,
+ * and its mean strength. The composite draws one ghost ring from it.
+ */
+export const flareSourceShader = /* glsl */ `
+  uniform sampler2D tMarch;
+${lookDeclarations({ FLARE_THRESHOLD: COMPOSITE_LOOK.FLARE_THRESHOLD })}
+  void main() {
+    ivec2 size = textureSize(tMarch, ${FLARE_MIP});
+    vec2 sum = vec2(0.0);
+    float weight = 0.0;
+    for (int y = 0; y < 64; y++) {
+      if (y >= size.y) break;
+      for (int x = 0; x < 64; x++) {
+        if (x >= size.x) break;
+        vec3 c = texelFetch(tMarch, ivec2(x, y), ${FLARE_MIP}).rgb;
+        float b = max(dot(c, vec3(0.2126, 0.7152, 0.0722)) - FLARE_THRESHOLD, 0.0);
+        sum += b * (vec2(x, y) + 0.5) / vec2(size);
+        weight += b;
+      }
+    }
+    vec2 centre = weight > 0.0 ? sum / weight : vec2(0.5);
+    gl_FragColor = vec4(centre, weight / float(size.x * size.y), 1.0);
+  }
+`;
+
 /**
  * Full resolution: the march with depth of field, a veiling glow and bloom
  * (mip levels of the march), lens ghosts and a halo ring, then exposure,
@@ -333,6 +363,8 @@ export const compositeShader = /* glsl */ `
   uniform float uExposure;
   uniform float uFocus; // Rs: the depth in focus
   uniform float uTime;
+  // The flare source (flareSourceShader): weighted centre (uv) and strength.
+  uniform sampler2D tFlareSource;
   varying vec2 vUv;
 
   const float PI = 3.14159265;
@@ -400,18 +432,26 @@ ${CURVE_KNOTS.slice(1)
     col = col * (1.0 - VEIL) + VEIL * VEIL_TINT * veil / veilSum;
     // Bloom: tight, around the brightest light.
     col += BLOOM * (0.5 * textureLod(tMarch, vUv, 3.0).rgb + 0.35 * textureLod(tMarch, vUv, 4.0).rgb + 0.15 * textureLod(tMarch, vUv, 5.0).rgb);
-    // Ghosts along the line through the centre, and the halo ring.
-    vec2 toCentre = vec2(0.5) - vUv;
-    vec3 flare = vec3(0.0);
-    for (int i = 1; i <= 3; i++) {
-      vec2 g = vUv + toCentre * (float(i) * 0.55);
-      float fade = 1.0 - smoothstep(0.2, 0.7, length(g - 0.5));
-      flare += bright(g, 4.0) * fade * vec3(0.6, 0.7, 1.0);
+    // One ghost ring from the brightest light (the flare-source pass: its
+    // weighted centre and strength), mirrored through the screen centre by
+    // GHOST_POS, like the pink ring at the frame edge in shots 8–9. Each
+    // channel has a slightly different radius: a pink rim, violet inside.
+    vec4 src = texelFetch(tFlareSource, ivec2(0, 0), 0);
+    if (src.z > 0.0) {
+      vec2 g = vec2(0.5) + (vec2(0.5) - src.xy) * GHOST_POS;
+      vec2 d = (vUv - g) * vec2(uResolution.x / uResolution.y, 1.0);
+      float dist = length(d);
+      vec3 radius = GHOST_R * vec3(1.0, 0.97, 0.94);
+      vec3 ring = exp(-pow((vec3(dist) - radius) / GHOST_W, vec3(2.0)));
+      vec3 inside = vec3(0.35, 0.2, 0.55) * (1.0 - smoothstep(GHOST_R * 0.5, GHOST_R, dist));
+      // A lens ghost needs the light off the axis: none for light around the
+      // centre (shot 3's symmetric lobes), full past ~0.3 of the frame out.
+      float offAxis = smoothstep(0.12, 0.3, length((src.xy - 0.5) * vec2(uResolution.x / uResolution.y, 1.0)));
+      col += GHOST_RING * offAxis * min(src.z, 4.0) * (ring * vec3(1.0, 0.55, 0.85) + 0.25 * inside);
     }
-    vec2 dir = length(toCentre) > 1e-4 ? normalize(toCentre) : vec2(0.0);
-    vec2 h = vUv + dir * HALO_RADIUS * vec2(uResolution.y / uResolution.x, 1.0);
-    float hw = pow(1.0 - min(abs(length(h - 0.5) - HALO_RADIUS * 0.5) * 6.0, 1.0), 4.0);
-    col += GHOSTS * flare + HALO * bright(h, 3.0) * hw * vec3(1.0, 0.6, 0.95);
+    // Halation: film's red glow around bright edges (light scattered back
+    // through the emulsion from the film base).
+    col += HALATION * bright(vUv, 3.0) * vec3(1.0, 0.32, 0.12);
 
     col = aces(col * uExposure);
     // Film grade: teal in the darks, the highlights kept warm.

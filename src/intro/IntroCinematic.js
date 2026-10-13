@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
 import { introCamera } from './introTimeline.js';
 import { bakeNoise3d, NOISE3D_SIZE } from './noise3d.js';
-import { marchShader, compositeShader, lightShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
+import { marchShader, compositeShader, lightShader, flareSourceShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
 import { MARCH_LOOK, COMPOSITE_LOOK } from './introLook.js';
 
 /** Uniform objects for a look: numbers, or THREE.Vector3 for colours. */
@@ -132,6 +132,19 @@ export class IntroCinematic {
       depthTest: false,
       depthWrite: false,
     });
+    // The flare source: one texel (weighted centre and strength of the
+    // brightest light), shared threshold with the composite.
+    const compositeLook = lookUniforms(COMPOSITE_LOOK);
+    this.flareTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.FloatType, depthBuffer: false });
+    this.flareSource = new THREE.ShaderMaterial({
+      name: 'IntroFlareSource',
+      uniforms: { tMarch: { value: null }, FLARE_THRESHOLD: compositeLook.FLARE_THRESHOLD },
+      vertexShader: QUAD_VERTEX,
+      fragmentShader: flareSourceShader,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.flareQuad = new FullScreenQuad(this.flareSource);
     this.composite = new THREE.ShaderMaterial({
       name: 'IntroComposite',
       uniforms: {
@@ -140,7 +153,8 @@ export class IntroCinematic {
         uExposure: { value: 1 },
         uFocus: { value: 10 },
         uTime: { value: 0 },
-        ...lookUniforms(COMPOSITE_LOOK),
+        tFlareSource: { value: this.flareTarget.texture },
+        ...compositeLook,
       },
       vertexShader: QUAD_VERTEX,
       fragmentShader: compositeShader,
@@ -270,11 +284,17 @@ export class IntroCinematic {
     this.lightQuad.render(renderer);
     renderer.setRenderTarget(write);
     this.marchQuad.render(renderer);
+    this.flareSource.uniforms.tMarch.value = write.texture;
+    renderer.setRenderTarget(this.flareTarget);
+    this.flareQuad.render(renderer);
     renderer.setRenderTarget(null);
     this.compositeQuad.render(renderer);
   }
 
   dispose() {
+    this.flareTarget.dispose();
+    this.flareSource.dispose();
+    this.flareQuad.dispose();
     this.lightTarget.dispose();
     this.light.dispose();
     this.lightQuad.dispose();

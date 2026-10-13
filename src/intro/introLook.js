@@ -75,11 +75,17 @@ export const COMPOSITE_LOOK = {
   VEIL_BETA: 2.5,
   VEIL_TINT: [1, 1, 1],
   BLOOM: 0.22,
-  // Lens ghosts and the halo ring, from light above the threshold only.
-  FLARE_THRESHOLD: 3,
-  GHOSTS: 0.025,
-  HALO: 0.035,
-  HALO_RADIUS: 0.42,
+  // The flare reads light above this threshold only.
+  FLARE_THRESHOLD: 0.5,
+  // One ghost ring from the brightest light: strength, radius and rim
+  // width (share of the frame height), and its place (× the source's offset
+  // from the centre, mirrored). And halation: film's red glow around
+  // bright edges.
+  GHOST_RING: 0.6,
+  GHOST_R: 0.12,
+  GHOST_W: 0.012,
+  GHOST_POS: 1.6,
+  HALATION: 0.06,
   // Grade.
   SHADOW_TINT: [0, 0, 0],
   SATURATION: 1.15,
@@ -138,9 +144,11 @@ export const LOOK_LIMITS = {
   VEIL_BETA: [1.2, 4, 0.05],
   BLOOM: [0, 1, 0.01],
   FLARE_THRESHOLD: [0, 6, 0.05],
-  GHOSTS: [0, 0.3, 0.005],
-  HALO: [0, 0.3, 0.005],
-  HALO_RADIUS: [0.1, 0.8, 0.01],
+  GHOST_RING: [0, 2, 0.01],
+  GHOST_R: [0.02, 0.5, 0.005],
+  GHOST_W: [0.002, 0.1, 0.001],
+  GHOST_POS: [-2, 3, 0.05],
+  HALATION: [0, 1, 0.005],
   SATURATION: [0, 2, 0.01],
   GRAIN: [0, 0.1, 0.001],
 };
