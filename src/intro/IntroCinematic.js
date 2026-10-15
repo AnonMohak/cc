@@ -349,7 +349,7 @@ export class IntroCinematic {
     // In focus: the hole (its distance from the camera, in Rs).
     c.uFocus.value = cam.position.length();
     c.uTime.value = this.time;
-    this.spray.update(this.time - SPRAY_START, u.SHUTTER_S.value, outH, cam);
+    this.spray.update(this.time - SPRAY_START, outH, cam);
   }
 
   render(renderer) {

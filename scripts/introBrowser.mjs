@@ -84,8 +84,12 @@ export async function openIntro({ gpu = null } = {}) {
     const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
     const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
     const s = (method, params) => send(method, params, sessionId);
+    // A call that hangs (a lost GPU device) fails after 3 minutes instead of
+    // blocking a long fit forever.
     const evaluate = async (expression) => {
-      const r = await s('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+      let timer;
+      const timeout = new Promise((_, reject) => (timer = setTimeout(() => reject(new Error('page call timed out (3 min)')), 180000)));
+      const r = await Promise.race([s('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }), timeout]).finally(() => clearTimeout(timer));
       if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 500));
       return r.result.value;
     };

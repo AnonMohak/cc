@@ -61,34 +61,56 @@ const vertexShader = /* glsl */ `
   // position: lateral offset x, y and depth in the cloud (0–1).
   attribute vec2 aExtra; // brightness 0–1; 0 / 1: the streak's start (shutter open) / end
   uniform float uAge;
-  uniform float uShutter;
   uniform float uPixelScale;
 ${lookDeclarations(SPRAY_LOOK)}
   varying float vLight;
+  varying float vStreak;
   vec3 at(float age) {
     // The cloud's near edge comes at the camera; behind it the particles
     // fill SPRAY_DEPTH. Lateral size grows with depth a little (a cone).
     float z = SPRAY_DIST - SPRAY_SPEED * age + position.z * SPRAY_DEPTH;
-    vec2 off = position.xy * SPRAY_SPREAD * (1.0 + 0.5 * position.z);
+    // Stretched along SPRAY_ANGLE (the film's blob is a slanted comet).
+    float a = radians(SPRAY_ANGLE);
+    vec2 s = position.xy * vec2(SPRAY_ELONG, 1.0);
+    vec2 off = mat2(cos(a), sin(a), -sin(a), cos(a)) * s * SPRAY_SPREAD * (1.0 + 0.5 * position.z);
+    // The specks drift across as they come (the film's spray flows down).
+    off += vec2(SPRAY_DRIFT_X, SPRAY_DRIFT_Y) * max(age, 0.0) * (0.6 + 0.8 * position.z);
     return vec3(SPRAY_U * z + off.x, SPRAY_V * z + off.y, -z);
   }
   void main() {
-    vec3 p = at(uAge - (1.0 - aExtra.y) * uShutter);
+    // A streak over the spray's own short shutter (the film's specks
+    // streak only a little).
+    vec3 p = at(uAge - (1.0 - aExtra.y) * SPRAY_SHUTTER);
     float z = -p.z;
     // Behind the camera, or not yet in: off the clip volume.
-    if (z < 0.05) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vLight = 0.0; return; }
+    if (z < 0.05) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vLight = 0.0; vStreak = 0.0; return; }
     gl_Position = projectionMatrix * vec4(p, 1.0);
     // Nearer is brighter, to a cap (1 / z, not 1 / z²: far off, the film's
     // spray is already a bright blob).
-    vLight = SPRAY_GAIN * (0.15 + 0.85 * aExtra.x) * min(1.0, 1.0 / z);
-    gl_PointSize = max(1.0, SPRAY_SIZE * uPixelScale / z);
+    // Specks right at the camera fade out (they would be big squares).
+    vLight = SPRAY_GAIN * (0.15 + 0.85 * aExtra.x) * min(1.0, 1.0 / z) * smoothstep(0.05, 0.6, z);
+    // Near, a speck crosses many pixels in the shutter: its streak spreads
+    // its light (dimmer by about the square of the nearness).
+    vStreak = min(1.0, z * z);
+    gl_PointSize = clamp(SPRAY_SIZE * uPixelScale / z, 1.0, 6.0 * uPixelScale);
   }
 `;
 
-const fragmentShader = /* glsl */ `
+// The streaks (lines) and the soft points share the vertex shader.
+const fragmentHead = /* glsl */ `
   varying float vLight;
+  varying float vStreak;
+${lookDeclarations(SPRAY_LOOK)}
+`;
+const lineFragment = /* glsl */ `${fragmentHead}
   void main() {
-    gl_FragColor = vec4(vec3(0.93, 0.95, 1.0) * vLight, 1.0);
+    gl_FragColor = vec4(vec3(0.93, 0.95, 1.0) * vLight * vStreak * SPRAY_LINE, 1.0);
+  }
+`;
+const pointFragment = /* glsl */ `${fragmentHead}
+  void main() {
+    float disc = max(0.0, 1.0 - length(gl_PointCoord - 0.5) * 2.0);
+    gl_FragColor = vec4(vec3(0.93, 0.95, 1.0) * vLight * SPRAY_SOFT * disc, 1.0);
   }
 `;
 
@@ -115,15 +137,13 @@ export class IntroSpray {
     this.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
     this.uniforms = {
       uAge: { value: -1 },
-      uShutter: { value: 0.05 },
       uPixelScale: { value: 1 },
       ...Object.fromEntries(Object.entries(SPRAY_LOOK).map(([name, v]) => [name, { value: v }])),
     };
-    const material = (extra) =>
-      new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms: this.uniforms, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true, ...extra });
-    this.lineMaterial = material({});
-    this.pointMaterial = material({});
-    this.pointMaterial.fragmentShader = fragmentShader.replace('vec4(vec3(0.93, 0.95, 1.0) * vLight, 1.0)', 'vec4(vec3(0.93, 0.95, 1.0) * vLight * 0.15 * max(0.0, 1.0 - length(gl_PointCoord - 0.5) * 2.0), 1.0)');
+    const material = (fragmentShader) =>
+      new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms: this.uniforms, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true });
+    this.lineMaterial = material(lineFragment);
+    this.pointMaterial = material(pointFragment);
     this.lines = new THREE.LineSegments(this.geometry, this.lineMaterial);
     this.points = new THREE.Points(this.geometry, this.pointMaterial);
     for (const o of [this.lines, this.points]) {
@@ -136,12 +156,10 @@ export class IntroSpray {
 
   /**
    * Place the layer for a frame: the seconds since the spray shot began, the
-   * shutter (s), the output height (px) and the camera (positions are in its
-   * frame).
+   * output height (px) and the camera (positions are in its frame).
    */
-  update(age, shutter, height, camera) {
+  update(age, height, camera) {
     this.uniforms.uAge.value = age;
-    this.uniforms.uShutter.value = shutter;
     this.uniforms.uPixelScale.value = height / 1080;
     for (const o of [this.lines, this.points]) o.matrixWorld.copy(camera.matrixWorld);
   }

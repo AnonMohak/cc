@@ -25,6 +25,10 @@ describe('IntroSpray', () => {
     // Two vertices (a streak) per particle.
     expect(spray.geometry.getAttribute('position').count).toBe(2 * (sprayParticles().length / 4));
     expect(spray.geometry.getAttribute('aExtra').count).toBe(spray.geometry.getAttribute('position').count);
+    // Soft round points and plain streaks: two different fragment shaders.
+    expect(spray.pointMaterial.fragmentShader).toContain('gl_PointCoord');
+    expect(spray.lineMaterial.fragmentShader).not.toContain('gl_PointCoord');
+    expect(spray.lineMaterial.fragmentShader).toContain('SPRAY_LINE');
     spray.dispose();
   });
 });

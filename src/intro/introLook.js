@@ -209,6 +209,16 @@ export const SPRAY_LOOK = {
   SPRAY_V: 0.011,
   SPRAY_SPREAD: 0.6,
   SPRAY_SIZE: 3,
+  // Its stretch along a slant (x / y, and the angle in degrees), the
+  // streaks' own shutter (s) and brightness, and the soft points' share.
+  SPRAY_ELONG: 2,
+  SPRAY_ANGLE: -50,
+  SPRAY_SHUTTER: 0.04,
+  SPRAY_LINE: 1,
+  SPRAY_SOFT: 0.3,
+  // Their drift across the view (Rs/s, x right, y up).
+  SPRAY_DRIFT_X: 0,
+  SPRAY_DRIFT_Y: -0.1,
 };
 
 /** Input levels of the CURVE_n points (display space). */
@@ -307,6 +317,13 @@ export const LOOK_LIMITS = {
   SPRAY_V: [-1, 1, 0.001],
   SPRAY_SPREAD: [0.01, 6, 0.01],
   SPRAY_SIZE: [0, 30, 0.1],
+  SPRAY_ELONG: [0.2, 6, 0.01],
+  SPRAY_ANGLE: [-180, 180, 1],
+  SPRAY_SHUTTER: [0, 0.5, 0.005],
+  SPRAY_LINE: [0, 4, 0.01],
+  SPRAY_SOFT: [0, 4, 0.01],
+  SPRAY_DRIFT_X: [-2, 2, 0.01],
+  SPRAY_DRIFT_Y: [-2, 2, 0.01],
 };
 
 /** GLSL uniform declarations for a look (float or vec3 by value). */
