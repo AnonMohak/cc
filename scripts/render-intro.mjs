@@ -1,7 +1,7 @@
 // Offline render of the intro cinematic (IntroCinematic.renderStill) to PNG
 // frames, for the pre-rendered intro video. It starts its own Vite dev
 // server and a headless Edge (or BROWSER) on the real GPU, and drives them
-// over the DevTools protocol (no packages needed).
+// over the DevTools protocol (no packages needed; scripts/introBrowser.mjs).
 //
 //   node scripts/render-intro.mjs --times 0,12,41            # single frames
 //   node scripts/render-intro.mjs --from 0 --to 66 --fps 24  # a sequence
@@ -12,10 +12,9 @@
 //          --gpu high (the discrete GPU on a laptop with two)
 // Output: <out>/t<seconds>.png for --times, <out>/frame_00001.png… for a
 // sequence. renders/ is gitignored.
-import { spawn, execSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { openIntro } from './introBrowser.mjs';
 
 const args = Object.fromEntries(
   process.argv
@@ -34,9 +33,6 @@ const height = num('height', 1080);
 const options = { width, height, samples: num('samples', 16), steps: num('steps', 1500), tile: num('tile', 256) };
 const out = args.out || 'renders';
 const format = args.format === 'jpg' ? 'jpg' : 'png';
-const VITE_PORT = 5299;
-const CDP_PORT = 9533;
-const BROWSER = process.env.BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
 /** The frames to render: [file name, seconds]. */
 function frameList() {
@@ -49,90 +45,16 @@ function frameList() {
   return list;
 }
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function waitFor(check, what, tries = 150, ms = 200) {
-  for (let i = 0; i < tries; i++) {
-    if (await check().catch(() => false)) return;
-    await sleep(ms);
-  }
-  throw new Error(`timed out waiting for ${what}`);
-}
-
-function kill(child) {
-  if (!child?.pid) return;
-  try {
-    if (process.platform === 'win32') execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: 'ignore' });
-    else child.kill('SIGTERM');
-  } catch {
-    // already gone
-  }
-}
-
 async function main() {
   const frames = frameList().filter(([name]) => !('resume' in args && existsSync(join(out, name))));
   mkdirSync(out, { recursive: true });
-  const vite = spawn(`npx vite --port ${VITE_PORT} --strictPort`, { shell: true, stdio: 'ignore' });
-  const browser = spawn(
-    BROWSER,
-    [
-      '--headless=new',
-      `--remote-debugging-port=${CDP_PORT}`,
-      `--user-data-dir=${mkdtempSync(join(tmpdir(), 'intro-render-'))}`,
-      '--window-size=1280,720',
-      '--no-first-run',
-      '--ignore-gpu-blocklist',
-      '--enable-gpu',
-      '--use-angle=d3d11',
-      // The discrete GPU on a laptop with two (much faster than the integrated one).
-      ...(args.gpu === 'high' ? ['--force_high_performance_gpu'] : []),
-      'about:blank',
-    ],
-    { stdio: 'ignore' },
-  );
+  const page = await openIntro({ gpu: args.gpu });
   try {
-    await waitFor(async () => (await fetch(`http://localhost:${VITE_PORT}/`)).ok, 'the dev server');
-    let version;
-    await waitFor(async () => (version = await (await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`)).json()), 'the browser');
-
-    const ws = new WebSocket(version.webSocketDebuggerUrl);
-    await new Promise((r) => ws.addEventListener('open', r));
-    let id = 0;
-    const waiters = new Map();
-    ws.addEventListener('message', (e) => {
-      const m = JSON.parse(e.data);
-      if (m.method === 'Runtime.exceptionThrown') console.log('page exception', JSON.stringify(m.params.exceptionDetails).slice(0, 300));
-      if (m.id && waiters.has(m.id)) {
-        const w = waiters.get(m.id);
-        waiters.delete(m.id);
-        m.error ? w.reject(new Error(m.error.message)) : w.resolve(m.result);
-      }
-    });
-    const send = (method, params = {}, sessionId) => {
-      const msg = { id: ++id, method, params, ...(sessionId ? { sessionId } : {}) };
-      ws.send(JSON.stringify(msg));
-      return new Promise((resolve, reject) => waiters.set(msg.id, { resolve, reject }));
-    };
-    const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
-    const { sessionId } = await send('Target.attachToTarget', { targetId, flatten: true });
-    const s = (method, params) => send(method, params, sessionId);
-    const evaluate = async (expression) => {
-      const r = await s('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
-      if (r.exceptionDetails) throw new Error(JSON.stringify(r.exceptionDetails).slice(0, 500));
-      return r.result.value;
-    };
-    await s('Runtime.enable');
-    // ?tune: the intro neither ends nor locks input.
-    await s('Page.navigate', { url: `http://localhost:${VITE_PORT}/?tune` });
-    await waitFor(() => evaluate('!!window.__app?.getIntro()?.ready'), 'the intro (noise bake)');
-    const gpu = await evaluate(`(() => { const gl = __app.renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'unknown'; })()`);
-    console.log(`GPU: ${gpu}`);
-    await evaluate('__app.getIntro().holdLive = true');
-
+    console.log(`GPU: ${page.gpu}`);
     const started = Date.now();
     for (const [i, [name, t]] of frames.entries()) {
       const begin = Date.now();
-      const png = await evaluate(`(async () => {
+      const png = await page.evaluate(`(async () => {
         const W = ${width}, H = ${height};
         const px = __app.getIntro().renderStill(__app.renderer, ${t}, ${JSON.stringify(options)});
         const canvas = new OffscreenCanvas(W, H);
@@ -150,10 +72,8 @@ async function main() {
       const left = ((Date.now() - started) / 1000 / (i + 1)) * (frames.length - i - 1);
       console.log(`${name} (t=${t.toFixed(3)} s) ${each.toFixed(1)} s, ~${Math.round(left / 60)} min left`);
     }
-    ws.close();
   } finally {
-    kill(browser);
-    kill(vite);
+    page.close();
   }
 }
 

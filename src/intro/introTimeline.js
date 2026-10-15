@@ -1,20 +1,23 @@
-import { shotPose } from './shotSolve.js';
 import { HORIZON_R } from './gargantuaModel.js';
+import { CAMERA_KEYS } from './introKeys.js';
+import { FILM_SHOTS, CLIP_FPS, shotSeconds } from './filmShots.js';
+
+export { CAMERA_KEYS };
 
 /**
- * The intro cinematic's clock: the camera path (shots 1–5 of the reference,
- * a turn around the disc, the plunge), the darkness and the sound modes, all
- * as pure functions of the seconds since the start-box click. Units: the
- * hole sits at the origin, 1 = one Schwarzschild radius (Rs), the disc lies
- * in the y = 0 plane and turns toward +azimuth (x → z).
+ * The intro cinematic's clock: the camera path (the film's shots at the
+ * film's speed, smooth moves between them, the plunge), the darkness and
+ * the sound modes, all as pure functions of the seconds since the start-box
+ * click. Units: the hole sits at the origin, 1 = one Schwarzschild radius
+ * (Rs), the disc lies in the y = 0 plane and turns toward +azimuth (x → z).
  */
 
 /** Seconds from the click to full black (the music trim lands its peak here). */
 export const BLACK_FULL = 65;
-/** The fade to black starts here. */
-export const BLACK_START = 60.8;
-/** The vignette closes in from here to BLACK_FULL. */
-export const VIGNETTE_START = 38;
+/** The fade to black starts here (the spray inside the hole shows until then). */
+export const BLACK_START = 64.6;
+/** The vignette closes in from here (the fall) to BLACK_FULL. */
+export const VIGNETTE_START = 56;
 /** Black is held this long before the scene loads. */
 export const BLACK_HOLD = 1;
 /** The whole cinematic, click to scene. */
@@ -23,58 +26,51 @@ export const INTRO_SECONDS = BLACK_FULL + BLACK_HOLD;
 export const MUSIC_RISE_SECONDS = 5;
 
 /**
- * Camera keys: t (s), r (Rs), elevation above the disc plane (deg), azimuth
- * (deg, the disc turns toward +azimuth), lead (deg: the view turns from the
- * hole toward the direction of motion; 0 aims at the hole), aimY (Rs: the
- * height of the aim point), roll (deg), fov (deg), exposure, sparse (0–1:
- * how much the inner gas thins into clumps) and haze (× the haze around the
- * hole: the film tuned its atmosphere per shot).
+ * Where each film shot (filmShots.js) plays in the intro, at the film's
+ * speed: the intro second its first clip frame shows. The moves between
+ * them are the camera keys' own (introKeys.js). The last shot, the spray
+ * inside the hole, ends at full black.
  */
-// A key at a reference shot: the pose solved from the still (shotSolve.js).
-const shot = (t, n, { roll = 0, exp = 1, sparse = 0, haze = 1, sat = 1, ghost = 0 } = {}) => ({ t, ...shotPose(n), roll, exp, sparse, haze, sat, ghost });
-
-export const CAMERA_KEYS = [
-  // Shots 1–4: in the disc plane inside the clear gap near the hole (the
-  // clip runs them as one move); the shadow fills the view, the thin ring,
-  // the disc's thin line and sparse clumps around it, brighter by shot 4
-  // (the lower lensed arc shows below the line through deep black).
-  shot(0, 1, { exp: 0.0916, sparse: 1, haze: 0, sat: 0.5 }),
-  shot(6, 2, { exp: 0.0517, sparse: 1, haze: 0, sat: 0.5 }),
-  shot(12, 3, { exp: 0.267, sparse: 1, haze: 0, sat: 0.5 }),
-  shot(19.5, 4, { exp: 0.887, sparse: 0.85, haze: 1 }),
-  // Rise out of the gap over the inner edge to the cloud tops.
-  { t: 22.3, r: 6, el: 7, az: 17, lead: -5, aimY: -0.4, roll: 0, fov: 45, exp: 0.7, sparse: 0.2, haze: 2 },
-  // Shot 5: just over the cloud tops; the shadow is a dome with the arches.
-  shot(25, 5, { exp: 0.891, haze: 2.5, sat: 0.4 }),
-  // The turn around the disc (references 6–10): above the clouds, then low
-  // beside the hole with it at the left and the cloud arc overhead (shots
-  // 7–9), then through the thin inner fog.
-  { t: 31, r: 12, el: 12, az: 50, lead: 0, aimY: 0, roll: 0, fov: 56, exp: 1.1, sparse: 0, haze: 1 },
-  // Shots 7–10: just over the cloud tops (the near disc is the bright band
-  // and the dark clouds at the bottom of the frame, hiding the bottom of the
-  // shadow), the hole at the left, the far disc lensed over it. No circle
-  // fits a half-hidden shadow, so these keys come from an image search:
-  // small offline renders scored against the clip frames (correlation of
-  // log brightness), with the camera kept above the cloud slab.
-  { t: 37.5, r: 5.4, el: 5, az: 90, lead: -45.5, aimY: 0.3, roll: -5.4, fov: 61, exp: 3.94, sparse: 0, haze: 0.1, sat: 1.9, ghost: 1 },
-  { t: 41, r: 6, el: 5, az: 115, lead: -54.5, aimY: 0.6, roll: -4.5, fov: 61, exp: 2.43, sparse: 0, haze: 0.1, sat: 1.6, ghost: 1 },
-  { t: 44, r: 6.3, el: 6.2, az: 140, lead: -56, aimY: 0.7, roll: -5.3, fov: 60.6, exp: 1.65, sparse: 0, haze: 0.1, sat: 1.7, ghost: 1 },
-  // Shot 10: skimming the cloud tops toward the shadow (top left).
-  { t: 50, r: 5.2, el: 5, az: 182, lead: -41.6, aimY: 0.35, roll: -5.8, fov: 71.6, exp: 0.74, sparse: 0, haze: 1, sat: 0.8 },
-  // The fall: rise a little, turn to the shadow and plunge.
-  { t: 55.5, r: 4, el: 12, az: 205, lead: 0, aimY: 0, roll: 2, fov: 64, exp: 1, sparse: 1, haze: 1 },
-  // With the fall's aberration the shadow shrinks as the camera nears it
-  // (the view crowds toward the motion): a lens that narrows keeps it
-  // growing on screen into the black.
-  { t: 61.5, r: 1.9, el: 10, az: 222, lead: 0, aimY: 0, roll: 0, fov: 52, exp: 1, sparse: 1, haze: 1 },
-  { t: BLACK_FULL, r: 1.2, el: 10, az: 230, lead: 0, aimY: 0, roll: 0, fov: 30, exp: 1, sparse: 1, haze: 1 },
+const INSIDE = FILM_SHOTS.find((s) => s.name === 'inside');
+export const FILM_SCHEDULE = [
+  { shot: 'gap-dome', start: 0 },
+  { shot: 'clouds', start: 13 },
+  { shot: 'wall', start: 21.6 },
+  { shot: 'skim', start: 37.1 },
+  { shot: 'bright', start: 47.4 },
+  { shot: 'hole-far', start: 52 },
+  { shot: 'inside', start: BLACK_FULL - shotSeconds(INSIDE) },
 ];
 
 /**
- * The moments that match the reference stills (shot number → seconds), for
- * the ?tune view's side-by-side and the per-shot tuning.
+ * The intro second a clip frame shows at (film speed inside its shot), or
+ * null for a clip frame outside the scheduled shots.
+ * @param {number} frame
  */
-export const REFERENCE_SHOTS = { 1: 0, 2: 6, 3: 12, 4: 19.5, 5: 25, 6: 31, 7: 37.5, 8: 41, 9: 44, 10: 50 };
+export function clipFrameIntroTime(frame) {
+  for (const { shot, start } of FILM_SCHEDULE) {
+    const s = FILM_SHOTS.find((f) => f.name === shot);
+    if (frame >= s.first && frame <= s.last) return start + (frame - s.first) / CLIP_FPS;
+  }
+  return null;
+}
+
+/**
+ * The film shot and clip frame shown at intro second t (the nearest clip
+ * frame), or null between the shots.
+ * @param {number} t
+ */
+export function filmFrameAt(t) {
+  for (const { shot, start } of FILM_SCHEDULE) {
+    const s = FILM_SHOTS.find((f) => f.name === shot);
+    const frame = s.first + Math.round((t - start) * CLIP_FPS);
+    if (frame >= s.first && frame <= s.last) return { shot, frame };
+  }
+  return null;
+}
+
+/** The ?tune view's jump buttons: each film shot's start (s). */
+export const REFERENCE_SHOTS = Object.fromEntries(FILM_SCHEDULE.map(({ shot, start }) => [shot, start]));
 
 const DEG = Math.PI / 180;
 
@@ -149,9 +145,9 @@ export function introCamera(t, out, keys = CAMERA_KEYS) {
   return out;
 }
 
-/** The fall speed ramps in over these seconds (after reference shot 10). */
-export const FALL_START = 50;
-export const FALL_FULL = 56;
+/** The fall speed ramps in over these seconds (after the hole-far shot). */
+export const FALL_START = 56.3;
+export const FALL_FULL = 58;
 /** The fall speed's cap (share of c). */
 export const FALL_BETA_MAX = 0.95;
 
@@ -166,13 +162,14 @@ const _b = { position: [0, 0, 0], target: [0, 0, 0] };
  * rest).
  * @param {number} t
  * @param {number[]} out
+ * @param {object[]} [keys] camera keys (the lab sets its own)
  */
-export function fallBoost(t, out = [0, 0, 0]) {
+export function fallBoost(t, out = [0, 0, 0], keys = CAMERA_KEYS) {
   const ramp = smoothstep(FALL_START, FALL_FULL, t);
   out[0] = out[1] = out[2] = 0;
   if (ramp <= 0) return out;
-  const p0 = introCamera(t - 0.05, _a).position;
-  const p1 = introCamera(t + 0.05, _b).position;
+  const p0 = introCamera(t - 0.05, _a, keys).position;
+  const p1 = introCamera(t + 0.05, _b, keys).position;
   // (No arrays: this runs every frame.)
   const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
   if (len < 1e-9) return out;

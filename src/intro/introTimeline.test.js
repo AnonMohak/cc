@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { introCamera, fallBoost, FALL_START, FALL_FULL, FALL_BETA_MAX, introPhase, keyPosition, keyTarget, CAMERA_KEYS, INTRO_SECONDS, BLACK_FULL, MUSIC_RISE_SECONDS } from './introTimeline.js';
+import { introCamera, fallBoost, FALL_START, FALL_FULL, FALL_BETA_MAX, introPhase, keyPosition, keyTarget, CAMERA_KEYS, INTRO_SECONDS, BLACK_FULL, MUSIC_RISE_SECONDS, FILM_SCHEDULE, clipFrameIntroTime, filmFrameAt } from './introTimeline.js';
+import { FILM_SHOTS, CLIP_FPS, shotSeconds } from './filmShots.js';
 
 const pose = () => ({ position: [0, 0, 0], target: [0, 0, 0], roll: 0, fov: 0, exposure: 1 });
 
@@ -21,7 +22,8 @@ describe('introCamera', () => {
     let prev = introCamera(0, pose()).position.slice();
     for (let t = 0.05; t <= BLACK_FULL; t += 0.05) {
       const p = introCamera(t, pose()).position;
-      expect(Math.hypot(p[0] - prev[0], p[1] - prev[1], p[2] - prev[2])).toBeLessThan(0.2);
+      // At most 6 Rs/s (the film's dolly out of the gap reaches ~4).
+      expect(Math.hypot(p[0] - prev[0], p[1] - prev[1], p[2] - prev[2])).toBeLessThan(0.3);
       expect(Math.hypot(...p)).toBeGreaterThan(1);
       prev = p.slice();
     }
@@ -80,5 +82,35 @@ describe('fallBoost', () => {
     const d = p1.map((x, i) => x - p0[i]);
     const cos = (b[0] * d[0] + b[1] * d[1] + b[2] * d[2]) / (Math.hypot(...b) * Math.hypot(...d));
     expect(cos).toBeGreaterThan(0.99);
+  });
+});
+
+describe('FILM_SCHEDULE', () => {
+  const shot = (name) => FILM_SHOTS.find((s) => s.name === name);
+
+  it('plays every film shot once, in film order, without overlap, inside the intro', () => {
+    expect(FILM_SCHEDULE.map((s) => s.shot)).toEqual(FILM_SHOTS.map((s) => s.name));
+    for (let i = 0; i < FILM_SCHEDULE.length; i++) {
+      const end = FILM_SCHEDULE[i].start + shotSeconds(shot(FILM_SCHEDULE[i].shot));
+      if (i + 1 < FILM_SCHEDULE.length) expect(end).toBeLessThanOrEqual(FILM_SCHEDULE[i + 1].start);
+      expect(end).toBeLessThanOrEqual(BLACK_FULL + 1e-9);
+    }
+    expect(FILM_SCHEDULE[0].start).toBe(0);
+  });
+
+  it('runs at film speed and maps clip frames both ways', () => {
+    const wall = shot('wall');
+    const t0 = clipFrameIntroTime(wall.first);
+    expect(clipFrameIntroTime(wall.first + 24) - t0).toBeCloseTo(24 / CLIP_FPS, 9);
+    for (const s of FILM_SHOTS) {
+      for (const f of [s.first, Math.round((s.first + s.last) / 2), s.last]) expect(filmFrameAt(clipFrameIntroTime(f))).toEqual({ shot: s.name, frame: f });
+    }
+    expect(clipFrameIntroTime(5000)).toBeNull();
+    expect(filmFrameAt(10)).toBeNull();
+  });
+
+  it('ends the spray inside the hole at full black', () => {
+    const inside = FILM_SCHEDULE.at(-1);
+    expect(inside.start + shotSeconds(shot('inside'))).toBeCloseTo(BLACK_FULL, 9);
   });
 });

@@ -16,10 +16,12 @@ describe('FILM_SHOTS', () => {
     for (const still of [7, 8, 9, 21, 22]) expect(shotOfFrame(stillClipFrame(still))).toBeNull();
   });
 
-  it('give about 24.5 s of black-hole film', () => {
-    const total = FILM_SHOTS.reduce((sum, s) => sum + shotSeconds(s), 0);
-    expect(total).toBeGreaterThan(24);
-    expect(total).toBeLessThan(25);
+  it('give about 24.5 s of black-hole film before the plunge, 12 s for it', () => {
+    const before = FILM_SHOTS.filter((s) => s.stills.length).reduce((sum, s) => sum + shotSeconds(s), 0);
+    const plunge = FILM_SHOTS.filter((s) => !s.stills.length).reduce((sum, s) => sum + shotSeconds(s), 0);
+    expect(before).toBeGreaterThan(24);
+    expect(before).toBeLessThan(25);
+    expect(plunge).toBeCloseTo(11.97, 1);
   });
 
   it('place still 1 at clip frame 10', () => {

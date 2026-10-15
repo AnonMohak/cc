@@ -151,35 +151,3 @@ export function solveShot({ radius, center, fov, el, az }, aspect) {
   }
   return { r, lead: pose.lead, aimY: pose.aimY };
 }
-
-/**
- * The shadow measured in each reference frame (the film clip's full 16:9
- * frames, images/frame_NNN.png; tunerMath.js CLIP_FRAME_SHOTS): radius as a
- * share of the frame height, centre (u, v) from the top-left, a circle
- * fitted through the photon ring's arcs (shots 1–4), the dome's inner edge
- * (shot 5). Shots 7–10 are not solved here: the near disc hides the bottom
- * of the shadow, so no circle fits it; their keys were found by an image
- * search (introTimeline.js). The
- * film's lens is not known: each shot keeps the field of view chosen for it
- * (deg, vertical) and its elevation and azimuth (deg), and the solve gives
- * the distance and aim that reproduce the still's framing. Shots 1–3 take a
- * wide 90° view (they look wide-angle), which puts the camera inside the
- * clear gap near the hole (r < DISC_INNER), not in the gas. Shots 4–5 take a
- * long 28° lens: the camera is then outside the inner edge (~9–10 Rs), just
- * over the cloud tops, with the dense disc in front (the dark surface under
- * the dome).
- */
-export const STILL_ASPECT = 1261 / 710;
-export const SHOT_MEASURES = {
-  1: { radius: 0.518, center: [0.492, 0.369], fov: 90, el: 0, az: 0 },
-  2: { radius: 0.529, center: [0.492, 0.371], fov: 90, el: 0, az: 4 },
-  3: { radius: 0.54, center: [0.488, 0.359], fov: 90, el: 0, az: 8 },
-  4: { radius: 0.567, center: [0.48, 0.358], fov: 70, el: 0.5, az: 14 },
-  5: { radius: 0.579, center: [0.447, 0.347], fov: 28, el: 5, az: 19 },
-};
-
-/** The solved pose of a measured shot (r, lead, aimY plus its own el, az, fov). */
-export function shotPose(n) {
-  const m = SHOT_MEASURES[n];
-  return { ...solveShot(m, STILL_ASPECT), el: m.el, az: m.az, fov: m.fov };
-}

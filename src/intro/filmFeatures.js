@@ -59,6 +59,29 @@ export const SHIP_KEEP = {
       [0.21, 0.36],
     ],
   ],
+  'hole-far': [
+    [
+      [0.67, 0.02],
+      [1, 0.02],
+      [1, 1],
+      [0.2, 1],
+      [0.2, 0.82],
+      [0.21, 0.62],
+      [0.31, 0.58],
+      [0.31, 0.45],
+      [0.28, 0.36],
+      [0.45, 0.31],
+      [0.56, 0.26],
+      [0.57, 0.18],
+      [0.66, 0.14],
+    ],
+  ],
+};
+
+/** Small spacecraft inside the kept area (u, v, r: shares; r of the height). */
+export const SHIP_CUT = {
+  // The lander falling toward the shadow.
+  'hole-far': [{ u: 0.494, v: 0.755, r: 0.03 }],
 };
 
 /**
@@ -67,19 +90,19 @@ export const SHIP_KEEP = {
  * height; cut at 1.5 r plus 6 lines of a 1080-line frame for its blur).
  */
 export function measureMask(shotName, ship, w = MEASURE_W, h = MEASURE_H) {
-  if (SHIP_KEEP[shotName]) return shapeMask(w, h, { keep: SHIP_KEEP[shotName] });
+  if (SHIP_KEEP[shotName]) return shapeMask(w, h, { keep: SHIP_KEEP[shotName], cut: SHIP_CUT[shotName] ?? [] });
   if (ship) return shapeMask(w, h, { cut: [{ u: ship.u, v: ship.v, r: 1.5 * ship.r + 6 / 1080 }] });
   return shapeMask(w, h);
 }
 
 /**
  * The features of one frame of a shot (an image at the measure size).
- * @returns {{ tone: number[], horizon: object | null, ring: object | null, dome: object | null, shadow: object | null }}
+ * @returns {{ tone: number[], horizon: object | null, ring: object | null, dome: object | null, shadow: object | null, spray: object | null }}
  */
 export function measureFeatures(shotName, img, mask) {
   const { w, h } = img;
   const y = luma(img);
-  const out = { tone: quantiles(y, mask, [0.1, 0.5, 0.9]), horizon: null, ring: null, dome: null, shadow: null };
+  const out = { tone: quantiles(y, mask, [0.1, 0.5, 0.9]), horizon: null, ring: null, dome: null, shadow: null, spray: null };
   if (shotName === 'gap-dome') {
     out.horizon = horizonLine(y, w, h, mask);
     // The ring's centre lies near the middle of the frame in these shots
@@ -98,13 +121,15 @@ export function measureFeatures(shotName, img, mask) {
       if (s && s.area > 0.02 && s.area < 0.45 && s.rms < 0.2 && s.bottom < out.horizon.v + 0.03 && Math.abs(s.cy - out.horizon.v) < 0.1) out.dome = s;
     }
   }
-  if (shotName === 'wall' || shotName === 'skim') {
-    // At half size: the shadow from its darkest pixel in the upper left.
+  if (shotName === 'wall' || shotName === 'skim' || shotName === 'hole-far') {
+    // At half size: the shadow from its darkest pixel in the upper left (in
+    // the middle when seen from farther away).
     const small = halve(y, w, h, mask);
+    const [u0, u1, v0, v1] = shotName === 'hole-far' ? [0.35, 0.75, 0.35, 0.85] : [0, 0.4, 0, 0.6];
     let seed = null;
     let darkest = Infinity;
-    for (let yy = 0; yy < small.h * 0.6; yy++) {
-      for (let xx = 0; xx < small.w * 0.4; xx++) {
+    for (let yy = Math.floor(small.h * v0); yy < small.h * v1; yy++) {
+      for (let xx = Math.floor(small.w * u0); xx < small.w * u1; xx++) {
         const i = yy * small.w + xx;
         if (small.mask[i] && small.data[i] < darkest) {
           darkest = small.data[i];
@@ -115,7 +140,45 @@ export function measureFeatures(shotName, img, mask) {
     const s = seed && shadowRegion(small.data, small.w, small.h, seed, { level: 0.75, mask: small.mask });
     // A roundish edge only (the shadow is egg-shaped; the early skim frames
     // show no clear shadow and fit with a spread of ~0.4).
-    if (s && s.area > 0.01 && s.edge > 30 && s.rms < 0.2 && s.cx < 0.9) out.shadow = s;
+    // (From farther away the edge spreads a little more: 0.22.)
+    const far = shotName === 'hole-far';
+    if (s && s.area > 0.01 && s.edge > 30 && s.rms < (far ? 0.26 : 0.2) && (far || s.cx < 0.9)) out.shadow = s;
   }
+  if (shotName === 'inside') out.spray = brightSpread(y, w, h, mask);
   return out;
+}
+
+/**
+ * The bright spray inside the hole: the brightness-weighted centre (shares
+ * of the height, from the top-left) and spread (RMS radius) of the light
+ * above 0.2, and its share of the frame; null when there is none.
+ */
+export function brightSpread(y, w, h, mask = null, level = 0.2) {
+  let sw = 0;
+  let sx = 0;
+  let sy = 0;
+  let n = 0;
+  for (let yy = 0; yy < h; yy++) {
+    for (let x = 0; x < w; x++) {
+      const i = yy * w + x;
+      if ((mask && !mask[i]) || y[i] < level) continue;
+      const wgt = y[i] - level;
+      sw += wgt;
+      sx += wgt * x;
+      sy += wgt * yy;
+      n++;
+    }
+  }
+  if (n < 20) return null;
+  const cx = sx / sw;
+  const cy = sy / sw;
+  let sq = 0;
+  for (let yy = 0; yy < h; yy++) {
+    for (let x = 0; x < w; x++) {
+      const i = yy * w + x;
+      if ((mask && !mask[i]) || y[i] < level) continue;
+      sq += (y[i] - level) * ((x - cx) ** 2 + (yy - cy) ** 2);
+    }
+  }
+  return { cx: (cx + 0.5) / h, cy: (cy + 0.5) / h, spread: Math.sqrt(sq / sw) / h, share: n / (w * h) };
 }

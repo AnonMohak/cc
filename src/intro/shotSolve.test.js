@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { shadowAngle, distanceForShadow, holeOnScreen, solveShot, shotPose, SHOT_MEASURES, STILL_ASPECT, B_CRIT, SHADOW_SHIFT, shadowCentre } from './shotSolve.js';
+import { shadowAngle, distanceForShadow, holeOnScreen, solveShot, B_CRIT, SHADOW_SHIFT, shadowCentre } from './shotSolve.js';
+import { FILM_MEASURES } from './filmMeasures.js';
 import { bendRay } from './gargantuaModel.js';
 
 const DEG = Math.PI / 180;
@@ -26,17 +27,26 @@ describe('shadowAngle / distanceForShadow', () => {
 });
 
 describe('solveShot', () => {
-  it('reproduces the measured framing of every shot', () => {
-    for (const [n, m] of Object.entries(SHOT_MEASURES)) {
-      const pose = shotPose(n);
-      const [u, v] = holeOnScreen(pose, m.fov, STILL_ASPECT, shadowCentre(pose));
-      expect(u).toBeCloseTo(m.center[0], 3);
-      expect(v).toBeCloseTo(m.center[1], 3);
-      // The shadow's radius on screen (share of the frame height).
-      const radius = Math.tan(shadowAngle(pose.r)) / Math.tan((m.fov / 2) * DEG) / 2;
-      expect(radius).toBeCloseTo(m.radius, 3);
-      expect(pose.r).toBeGreaterThan(B_CRIT);
-      expect(pose.r).toBeGreaterThan(1.5);
+  it('reproduces the measured shadows of the film clip', () => {
+    // Each film shot's shadow (or ring) circles, solved with a chosen field
+    // of view, land where they were measured.
+    const aspect = 16 / 9;
+    const cases = [
+      ['ring', 40, 0.3],
+      ['shadow', 60, 4],
+    ];
+    for (const [key, fov, el] of cases) {
+      for (const m of FILM_MEASURES.filter((f) => f[key] && f[key].cx > 0.2 && f[key].cy > 0.05).slice(0, 6)) {
+        const c = m[key];
+        const shot = { radius: c.r, center: [c.cx / aspect, c.cy], fov, el, az: 30 };
+        const pose = { ...solveShot(shot, aspect), el, az: 30 };
+        const [u, v] = holeOnScreen(pose, fov, aspect, shadowCentre(pose));
+        expect(u).toBeCloseTo(shot.center[0], 3);
+        expect(v).toBeCloseTo(shot.center[1], 3);
+        const radius = Math.tan(shadowAngle(pose.r)) / Math.tan((fov / 2) * DEG) / 2;
+        expect(radius).toBeCloseTo(c.r, 3);
+        expect(pose.r).toBeGreaterThan(B_CRIT);
+      }
     }
   });
 

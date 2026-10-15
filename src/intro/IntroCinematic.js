@@ -67,6 +67,8 @@ export class IntroCinematic {
     this.override = null;
     /** For tuning: a fixed time (s) instead of the clock. */
     this.fixedTime = null;
+    /** For the lab and fit scripts: camera keys instead of introKeys.js. */
+    this.keys = null;
     this.time = 0;
     this.exposure = 1;
     this.sparse = 1;
@@ -259,7 +261,8 @@ export class IntroCinematic {
   update(clock) {
     const t = this.fixedTime ?? clock;
     this.time = t;
-    const pose = this.override ?? introCamera(t, _pose);
+    const keys = this.keys ?? undefined;
+    const pose = this.override ?? introCamera(t, _pose, keys);
     placeCamera(this.camera, pose);
     this.exposure = pose.exposure ?? 1;
     this.sparse = pose.sparse ?? 1;
@@ -268,10 +271,10 @@ export class IntroCinematic {
     this.ghost = pose.ghost ?? 0;
     // The fall's speed for the aberration (a fixed pose: at rest).
     if (this.override) this.boost[0] = this.boost[1] = this.boost[2] = 0;
-    else fallBoost(t, this.boost);
+    else fallBoost(t, this.boost, keys);
     // The shutter's start: the same path SHUTTER_S earlier (a fixed pose: none).
     const shutter = this.march.uniforms.SHUTTER_S.value;
-    placeCamera(this.shutterCamera, this.override ?? introCamera(t - shutter, _pose));
+    placeCamera(this.shutterCamera, this.override ?? introCamera(t - shutter, _pose, keys));
   }
 
   /** @param {THREE.WebGLRenderer} renderer */

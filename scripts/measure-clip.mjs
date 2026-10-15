@@ -103,6 +103,7 @@ for (const shot of FILM_SHOTS) {
       horizon: m.horizon && { v: round(m.horizon.v), tilt: round(m.horizon.tilt) },
       dome: m.dome && { cx: round(m.dome.cx), cy: round(m.dome.cy), r: round(m.dome.r), area: round(m.dome.area) },
       shadow: m.shadow && { cx: round(m.shadow.cx), cy: round(m.shadow.cy), r: round(m.shadow.r), area: round(m.shadow.area) },
+      spray: m.spray && { cx: round(m.spray.cx), cy: round(m.spray.cy), spread: round(m.spray.spread), share: round(m.spray.share) },
       tone: m.tone.map((q) => round(q, 3)),
     });
     thumbs.push({ bytes, f, m, mask, ship });
@@ -137,6 +138,7 @@ for (const shot of FILM_SHOTS) {
     if (m.ring) sheet.circle(x0 + m.ring.cx * H, y0 + m.ring.cy * H, m.ring.r * H, [60, 255, 90]);
     if (m.shadow) sheet.circle(x0 + m.shadow.cx * H, y0 + m.shadow.cy * H, m.shadow.r * H, [60, 255, 90]);
     if (m.dome) sheet.circle(x0 + m.dome.cx * H, y0 + m.dome.cy * H, m.dome.r * H, [255, 220, 60]);
+    if (m.spray) sheet.circle(x0 + m.spray.cx * H, y0 + m.spray.cy * H, m.spray.spread * H, [255, 120, 255]);
     if (m.horizon) {
       const v0 = m.horizon.v - (m.horizon.tilt * tw) / 2 / H;
       sheet.line(x0, y0 + v0 * H, x0 + tw - 1, y0 + (v0 + (m.horizon.tilt * tw) / H) * H, [60, 230, 255]);
@@ -144,7 +146,7 @@ for (const shot of FILM_SHOTS) {
   });
   writeRGB(join(sheetDir, `${shot.name}.jpg`), sheet.w, sheet.h, sheet.rgb);
   const found = (key) => thumbs.filter((t) => t.m[key]).length;
-  console.log(`${shot.name}: ${thumbs.length} frames, ring ${found('ring')}, horizon ${found('horizon')}, dome ${found('dome')}, shadow ${found('shadow')}`);
+  console.log(`${shot.name}: ${thumbs.length} frames, ring ${found('ring')}, horizon ${found('horizon')}, dome ${found('dome')}, shadow ${found('shadow')}, spray ${found('spray')}`);
 }
 
 const body = entries.map((e) => `  ${JSON.stringify(e)},`).join('\n');
@@ -157,8 +159,9 @@ writeFileSync(
  * height; left out of every score), the thin ring's circle, the dome's and
  * the shadow's edge circles (cx, cy, r as shares of the height, from the
  * top-left; area a share of the frame), the
- * disc's edge-on line (v, share of the height at the centre; tilt), and the
- * luma's 10th, 50th and 90th percentiles. Null: not found in that frame.
+ * disc's edge-on line (v, share of the height at the centre; tilt), the
+ * bright spray inside the hole (centre, RMS spread, share of the frame), and
+ * the luma's 10th, 50th and 90th percentiles. Null: not found in that frame.
  * Do not edit by hand.
  */
 export const FILM_MEASURES = [

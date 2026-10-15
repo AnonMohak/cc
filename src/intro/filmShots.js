@@ -23,6 +23,11 @@ export const FILM_SHOTS = [
   { name: 'wall', first: 271, last: 488, stills: [12, 13, 14, 15, 16, 17, 18, 19, 20], ship: 'small' },
   { name: 'skim', first: 535, last: 629, stills: [23, 24, 25, 26], ship: 'small' },
   { name: 'bright', first: 630, last: 692, stills: [27, 28, 29], ship: 'large' },
+  // Later in the clip, for the plunge: the hole from farther away (a thick
+  // bright ring round the shadow; it fades in over its first 0.8 s), and
+  // the inside of the hole (black, then a spray of bright particles).
+  { name: 'hole-far', first: 4154, last: 4257, stills: [], ship: 'large' },
+  { name: 'inside', first: 5143, last: 5325, stills: [], ship: null },
 ];
 
 /**
