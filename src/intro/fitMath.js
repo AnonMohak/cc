@@ -73,6 +73,7 @@ export const toShare = (p, v) => Math.min(1, Math.max(0, (v - p.min) / (p.max - 
  * Apply fit parameters to a copy of the camera keys and a look:
  *  - `look.NAME` (or `look.NAME[c]`): the base look;
  *  - `key.N.FIELD`: field FIELD of key N (e.g. key.3.r);
+ *  - `keys.A-B.FIELD`: field FIELD of keys A to B (one value for a shot);
  *  - `shot.NAME` (or `shot.NAME[c]`): a look value set on every key from
  *    tFrom to tTo (one shot's own look).
  * @param {{ path: string, min: number, max: number }[]} params
@@ -91,6 +92,9 @@ export function applyParams(params, values, keys, look, { tFrom = -Infinity, tTo
     const m = /^([A-Z0-9_]+)(?:\[(\d)\])?$/.exec(rest.join('.'));
     if (kind === 'key') {
       outKeys[Number(rest[0])][rest[1]] = v;
+    } else if (kind === 'keys') {
+      const [from, to] = rest[0].split('-').map(Number);
+      for (let k = from; k <= to; k++) outKeys[k][rest[1]] = v;
     } else if (kind === 'look' && m) {
       if (m[2] !== undefined) outLook[m[1]][Number(m[2])] = v;
       else outLook[m[1]] = v;

@@ -48,6 +48,8 @@ export const MARCH_LOOK = {
   // thin band, where many small clumps would average into a smooth glow).
   CLUMP_RAD: 3,
   CLUMP_TILES: 5,
+  // Their height in half-thicknesses (1: as thin as the disc).
+  CLUMP_HEIGHT: 1,
   // Close-up detail: the weight of a finer octave (faded with distance).
   // 0 skips it: at the half-resolution march it does not show (gargantuaShader.js).
   DETAIL: 0,
@@ -178,6 +180,7 @@ export const LOOK_LIMITS = {
   CLUMP_LO: [0.3, 0.9, 0.005],
   CLUMP_RAD: [1, 40, 0.5],
   CLUMP_TILES: [4, 120, 1],
+  CLUMP_HEIGHT: [0.3, 30, 0.1],
   DETAIL: [0, 1, 0.01],
   SHEET_TAU: [0, 10, 0.05],
   SHEET_GLOW: [0, 6, 0.05],

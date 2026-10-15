@@ -48,6 +48,11 @@ describe('applyParams', () => {
     expect(look.GAS_WARM[1]).toBe(0.5);
   });
 
+  it('sets one field on a range of keys', () => {
+    const out = applyParams([{ path: 'keys.0-1.fov', min: 10, max: 90 }], [40], [{ t: 0, fov: 60 }, { t: 1, fov: 60 }, { t: 2, fov: 60 }], {});
+    expect(out.keys.map((k) => k.fov)).toEqual([40, 40, 60]);
+  });
+
   it('rejects unknown parameters', () => {
     expect(() => applyParams([{ path: 'foo.x', min: 0, max: 1 }], [0.5], keys, look)).toThrow();
   });

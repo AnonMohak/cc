@@ -50,6 +50,10 @@ ${LOOK}
   float glowAt(float r) { return pow(DISC_INNER / max(r, DISC_INNER), GLOW_POWER); }
   float angularSpeed(float r) { return SPIN * pow(DISC_INNER / max(r, DISC_INNER), 1.5); }
   float marchStep(float r) { return clamp(STEP_K * halfThickness(r), STEP_MIN, STEP_MAX); }
+  // Seen from the gap (uSparse) the inner clumps may puff up to
+  // CLUMP_HEIGHT half-thicknesses: the slab the march visits grows there.
+  float clumpReach(float r) { return uSparse * (1.0 - smoothstep(DISC_INNER * SPARSE_OUT, DISC_INNER * SPARSE_OUT * 1.3, r)); }
+  float slabZ(float r) { return SLAB_K * max(1.0, mix(1.0, CLUMP_HEIGHT, clumpReach(r))); }
 
 
   // Rs covered by one pixel at the point gas() is sampled (the march sets it;
@@ -65,7 +69,7 @@ ${LOOK}
     float h = halfThickness(r);
     float zn = p.y / h;
     float win = radialWindow(r);
-    if (win <= 0.0 || abs(zn) > SLAB_K) return vec3(0.0);
+    if (win <= 0.0 || abs(zn) > slabZ(r)) return vec3(0.0);
     // Polar coordinates that turn with the gas (inner gas laps the outer, so
     // the clouds shear into streaks along the orbit).
     float ang = atan(p.z, p.x) - angularSpeed(r) * gTime;
@@ -105,7 +109,11 @@ ${LOOK}
     float clump = 0.0;
     if (uSparse > 0.0) {
       float cn = texture(uNoise, vec3(log(r) * CLUMP_RAD, ang * (CLUMP_TILES / (2.0 * PI)), zn * 0.6) + vec3(0.41, 0.0, 0.83)).r;
-      clump = smoothstep(CLUMP_LO, CLUMP_LO + 0.1, cn) * exp(-1.5 * zn * zn) * (1.0 - smoothstep(DISC_INNER * SPARSE_OUT, DISC_INNER * SPARSE_OUT * 1.3, r));
+      // Their own height: CLUMP_HEIGHT half-thicknesses (taller clumps throw
+      // their bent images far above and below the edge-on line: the film's
+      // streaks in the corners of shots 1–3).
+      float zc = zn / max(CLUMP_HEIGHT, 0.1);
+      clump = smoothstep(CLUMP_LO, CLUMP_LO + 0.1, cn) * exp(-1.5 * zc * zc) * (1.0 - smoothstep(DISC_INNER * SPARSE_OUT, DISC_INNER * SPARSE_OUT * 1.3, r));
       dens = mix(dens, win * clump, sparse);
     }
     // Thin wisps above the cloud tops, along the ridges.
@@ -312,7 +320,7 @@ ${GAS_GLSL}
       // Near the spin axis the azimuth swings fast: no step longer than the
       // distance to the axis (rays over the pole drew a seam).
       dt = min(dt, max(0.2 * r * abs(sT), 0.002));
-      float above = abs(p.y) - SLAB_K * halfThickness(rc);
+      float above = abs(p.y) - slabZ(rc) * halfThickness(rc);
       // The clear gap inside the inner edge has no gas: no slab steps there
       // (rays along the plane spent every step in it), only no jump past
       // the inner edge.
