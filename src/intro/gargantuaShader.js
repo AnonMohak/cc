@@ -43,11 +43,19 @@ const GAS_GLSL = /* glsl */ `
 ${LOOK}
 
   // Mirrors of gargantuaModel.js.
-  float halfThickness(float r) { return H0 + H1 * r; }
-  float radialWindow(float r) {
-    return smoothstep(DISC_INNER, DISC_INNER * 1.25, r) * (1.0 - smoothstep(DISC_OUTER * 0.35, DISC_OUTER, r));
+  // (Per shot the inner disc may puff up into a tall torus: PUFF Rs more
+  // at the inner edge, fading over PUFF_W; its bent image is the film's
+  // flame wall. The optical depth across stays TAU.)
+  float halfThickness(float r) {
+    float d = max(r - INNER, 0.0) / max(PUFF_W, 0.1);
+    return H0 + H1 * r + PUFF * exp(-d * d);
   }
-  float glowAt(float r) { return pow(DISC_INNER / max(r, DISC_INNER), GLOW_POWER); }
+  float radialWindow(float r) {
+    return smoothstep(INNER, INNER * 1.25, r) * (1.0 - smoothstep(DISC_OUTER * 0.35, DISC_OUTER, r));
+  }
+  // Light and speed are relative to DISC_INNER (4 Rs); per shot the gas may
+  // start nearer the hole (INNER), hotter there.
+  float glowAt(float r) { return pow(DISC_INNER / max(r, INNER), GLOW_POWER); }
   float angularSpeed(float r) { return SPIN * pow(DISC_INNER / max(r, DISC_INNER), 1.5); }
   float marchStep(float r) { return clamp(STEP_K * halfThickness(r), STEP_MIN, STEP_MAX); }
   // Seen from the gap (uSparse) the inner clumps may puff up to
@@ -129,7 +137,7 @@ ${LOOK}
     dust = mix(dust, 1.0, uSparse * (1.0 - clump));
     // The gas's own light falls off faster than the light on the smoke: the
     // outer disc reads as dark smoke, the inner disc glows (shots 4–5 vs 7–9).
-    float hot = exp(-EMIT_DEPTH * zn * zn) * pow(DISC_INNER / max(r, DISC_INNER), EMIT_POWER);
+    float hot = exp(-EMIT_DEPTH * zn * zn) * pow(DISC_INNER / max(r, INNER), EMIT_POWER);
     // (From the gap, only the clumps glow; the rest is the dark silhouette.)
     hot *= 1.0 - uSparse * (1.0 - clump);
     // The upper layers are smoke: more extinction with height, so the glowing
@@ -219,7 +227,7 @@ ${GAS_GLSL}
   // the inner to the outer edge.
   float lightAt(vec3 p, float rc) {
     float u = fract(atan(p.z, p.x) / (2.0 * PI));
-    float v = log(max(rc, DISC_INNER) / DISC_INNER) / log(DISC_OUTER / DISC_INNER);
+    float v = log(max(rc, INNER) / INNER) / log(DISC_OUTER / INNER);
     return texture(uLight, vec2(u, v)).r;
   }
 
@@ -324,9 +332,9 @@ ${GAS_GLSL}
       // The clear gap inside the inner edge has no gas: no slab steps there
       // (rays along the plane spent every step in it), only no jump past
       // the inner edge.
-      bool inSlab = above <= 0.0 && rc < DISC_OUTER && rc > DISC_INNER * 0.98;
+      bool inSlab = above <= 0.0 && rc < DISC_OUTER && rc > INNER * 0.98;
       if (inSlab) dt = min(dt, marchStep(rc));
-      else if (above <= 0.0 && rc <= DISC_INNER * 0.98) dt = min(dt, max(DISC_INNER - rc, marchStep(rc)));
+      else if (above <= 0.0 && rc <= INNER * 0.98) dt = min(dt, max(INNER - rc, marchStep(rc)));
       else if (rc < DISC_OUTER && p.y * v.y < 0.0 && abs(v.y) > 1e-4) dt = min(dt, max(marchStep(rc), 0.8 * above / abs(v.y)));
       if (i == 0) dt *= jitter;
       // Haze: a thin glowing medium around the hole, lit by the disc, that
@@ -394,7 +402,7 @@ ${GAS_GLSL}
         if (win > 0.0) {
           float cosA = max(abs(v.y) / length(v), 1e-3);
           float alpha = win * (1.0 - exp(-SHEET_TAU / cosA));
-          float hotSheet = SHEET_GLOW * pow(DISC_INNER / max(rx, DISC_INNER), SHEET_POWER);
+          float hotSheet = SHEET_GLOW * pow(DISC_INNER / max(rx, INNER), SHEET_POWER);
           // Seen from the clear gap only a band of it glows, just outside the
           // inner edge, broken into a few clumps along the orbit (RIM_CLUMPS
           // whole noise tiles per turn: no seam), each of thin parallel
@@ -465,10 +473,10 @@ ${GAS_GLSL}
     gFootprint = 1e3;
     gTime = uTime;
     float theta = vUv.x * 2.0 * PI;
-    float lr0 = log(DISC_INNER);
-    float lr1 = log(DISC_INNER) + vUv.y * log(DISC_OUTER / DISC_INNER);
+    float lr0 = log(INNER);
+    float lr1 = log(INNER) + vUv.y * log(DISC_OUTER / INNER);
     float tau = 0.0;
-    float prev = DISC_INNER;
+    float prev = INNER;
     for (int i = 1; i <= ${LIGHT_STEPS}; i++) {
       float r = exp(mix(lr0, lr1, float(i) / ${LIGHT_STEPS}.0));
       vec3 g = gas(vec3(cos(theta) * r, LIGHT_HEIGHT * halfThickness(r), sin(theta) * r));

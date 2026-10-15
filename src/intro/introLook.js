@@ -12,6 +12,14 @@ const DISC_COLOUR = filmColour(DISC_K).map((v) => Math.round(v * 1000) / 1000);
 export const MARCH_LOOK = {
   // Optical depth across the full thickness of dense gas: marginally thick.
   TAU: 5,
+  // Where the gas starts (Rs): 4 as a rule (a dark gap beside the shadow,
+  // shots 1-5); per shot nearer the hole (the film's wall: bright right up
+  // to the shadow). Light and speed stay relative to 4 Rs.
+  INNER: 4,
+  // The inner disc puffed into a tall torus (per shot): extra half-thickness
+  // at the inner edge (Rs) and how far out it fades (Rs). 0: thin.
+  PUFF: 0,
+  PUFF_W: 3,
   // Light of the hot midplane, and the share of the smoke lit by it.
   EMIT: 14,
   // How fast the gas's own light falls off with radius (r^-EMIT_POWER).
@@ -163,6 +171,9 @@ export const CURVE_KNOTS = [0, 0.05, 0.15, 0.27, 0.42, 0.6, 0.78, 0.92, 1];
 /** Slider limits: [min, max, step]. */
 export const LOOK_LIMITS = {
   TAU: [0.2, 8, 0.05],
+  INNER: [1.2, 12, 0.01],
+  PUFF: [0, 8, 0.01],
+  PUFF_W: [0.1, 20, 0.05],
   EMIT: [0, 60, 0.5],
   EMIT_POWER: [0.5, 6, 0.05],
   EMIT_DEPTH: [0, 4, 0.05],

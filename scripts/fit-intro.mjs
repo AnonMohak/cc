@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import { FILM_SHOTS, shotSeconds } from '../src/intro/filmShots.js';
 import { FILM_MEASURES } from '../src/intro/filmMeasures.js';
 import { clipFrameIntroTime, FILM_SCHEDULE, CAMERA_KEYS } from '../src/intro/introTimeline.js';
-import { MARCH_LOOK, COMPOSITE_LOOK } from '../src/intro/introLook.js';
+import { MARCH_LOOK, COMPOSITE_LOOK, SPRAY_LOOK } from '../src/intro/introLook.js';
 import { nelderMead, applyParams, fromShare, toShare } from '../src/intro/fitMath.js';
 import { readRGB, writeRGB, canvas } from './imageIO.mjs';
 import { openIntro } from './introBrowser.mjs';
@@ -41,7 +41,7 @@ writeFileSync(join(outDir, 'log.txt'), '');
 const size = { width: 960, height: 540, samples: 2, steps: 700, ...(spec.size || {}) };
 const shots = spec.shots || [FILM_SHOTS[0].name];
 const startKeys = spec.keys ? JSON.parse(readFileSync(spec.keys, 'utf8')) : CAMERA_KEYS;
-const startLook = { ...MARCH_LOOK, ...COMPOSITE_LOOK, ...(spec.look || {}) };
+const startLook = { ...MARCH_LOOK, ...COMPOSITE_LOOK, ...SPRAY_LOOK, ...(spec.look || {}) };
 const featureWeight = spec.features ?? 1;
 
 // The film moments: every n-th measured frame of the shots (or the given ones).
@@ -60,6 +60,7 @@ const current = (p) => {
   const [kind, ...rest] = p.path.split('.');
   const m = /^([A-Z0-9_]+)(?:\[(\d)\])?$/.exec(rest.join('.'));
   if (kind === 'key') return startKeys[Number(rest[0])][rest[1]];
+  if (kind === 'keys') return startKeys[Number(rest[0].split('-')[0])][rest[1]];
   const inShot = kind === 'shot' ? startKeys.find((k) => k.t >= window.tFrom && k.t <= window.tTo && k.look?.[m[1]] !== undefined) : null;
   const v = inShot ? inShot.look[m[1]] : startLook[m[1]];
   return m[2] !== undefined ? v[Number(m[2])] : v;
@@ -77,6 +78,10 @@ function featureError(m, f) {
   }
   if (m.horizon) {
     e += f.horizon ? Math.abs(m.horizon.v - f.horizon.v) : 0.1;
+    n++;
+  }
+  if (m.spray) {
+    e += f.spray ? Math.max(Math.abs(m.spray.cx - f.spray.cx), Math.abs(m.spray.cy - f.spray.cy), Math.abs(m.spray.spread - f.spray.spread), Math.abs(m.spray.share - f.spray.share)) : 0.3;
     n++;
   }
   return n ? e / n : 0;
