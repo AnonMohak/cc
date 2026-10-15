@@ -9,6 +9,7 @@
 // Options: --out renders  --width 1920  --height 1080  --samples 16
 //          --steps 1500  --tile 256  --format png|jpg  --resume (skip
 //          frames already written, to continue a stopped render)
+//          --gpu high (the discrete GPU on a laptop with two)
 // Output: <out>/t<seconds>.png for --times, <out>/frame_00001.png… for a
 // sequence. renders/ is gitignored.
 import { spawn, execSync } from 'node:child_process';
@@ -83,6 +84,8 @@ async function main() {
       '--ignore-gpu-blocklist',
       '--enable-gpu',
       '--use-angle=d3d11',
+      // The discrete GPU on a laptop with two (much faster than the integrated one).
+      ...(args.gpu === 'high' ? ['--force_high_performance_gpu'] : []),
       'about:blank',
     ],
     { stdio: 'ignore' },

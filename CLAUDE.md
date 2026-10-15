@@ -72,8 +72,11 @@ npm run build        # production build to dist/
 npm run preview      # serve the production build (at /three/galaxy-sandbox/)
 npm test             # run Vitest once
 npm run test:watch   # run Vitest in watch mode
-npm run render:intro -- --times 0,12,41   # offline intro frames → renders/ (see below)
+npm run render:intro -- --times 0,12,41   # offline intro frames → renders/ (see below); --gpu high: the laptop's NVIDIA GPU (~5× the UHD 630)
 npm run encode:intro -- --in renders/full  # frames → public/video/intro-av1.webm + intro-h264.mp4
+node scripts/clip-frames.mjs --clip <film clip>  # the clip's black-hole shots → images/clip/ (gitignored; measuring only)
+node scripts/measure-clip.mjs              # film features 4×/s → src/intro/filmMeasures.js, check sheets → renders/measure/
+node scripts/score-intro.mjs --video public/video/intro-h264.mp4 --map old --label baseline  # score vs the film → renders/score/
 ```
 
 ## Deploy
@@ -162,6 +165,10 @@ src/
 │   ├── introLook.js         # PURE: the look values (live uniforms) and slider limits
 │   ├── introTuner.js        # The ?tune view: clock, reference stills, live look sliders
 │   ├── shotSolve.js         # PURE: camera poses solved from the shadow measured in each still
+│   ├── filmShots.js         # PURE: the film clip's black-hole shots (frame ranges) and where the stills sit
+│   ├── filmFeatures.js      # PURE: masks (spacecraft out) and features (ring, edge-on line, dome, shadow) of a frame
+│   ├── filmMeasures.js      # GENERATED (measure-clip.mjs): the film's features four times a second
+│   ├── frameMatch.js        # PURE: frame-vs-film score (shape, light/dark, colour, detail, streaks, motion) + fits
 │   ├── tunerMath.js         # PURE: shot number from a file name, trim of a player's bars
 │   ├── noise3d.js           # PURE: tileable RG 3D noise bake
 │   ├── noiseWorker.js       # Bakes the noise off the main thread

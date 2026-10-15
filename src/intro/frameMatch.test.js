@@ -24,6 +24,8 @@ import {
   trackTemplate,
   crop,
   blockFlow,
+  halveImage,
+  motionScore,
 } from './frameMatch.js';
 
 const W = 96;
@@ -191,5 +193,20 @@ describe('features', () => {
     expect([hit.x, hit.y]).toEqual([43, 22]);
     const flow = blockFlow(a, shifted, W, H, { grid: 2, search: 5 });
     expect(flow.filter(Boolean).every(([dx, dy]) => dx === 3 && dy === 2)).toBe(true);
+  });
+});
+
+describe('helpers', () => {
+  it('halves an image by 2 × 2 means', () => {
+    const img = { w: 2, h: 2, rgb: Float32Array.from([1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1]) };
+    const half = halveImage(img);
+    expect([half.w, half.h]).toEqual([1, 1]);
+    expect(Array.from(half.rgb)).toEqual([0.5, 0.25, 0.25]);
+  });
+
+  it('scores motion by how far the shifts differ', () => {
+    expect(motionScore([[1, 0], [2, 2], null], [[1, 0], [2, 2], [5, 5]])).toBe(1);
+    expect(motionScore([[0, 0]], [[4, 0]], 4)).toBeCloseTo(Math.exp(-1), 6);
+    expect(motionScore([null], [[1, 1]])).toBeNaN();
   });
 });

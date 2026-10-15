@@ -701,3 +701,35 @@ export function blockFlow(a, b, w, h, { grid = 4, search = 8, mask = null } = {}
   }
   return out;
 }
+
+/** An image at half size (2 × 2 means per channel). */
+export function halveImage(img) {
+  const w2 = img.w >> 1;
+  const h2 = img.h >> 1;
+  const rgb = new Float32Array(w2 * h2 * 3);
+  for (let y = 0; y < h2; y++) {
+    for (let x = 0; x < w2; x++) {
+      for (let c = 0; c < 3; c++) {
+        const i = 3 * (2 * y * img.w + 2 * x) + c;
+        rgb[3 * (y * w2 + x) + c] = 0.25 * (img.rgb[i] + img.rgb[i + 3] + img.rgb[i + 3 * img.w] + img.rgb[i + 3 * img.w + 3]);
+      }
+    }
+  }
+  return { w: w2, h: h2, rgb };
+}
+
+/**
+ * Motion: 1 when both frame pairs move the same way in every grid cell
+ * (blockFlow), falling as the shifts differ (e^(−distance / scale px));
+ * cells either pair cannot measure are skipped.
+ */
+export function motionScore(fa, fb, scale = 4) {
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < fa.length; i++) {
+    if (!fa[i] || !fb[i]) continue;
+    sum += Math.exp(-Math.hypot(fa[i][0] - fb[i][0], fa[i][1] - fb[i][1]) / scale);
+    n++;
+  }
+  return n ? sum / n : NaN;
+}

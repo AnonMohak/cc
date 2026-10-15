@@ -6,13 +6,14 @@ import { execFileSync } from 'node:child_process';
 const BIG = 1 << 30;
 
 /**
- * One image (or the first frame of a video), scaled to w × h (area
- * averaging), as RGB bytes.
+ * One image, or a video's frame at `seconds` (an exact seek), scaled to
+ * w × h (area averaging), as RGB bytes.
  * @returns {Uint8Array}
  */
-export function readRGB(file, w, h) {
+export function readRGB(file, w, h, seconds = null) {
+  const seek = seconds === null ? [] : ['-ss', seconds.toFixed(4)];
   return new Uint8Array(
-    execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-frames:v', '1', '-vf', `scale=${w}:${h}:flags=area`, '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-'], {
+    execFileSync('ffmpeg', ['-v', 'error', ...seek, '-i', file, '-frames:v', '1', '-vf', `scale=${w}:${h}:flags=area`, '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-'], {
       maxBuffer: BIG,
     }),
   );
