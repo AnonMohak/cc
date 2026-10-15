@@ -88,6 +88,52 @@ export const MARCH_LOOK = {
   LIGHT_GAIN: 2.5,
   // Extra extinction of the upper smoke layers (× at the cloud tops).
   SMOKE_K: 1,
+  // Film layers (gargantuaShader.js archLayer / deckLayer; per shot, off
+  // at gain 0). The arch round the shadow on screen, sizes in shadow radii:
+  // a dark gap at its edge, a hot band (strength, width), flames out to
+  // ARCH_OUT (ragged by ARCH_EDGE) whose light falls as rho^-ARCH_POWER;
+  // its angle range (start, span, soft edge: degrees, 0 = right, 90 = up);
+  // the flames' frequency, streak stretch along the rings, flow (turns/s),
+  // dark gaps (0-1) and how much it covers what is behind.
+  ARCH_GAIN: 0,
+  ARCH_GAP: 0.02,
+  ARCH_HOT: 1,
+  ARCH_HOT_W: 0.3,
+  ARCH_OUT: 3,
+  ARCH_EDGE: 0.4,
+  ARCH_POWER: 1,
+  ARCH_A0: -20,
+  ARCH_SPAN: 140,
+  ARCH_SOFT: 15,
+  ARCH_FREQ: 6,
+  ARCH_STREAK: 4,
+  ARCH_FLOW: 0.15,
+  ARCH_DARK: 0.8,
+  ARCH_OPAC: 0.9,
+  // How much a coarse noise bends the flames (texture units), and the noise
+  // level the tongues start at (lower: wider tongues, fewer gaps).
+  ARCH_WARP: 1.2,
+  ARCH_LO: 0.4,
+  // The deck: a cloud surface at height DECK_Y (Rs), cloud size (noise
+  // cells per log radius, whole tiles per turn), coverage threshold, relief,
+  // light from the inner disc (strength, fall-off), dark silhouettes near
+  // the camera (darkness, within DECK_NEAR Rs), fading out by DECK_FAR Rs,
+  // and a cool ambient colour.
+  DECK_GAIN: 0,
+  DECK_Y: 0.3,
+  DECK_FREQ: 6,
+  DECK_TILES: 12,
+  DECK_COVER: 0.45,
+  DECK_RELIEF: 4,
+  DECK_LIGHT: 0.6,
+  DECK_POWER: 1.5,
+  DECK_DARK: 0.7,
+  DECK_NEAR: 2,
+  DECK_FAR: 30,
+  DECK_COOL: [0.02, 0.025, 0.03],
+  // The deck's billows (warp) and its glow far off, toward the horizon.
+  DECK_WARP: 1,
+  DECK_GLOW: 0,
   // The gas colour: 4500 K black body through the camera film, as the film
   // did it (filmColour.js); one temperature, so the outer gas and the hot
   // inner gas share it (the inner disc looks white-hot from exposure alone).
@@ -172,6 +218,36 @@ export const CURVE_KNOTS = [0, 0.05, 0.15, 0.27, 0.42, 0.6, 0.78, 0.92, 1];
 export const LOOK_LIMITS = {
   TAU: [0.2, 8, 0.05],
   INNER: [1.2, 12, 0.01],
+  ARCH_GAIN: [0, 10, 0.01],
+  ARCH_GAP: [0, 1, 0.005],
+  ARCH_HOT: [0, 20, 0.05],
+  ARCH_HOT_W: [0.01, 3, 0.01],
+  ARCH_OUT: [1, 12, 0.05],
+  ARCH_EDGE: [0, 1.5, 0.01],
+  ARCH_POWER: [0, 4, 0.05],
+  ARCH_A0: [-360, 360, 1],
+  ARCH_SPAN: [0, 360, 1],
+  ARCH_SOFT: [0.5, 90, 0.5],
+  ARCH_FREQ: [0.5, 30, 0.1],
+  ARCH_STREAK: [0.2, 20, 0.1],
+  ARCH_FLOW: [-2, 2, 0.01],
+  ARCH_DARK: [0, 1, 0.01],
+  ARCH_OPAC: [0, 1, 0.01],
+  ARCH_WARP: [0, 4, 0.01],
+  ARCH_LO: [0, 0.95, 0.01],
+  DECK_GAIN: [0, 1, 0.01],
+  DECK_Y: [-2, 4, 0.01],
+  DECK_FREQ: [0.5, 30, 0.1],
+  DECK_TILES: [1, 120, 1],
+  DECK_COVER: [0, 1, 0.01],
+  DECK_RELIEF: [0, 20, 0.1],
+  DECK_LIGHT: [0, 10, 0.01],
+  DECK_POWER: [0, 5, 0.05],
+  DECK_DARK: [0, 1, 0.01],
+  DECK_NEAR: [0.05, 20, 0.05],
+  DECK_FAR: [1, 200, 0.5],
+  DECK_WARP: [0, 4, 0.01],
+  DECK_GLOW: [0, 20, 0.01],
   PUFF: [0, 8, 0.01],
   PUFF_W: [0.1, 20, 0.05],
   EMIT: [0, 60, 0.5],
@@ -245,5 +321,5 @@ export function clampLook(name, value) {
   const limit = LOOK_LIMITS[name];
   if (!limit || !Number.isFinite(value)) return value;
   const v = Math.min(limit[1], Math.max(limit[0], value));
-  return name === 'ANG_TILES' || name === 'FLAME_ANG' || name === 'CLUMP_TILES' || name === 'RIM_CLUMPS' ? Math.round(v) : v;
+  return name === 'ANG_TILES' || name === 'FLAME_ANG' || name === 'CLUMP_TILES' || name === 'RIM_CLUMPS' || name === 'DECK_TILES' ? Math.round(v) : v;
 }

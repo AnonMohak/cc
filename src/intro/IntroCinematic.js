@@ -8,6 +8,7 @@ import { bakeNoise3d, NOISE3D_SIZE } from './noise3d.js';
 import { MAX_STEPS, marchShader, resolveShader, compositeShader, lightShader, flareSourceShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
 import { MARCH_LOOK, COMPOSITE_LOOK, SPRAY_LOOK } from './introLook.js';
 import { IntroSpray } from './introSpray.js';
+import { shadowCentreAt, shadowScreenRadius } from './shotSolve.js';
 
 /** Uniform objects for a look: numbers, or THREE.Vector3 for colours. */
 function lookUniforms(look) {
@@ -19,6 +20,18 @@ const _target = new THREE.Vector3();
 const _forward = new THREE.Vector3();
 const _right = new THREE.Vector3();
 const _size = new THREE.Vector2();
+const _shadow = new THREE.Vector3();
+const _p = [0, 0, 0];
+const _c = [0, 0, 0];
+
+/** Where the shadow sits on a camera's screen (uv) and its radius (share of the height). */
+function shadowOnScreen(cam, uvOut) {
+  cam.updateProjectionMatrix();
+  shadowCentreAt(cam.position.toArray(_p), _c);
+  _shadow.fromArray(_c).project(cam);
+  uvOut.set(0.5 + 0.5 * _shadow.x, 0.5 + 0.5 * _shadow.y);
+  return shadowScreenRadius(cam.position.length(), cam.fov);
+}
 
 /** Put a camera at a pose (position, aim, roll in radians, fov in degrees). */
 function placeCamera(cam, pose) {
@@ -153,6 +166,10 @@ export class IntroCinematic {
         uInterleave: { value: 1 },
         uShutterSample: { value: new THREE.Vector2(0, 0) },
         uLight: { value: this.lightTarget.texture },
+        uShadowUV: { value: new THREE.Vector2(0.5, 0.5) },
+        uShadowUV1: { value: new THREE.Vector2(0.5, 0.5) },
+        uShadowR: { value: 0.3 },
+        uShadowR1: { value: 0.3 },
       },
       vertexShader: QUAD_VERTEX,
       fragmentShader: marchShader,
@@ -320,6 +337,10 @@ export class IntroCinematic {
     u.uSparse.value = this.sparse;
     u.uHaze.value = this.haze;
     u.uBoost.value.fromArray(this.boost);
+    // The shadow on screen, for the film layers' arch (at the frame's moment
+    // and the shutter's start).
+    u.uShadowR.value = shadowOnScreen(cam, u.uShadowUV.value);
+    u.uShadowR1.value = shadowOnScreen(cam1, u.uShadowUV1.value);
     const c = this.composite.uniforms;
     c.uExposure.value = this.exposure;
     c.uSat.value = this.sat;

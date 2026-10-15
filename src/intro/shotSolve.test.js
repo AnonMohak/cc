@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { shadowAngle, distanceForShadow, holeOnScreen, solveShot, B_CRIT, SHADOW_SHIFT, shadowCentre } from './shotSolve.js';
+import { shadowAngle, distanceForShadow, holeOnScreen, solveShot, B_CRIT, SHADOW_SHIFT, shadowCentre, shadowCentreAt, shadowScreenRadius, poseVectors } from './shotSolve.js';
 import { FILM_MEASURES } from './filmMeasures.js';
 import { bendRay } from './gargantuaModel.js';
 
@@ -77,5 +77,16 @@ describe('solveShot', () => {
     };
     expect((edge(1) + edge(-1)) / 2).toBeCloseTo(c[2], 2);
     expect(c[0]).toBeCloseTo(0, 9);
+  });
+});
+
+describe('shadowCentreAt / shadowScreenRadius', () => {
+  it('agree with the pose rules', () => {
+    for (const pose of [{ r: 7, el: 4, az: 100, lead: -40, aimY: -1 }, { r: 3, el: 0, az: 10, lead: 0, aimY: 0 }]) {
+      const want = shadowCentre(pose);
+      const got = shadowCentreAt(poseVectors(pose).position);
+      for (let i = 0; i < 3; i++) expect(got[i]).toBeCloseTo(want[i], 9);
+    }
+    expect(shadowScreenRadius(6, 60)).toBeCloseTo(Math.tan(shadowAngle(6)) / Math.tan((30 * Math.PI) / 180) / 2, 12);
   });
 });

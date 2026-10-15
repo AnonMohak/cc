@@ -16,7 +16,7 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { FILM_SHOTS, CLIP_FPS } from '../src/intro/filmShots.js';
 import { FILM_MEASURES } from '../src/intro/filmMeasures.js';
-import { MEASURE_W, MEASURE_H, MEASURE_STEP, measureMask, measureFeatures } from '../src/intro/filmFeatures.js';
+import { MEASURE_W, MEASURE_H, MEASURE_STEP, measureMask, scoreMask, measureFeatures } from '../src/intro/filmFeatures.js';
 import { imageFromBytes, halveImage, halve, frameStats, scoreFrame, blockFlow, motionScore, SCORE_WEIGHTS } from '../src/intro/frameMatch.js';
 import { readRGB, writeRGB, canvas } from './imageIO.mjs';
 
@@ -107,7 +107,7 @@ for (const m of FILM_MEASURES) {
   const shot = FILM_SHOTS.find((s) => s.name === m.shot);
   const ourBytes = self ? readRGB(filmFile(m.shot, Math.min(shot.last, m.frame + self)), MEASURE_W, MEASURE_H) : ourFrame(t);
   const ourImg = imageFromBytes(ourBytes, MEASURE_W, MEASURE_H);
-  const mask2 = halve(new Float32Array(MEASURE_W * MEASURE_H), MEASURE_W, MEASURE_H, mask).mask;
+  const mask2 = halve(new Float32Array(MEASURE_W * MEASURE_H), MEASURE_W, MEASURE_H, scoreMask(m)).mask;
   const film = frameStats(halveImage(filmImg), mask2);
   const ours = frameStats(halveImage(ourImg), mask2);
   const score = scoreFrame(film, ours, mask2);

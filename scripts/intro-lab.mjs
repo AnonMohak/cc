@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { FILM_SHOTS } from '../src/intro/filmShots.js';
 import { FILM_MEASURES } from '../src/intro/filmMeasures.js';
 import { clipFrameIntroTime } from '../src/intro/introTimeline.js';
-import { MEASURE_W, MEASURE_H, measureMask, measureFeatures } from '../src/intro/filmFeatures.js';
+import { MEASURE_W, MEASURE_H, measureMask, scoreMask, measureFeatures } from '../src/intro/filmFeatures.js';
 import { imageFromBytes, halveImage, halve, frameStats, scoreFrame, SCORE_WEIGHTS } from '../src/intro/frameMatch.js';
 import { readRGB, writeRGB, canvas } from './imageIO.mjs';
 import { openIntro, renderFrame } from './introBrowser.mjs';
@@ -79,7 +79,7 @@ try {
     const ourBytes = size.width === MEASURE_W ? ours : resize(ours, size.width, size.height, MEASURE_W, MEASURE_H);
     const filmBytes = readRGB(join('images/clip', m.shot, `${String(m.frame).padStart(4, '0')}.png`), MEASURE_W, MEASURE_H);
     const mask = measureMask(m.shot, m.ship);
-    const mask2 = halve(new Float32Array(MEASURE_W * MEASURE_H), MEASURE_W, MEASURE_H, mask).mask;
+    const mask2 = halve(new Float32Array(MEASURE_W * MEASURE_H), MEASURE_W, MEASURE_H, scoreMask(m)).mask;
     const film = frameStats(halveImage(imageFromBytes(filmBytes, MEASURE_W, MEASURE_H)), mask2);
     const ourImg = imageFromBytes(ourBytes, MEASURE_W, MEASURE_H);
     const score = scoreFrame(film, frameStats(halveImage(ourImg), mask2), mask2);

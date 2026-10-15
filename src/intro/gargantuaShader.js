@@ -186,6 +186,13 @@ export const marchShader = /* glsl */ `
   uniform vec2 uShutterSample;
   // Light reaching the smoke from the hot inner disc (the light pass).
   uniform sampler2D uLight;
+  // The shadow on screen (uv of its centre, radius as a share of the frame
+  // height) at the frame's moment and at the shutter's start: the film
+  // layers' arch is drawn round it.
+  uniform vec2 uShadowUV;
+  uniform vec2 uShadowUV1;
+  uniform float uShadowR;
+  uniform float uShadowR1;
   varying vec2 vUv;
 ${GAS_GLSL}
   #define MAX_STEPS ${MAX_STEPS}
@@ -221,6 +228,85 @@ ${GAS_GLSL}
     vec3 q = fract(vec3(p.xyx) * 0.1031);
     q += dot(q, q.yzx + 33.33);
     return fract((q.x + q.y) * q.z);
+  }
+
+  // Film layers (per shot, art-directed, as the film made its close shots
+  // with extra layers): the arch, bright gas round the shadow on screen in
+  // rings centred on it (the bent image of the far disc: the flame wall,
+  // the skim's waterfall, the thick ring seen from farther away); and the
+  // deck, a cloud surface at the disc's height met by the straight ray
+  // near the camera. Both off when their gain is 0.
+
+  // The arch at screen point uv: rgb light, a = cover (0-1).
+  vec4 archLayer(vec2 uv, float sh) {
+    vec2 S = mix(uShadowUV, uShadowUV1, sh);
+    float R = max(mix(uShadowR, uShadowR1, sh), 1e-3);
+    vec2 d = (uv - S) * vec2(uFullSize.x / uFullSize.y, 1.0);
+    float rho = length(d) / R;
+    float phi = degrees(atan(d.y, d.x));
+    // Angular window: from ARCH_A0 over ARCH_SPAN degrees (counterclockwise,
+    // 0 = right, 90 = up), soft by ARCH_SOFT degrees.
+    float a = mod(phi - ARCH_A0 + 720.0, 360.0);
+    float win = ARCH_SPAN >= 359.0 ? 1.0 : smoothstep(0.0, ARCH_SOFT, a) * (1.0 - smoothstep(ARCH_SPAN - ARCH_SOFT, ARCH_SPAN, a));
+    float r0 = 1.0 + ARCH_GAP;
+    float inside = smoothstep(r0 - 0.02, r0 + 0.02, rho);
+    // Flames: ridged noise stretched along the rings (the orbit), streaming
+    // round with time; a ragged outer edge.
+    float lr = log(max(rho, 1e-3));
+    vec3 q = vec3(lr * ARCH_FREQ, phi / 360.0 * ARCH_FREQ / max(ARCH_STREAK, 0.1) + ARCH_FLOW * gTime, 0.37);
+    // Warped by a coarse noise, two octaves: tongues, not even stripes.
+    vec2 w = texture(uNoise, q * vec3(0.4, 0.4, 1.0) + vec3(0.21, 0.0, 0.53)).rg - 0.5;
+    q.xy += w * ARCH_WARP;
+    float n = 0.65 * texture(uNoise, q).r + 0.35 * texture(uNoise, q * vec3(2.3, 2.1, 1.0) + vec3(0.5, 0.0, 0.31)).r;
+    // (The baked noise spans only about 0.33-0.66: stretched to 0-1 first.)
+    n = clamp(0.5 + (n - 0.5) * 3.0, 0.0, 1.0);
+    float edgeN = texture(uNoise, vec3(phi / 360.0 * 3.0 + 0.11, 0.53, 0.29)).r;
+    float rOut = ARCH_OUT * (1.0 + ARCH_EDGE * (edgeN - 0.5));
+    float reach = 1.0 - smoothstep(rOut * 0.8, rOut, rho);
+    // Broad tongues where the noise is high, narrow dark gaps between.
+    float flame = mix(1.0, smoothstep(ARCH_LO, ARCH_LO + 0.3, n), ARCH_DARK) * reach;
+    // The hot band at the shadow's edge, then the flames' own light falling outward.
+    float hot = ARCH_HOT * exp(-max(rho - r0, 0.0) / max(ARCH_HOT_W, 0.01));
+    float glowF = flame * pow(r0 / max(rho, r0), ARCH_POWER);
+    float lightA = win * inside * (hot + glowF);
+    float cover = win * inside * clamp(ARCH_OPAC * max(reach, hot), 0.0, 1.0);
+    return vec4(GAS_WARM * EMIT * ARCH_GAIN * lightA, cover * step(1e-6, ARCH_GAIN));
+  }
+
+  // The deck on the straight ray from p0 along v0: rgb light, a = cover,
+  // and the distance to it (for the depth of field).
+  vec4 deckLayer(vec3 p0, vec3 v0, out float dist) {
+    dist = 0.0;
+    if (v0.y >= -1e-4 || p0.y <= DECK_Y) return vec4(0.0);
+    float t = (DECK_Y - p0.y) / v0.y;
+    vec3 x = p0 + v0 * t;
+    // (Everywhere below the camera: an art-directed cloud deck, also under
+    // the hole.)
+    float r = max(length(x.xz), 0.5);
+    dist = t;
+    // Clouds that turn with the gas (the disc's own shear).
+    float ang = atan(x.z, x.x) - angularSpeed(r) * gTime;
+    vec3 q = vec3(log(r) * DECK_FREQ, ang * (DECK_TILES / (2.0 * PI)), 0.21);
+    // Warped (billows, not rings round the hole).
+    vec2 w = texture(uNoise, q * vec3(0.5, 0.5, 1.0) + vec3(0.33, 0.0, 0.71)).rg - 0.5;
+    q.xy += w * DECK_WARP;
+    float n = texture(uNoise, q).r;
+    float fine = texture(uNoise, q * vec3(3.1, 3.0, 1.0) + vec3(0.41, 0.0, 0.13)).r;
+    float c = clamp(0.5 + (0.7 * n + 0.3 * fine - 0.5) * 3.0, 0.0, 1.0);
+    // Relief: lit on the side toward the hole, dark on the far side.
+    float toward = texture(uNoise, q - vec3(0.06 * DECK_FREQ, 0.0, 0.0)).r;
+    float relief = clamp(0.5 + 3.0 * DECK_RELIEF * (n - toward), 0.0, 1.0);
+    float dens = smoothstep(DECK_COVER, DECK_COVER + 0.18, c);
+    // Lit from the hot inner disc; near the camera the clouds are dark
+    // silhouettes against the light beyond.
+    float lit = DECK_LIGHT * pow(DISC_INNER / max(r, INNER), DECK_POWER) * (0.25 + relief);
+    float near = 1.0 - DECK_DARK * (1.0 - smoothstep(0.0, DECK_NEAR, t));
+    // Far off, toward the horizon, the deck glows: the bright band under
+    // the flame wall.
+    float far = DECK_GLOW * smoothstep(DECK_FAR * 0.15, DECK_FAR * 0.7, t);
+    vec3 col = (GAS_WARM * (lit + far) * EMIT + DECK_COOL) * near;
+    float cover = DECK_GAIN > 0.0 ? clamp(DECK_GAIN, 0.0, 1.0) * mix(0.55, 1.0, dens) * (1.0 - smoothstep(DECK_FAR * 0.6, DECK_FAR, t)) : 0.0;
+    return vec4(col * cover, cover);
   }
 
   // The light texture over the disc: u = angle (turns), v = log radius from
@@ -277,6 +363,9 @@ ${GAS_GLSL}
       float bk = dot(uBoost, -v);
       v = normalize((-v / gam + uBoost + (gam / (gam + 1.0)) * bk * uBoost) / (1.0 + bk)) * -1.0;
     }
+    // The straight ray (for the deck layer, in flat space near the camera).
+    vec3 p0 = p;
+    vec3 v0 = v;
     // Boyer–Lindquist r, θ and the azimuth as a unit vector e (x, z); the
     // constants from the camera's view (without spin: a static observer's,
     // b = r sin α / √(1 − 1/r)).
@@ -423,7 +512,21 @@ ${GAS_GLSL}
     }
     // Rays that leave see the stars where they point; captured rays are the shadow.
     if (!captured) light += T * stars(normalize(v));
-    if (depth < 0.0) depth = FAR_DEPTH;
+    // The shadow is at the hole (in focus with it), the empty sky far.
+    if (depth < 0.0) depth = captured ? length(p0) : FAR_DEPTH;
+    // Film layers over the bent-light picture: the arch behind the deck.
+    if (ARCH_GAIN > 0.0) {
+      vec4 arch = archLayer(uv, sh);
+      light = arch.rgb + (1.0 - arch.a) * light;
+      // The arch is the bent image of gas near the hole: in focus there.
+      if (arch.a > 0.5) depth = length(p0);
+    }
+    if (DECK_GAIN > 0.0) {
+      float deckDist;
+      vec4 deck = deckLayer(p0, v0, deckDist);
+      light = deck.rgb + (1.0 - deck.a) * light;
+      if (deck.a > 0.5) depth = deckDist;
+    }
     vec4 cur = vec4(light, depth);
     gl_FragColor = cur;
   }
@@ -571,6 +674,27 @@ ${CURVE_KNOTS.slice(1)
     return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
   }
 
+  // A mip level read with a cubic B-spline (four bilinear taps): plain
+  // bilinear reads of the coarse levels show as tiles after the tone curve.
+  vec3 smoothMip(vec2 uv, float lod) {
+    vec2 size = vec2(textureSize(tMarch, int(lod)));
+    vec2 p = uv * size - 0.5;
+    vec2 i = floor(p);
+    vec2 f = p - i;
+    vec2 f2 = f * f;
+    vec2 f3 = f2 * f;
+    vec2 w0 = (1.0 - 3.0 * f + 3.0 * f2 - f3) / 6.0;
+    vec2 w1 = (4.0 - 6.0 * f2 + 3.0 * f3) / 6.0;
+    vec2 w2 = (1.0 + 3.0 * f + 3.0 * f2 - 3.0 * f3) / 6.0;
+    vec2 w3 = f3 / 6.0;
+    vec2 g0 = w0 + w1;
+    vec2 g1 = w2 + w3;
+    vec2 h0 = (i - 0.5 + w1 / g0) / size;
+    vec2 h1 = (i + 1.5 + w3 / g1) / size;
+    return g0.x * g0.y * textureLod(tMarch, h0, lod).rgb + g1.x * g0.y * textureLod(tMarch, vec2(h1.x, h0.y), lod).rgb
+      + g0.x * g1.y * textureLod(tMarch, vec2(h0.x, h1.y), lod).rgb + g1.x * g1.y * textureLod(tMarch, h1, lod).rgb;
+  }
+
   vec3 bright(vec2 uv, float lod) {
     return max(textureLod(tMarch, clamp(uv, 0.0, 1.0), lod).rgb - FLARE_THRESHOLD, 0.0);
   }
@@ -608,12 +732,12 @@ ${CURVE_KNOTS.slice(1)
     float veilSum = 0.0;
     for (int k = 1; k <= 8; k++) {
       float w = pow(2.0, float(k) * (2.0 - VEIL_BETA));
-      veil += w * textureLod(tMarch, vUv, float(k)).rgb;
+      veil += w * (k >= 3 ? smoothMip(vUv, float(k)) : textureLod(tMarch, vUv, float(k)).rgb);
       veilSum += w;
     }
     col = col * (1.0 - VEIL) + VEIL * VEIL_TINT * veil / veilSum;
     // Bloom: tight, around the brightest light.
-    col += BLOOM * (0.5 * textureLod(tMarch, vUv, 3.0).rgb + 0.35 * textureLod(tMarch, vUv, 4.0).rgb + 0.15 * textureLod(tMarch, vUv, 5.0).rgb);
+    col += BLOOM * (0.5 * smoothMip(vUv, 3.0) + 0.35 * smoothMip(vUv, 4.0) + 0.15 * smoothMip(vUv, 5.0));
     // One ghost ring from the brightest light (the flare-source pass: its
     // weighted centre and strength), mirrored through the screen centre by
     // GHOST_POS, like the pink ring at the frame edge in shots 8–9. Each

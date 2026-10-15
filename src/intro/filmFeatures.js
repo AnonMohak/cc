@@ -96,6 +96,22 @@ export function measureMask(shotName, ship, w = MEASURE_W, h = MEASURE_H) {
 }
 
 /**
+ * The pixels the score counts for a measured film frame (a FILM_MEASURES
+ * entry): measureMask, without the film's shadow and dome (cut just inside
+ * their measured circles). There the film is grey-teal or blue-grey and the
+ * intro keeps them black by choice, so they must not pull the fits.
+ */
+export function scoreMask(m, w = MEASURE_W, h = MEASURE_H) {
+  const mask = measureMask(m.shot, m.ship, w, h);
+  for (const c of [m.shadow, m.dome]) {
+    if (!c) continue;
+    const cut = shapeMask(w, h, { cut: [{ u: c.cx / (w / h), v: c.cy, r: 0.97 * c.r }] });
+    for (let i = 0; i < mask.length; i++) mask[i] &= cut[i];
+  }
+  return mask;
+}
+
+/**
  * The features of one frame of a shot (an image at the measure size).
  * @returns {{ tone: number[], horizon: object | null, ring: object | null, dome: object | null, shadow: object | null, spray: object | null }}
  */

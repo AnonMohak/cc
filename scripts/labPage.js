@@ -4,7 +4,7 @@
 // them with the same maths as Node (src/intro/frameMatch.js), so only the
 // numbers leave the page. Not part of the app.
 import { imageFromBytes, halveImage, halve, frameStats, scoreFrame } from '../src/intro/frameMatch.js';
-import { MEASURE_W, MEASURE_H, measureMask, measureFeatures } from '../src/intro/filmFeatures.js';
+import { MEASURE_W, MEASURE_H, measureMask, scoreMask, measureFeatures } from '../src/intro/filmFeatures.js';
 
 const films = new Map();
 
@@ -27,8 +27,10 @@ export async function loadFilm(measures) {
     const id = `${m.shot}/${m.frame}`;
     if (films.has(id)) continue;
     const rgba = await loadRGBA(`/images/clip/${m.shot}/${String(m.frame).padStart(4, '0')}.png`, MEASURE_W, MEASURE_H);
+    // Features are measured on the whole frame (spacecraft out); the score
+    // leaves the film's shadow out too (scoreMask).
     const mask = measureMask(m.shot, m.ship);
-    const mask2 = halve(new Float32Array(MEASURE_W * MEASURE_H), MEASURE_W, MEASURE_H, mask).mask;
+    const mask2 = halve(new Float32Array(MEASURE_W * MEASURE_H), MEASURE_W, MEASURE_H, scoreMask(m)).mask;
     const img = imageFromBytes(rgba, MEASURE_W, MEASURE_H, 4);
     films.set(id, { m, mask, mask2, stats: frameStats(halveImage(img), mask2) });
   }

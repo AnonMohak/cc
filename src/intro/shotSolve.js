@@ -151,3 +151,28 @@ export function solveShot({ radius, center, fov, el, az }, aspect) {
   }
   return { r, lead: pose.lead, aimY: pose.aimY };
 }
+
+/**
+ * The shadow's centre (a world point, Rs) seen from a camera position (the
+ * same rule as shadowCentre, for any position).
+ * @param {number[]} position
+ * @param {number[]} out
+ */
+export function shadowCentreAt(position, out = [0, 0, 0]) {
+  const r = Math.hypot(position[0], position[1], position[2]);
+  const k = (SHADOW_SHIFT * Math.sqrt(Math.max(1 - 1 / r, 0))) / r;
+  // Across the view, square to the hole direction in the disc plane.
+  out[0] = position[2] * k;
+  out[1] = 0;
+  out[2] = -position[0] * k;
+  return out;
+}
+
+/**
+ * The shadow's radius on screen as a share of the frame height, for a
+ * camera at distance r (Rs) with a vertical field of view fov (deg), near
+ * the view's centre.
+ */
+export function shadowScreenRadius(r, fov) {
+  return Math.tan(shadowAngle(r)) / Math.tan((fov / 2) * DEG) / 2;
+}
