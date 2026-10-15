@@ -62,7 +62,7 @@ export const MARCH_LOOK = {
   SHEET_RIM_W: 0.1,
   // Haze around the hole (lit by the disc, collected by every ray): its
   // light per Rs at the inner edge, scale height (Rs) and colour.
-  HAZE: 0.06,
+  HAZE: 0,
   HAZE_HEIGHT: 2,
   HAZE_COL: [0.42, 0.58, 0.95],
   // Self-shadowing: the height (half-thicknesses) the inner disc's light runs
@@ -116,7 +116,7 @@ export const COMPOSITE_LOOK = {
   // matching brightness bands of our frames (with the film-stock gas colour) and shots 1–3 and 7–9 (shots 4–5
   // are cool from the haze over the dome, not from the grade). The film is
   // near neutral low down and turns orange in the highlights.
-  CURVE_0: [0.034, 0.038, 0.011],
+  CURVE_0: [0, 0, 0],
   CURVE_1: [0.067, 0.075, 0.056],
   CURVE_2: [0.14, 0.134, 0.113],
   CURVE_3: [0.278, 0.237, 0.185],
@@ -126,9 +126,9 @@ export const COMPOSITE_LOOK = {
   CURVE_7: [0.912, 0.864, 0.796],
   CURVE_8: [1, 1, 0.998],
   // A manual grade on top (ASC CDL: out = (in · slope + offset)^power), at identity.
-  CDL_SLOPE: [1, 1, 1],
+  CDL_SLOPE: [0.85, 0.85, 0.85],
   CDL_OFFSET: [0, 0, 0],
-  CDL_POWER: [1, 1, 1],
+  CDL_POWER: [1.2, 1.2, 1.2],
 };
 
 /** Input levels of the CURVE_n points (display space). */
