@@ -47,3 +47,19 @@ describe('colour fit tone curve', () => {
     expect(compositeShader).toContain('vec3 toneCurve(vec3 x)');
   });
 });
+
+describe('spray look', () => {
+  it('every spray value has limits that hold its default, and the spray shader declares it', async () => {
+    const { SPRAY_LOOK } = await import('./introLook.js');
+    const { IntroSpray } = await import('./introSpray.js');
+    const spray = new IntroSpray();
+    for (const [name, v] of Object.entries(SPRAY_LOOK)) {
+      const [min, max] = LOOK_LIMITS[name];
+      expect(v).toBeGreaterThanOrEqual(min);
+      expect(v).toBeLessThanOrEqual(max);
+      expect(spray.lineMaterial.vertexShader).toMatch(new RegExp(`uniform float ${name};`));
+      expect(spray.uniforms[name].value).toBe(v);
+    }
+    spray.dispose();
+  });
+});

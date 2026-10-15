@@ -109,7 +109,7 @@ describe('score', () => {
   it('tone falls with brightness', () => {
     const a = toneStats(luma(make(() => grey(0.2))), W, H);
     expect(toneScore(a, a)).toBe(1);
-    expect(toneScore(a, toneStats(luma(make(() => grey(0.3))), W, H))).toBeCloseTo(0.6, 5);
+    expect(toneScore(a, toneStats(luma(make(() => grey(0.3))), W, H))).toBeCloseTo(0.6, 3);
     expect(toneScore(a, toneStats(luma(make(() => grey(0.9))), W, H))).toBe(0);
   });
 

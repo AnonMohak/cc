@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { introCamera, fallBoost, FALL_START, FALL_FULL, FALL_BETA_MAX, introPhase, keyPosition, keyTarget, CAMERA_KEYS, INTRO_SECONDS, BLACK_FULL, MUSIC_RISE_SECONDS, FILM_SCHEDULE, clipFrameIntroTime, filmFrameAt } from './introTimeline.js';
+import { introCamera, fallBoost, FALL_START, FALL_FULL, FALL_BETA_MAX, introPhase, keyPosition, keyTarget, CAMERA_KEYS, INTRO_SECONDS, BLACK_FULL, MUSIC_RISE_SECONDS, FILM_SCHEDULE, clipFrameIntroTime, filmFrameAt, keyLook } from './introTimeline.js';
 import { FILM_SHOTS, CLIP_FPS, shotSeconds } from './filmShots.js';
 
 const pose = () => ({ position: [0, 0, 0], target: [0, 0, 0], roll: 0, fov: 0, exposure: 1 });
@@ -112,5 +112,25 @@ describe('FILM_SCHEDULE', () => {
   it('ends the spray inside the hole at full black', () => {
     const inside = FILM_SCHEDULE.at(-1);
     expect(inside.start + shotSeconds(shot('inside'))).toBeCloseTo(BLACK_FULL, 9);
+  });
+});
+
+describe('keyLook', () => {
+  const keys = [{ t: 0 }, { t: 10, look: { EMIT: 20, GAS_WARM: [1, 0, 0] } }, { t: 20, look: { EMIT: 10 } }, { t: 30 }];
+  const base = { EMIT: 14, GAS_WARM: [0, 0, 1], TAU: 5 };
+
+  it('eases from the base into a key and between keys', () => {
+    expect(keyLook(0, keys, base).get('EMIT')).toBe(14);
+    expect(keyLook(5, keys, base).get('EMIT')).toBeCloseTo(17, 9);
+    expect(keyLook(10, keys, base).get('EMIT')).toBe(20);
+    expect(keyLook(15, keys, base).get('EMIT')).toBeCloseTo(15, 9);
+    // A colour the next key does not set eases back to the base.
+    expect(keyLook(15, keys, base).get('GAS_WARM')).toEqual([0.5, 0, 0.5]);
+  });
+
+  it('leaves names no nearby key sets to the base look', () => {
+    expect(keyLook(25, keys, base).has('GAS_WARM')).toBe(false);
+    expect(keyLook(29.9, keys, base).get('EMIT')).toBeCloseTo(14, 2);
+    expect(keyLook(15, keys, base).has('TAU')).toBe(false);
   });
 });

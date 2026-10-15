@@ -145,6 +145,44 @@ export function introCamera(t, out, keys = CAMERA_KEYS) {
   return out;
 }
 
+/**
+ * Per-shot look values at t: each key may carry `look` (introLook.js names
+ * to values), eased (smoothstep) from the key before t to the key after it;
+ * a key without a name it does not set takes `base` for it. Only names one
+ * of the two keys sets are written to `out` (a Map, reused: no allocation
+ * per frame once warm); others keep the base look.
+ * @param {number} t
+ * @param {object[]} keys
+ * @param {Record<string, number | number[]>} base
+ * @param {Map<string, number | number[]>} out
+ */
+export function keyLook(t, keys, base, out = new Map()) {
+  out.clear();
+  const last = keys.length - 1;
+  const time = Math.min(Math.max(t, keys[0].t), keys[last].t);
+  let i = 0;
+  while (i < last - 1 && time > keys[i + 1].t) i++;
+  const k1 = keys[i];
+  const k2 = keys[i + 1];
+  const s = smoothstep(0, 1, (time - k1.t) / (k2.t - k1.t));
+  for (const k of [k1, k2]) {
+    if (!k.look) continue;
+    for (const name of Object.keys(k.look)) {
+      if (out.has(name) || !(name in base)) continue;
+      const a = k1.look?.[name] ?? base[name];
+      const b = k2.look?.[name] ?? base[name];
+      if (Array.isArray(a)) {
+        const v = _vectors.get(name) ?? [0, 0, 0];
+        _vectors.set(name, v);
+        for (let c = 0; c < 3; c++) v[c] = a[c] + (b[c] - a[c]) * s;
+        out.set(name, v);
+      } else out.set(name, a + (b - a) * s);
+    }
+  }
+  return out;
+}
+const _vectors = new Map();
+
 /** The fall speed ramps in over these seconds (after the hole-far shot). */
 export const FALL_START = 56.3;
 export const FALL_FULL = 58;

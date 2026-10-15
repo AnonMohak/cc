@@ -138,32 +138,57 @@ export function ssim(a, b, w, h, mask = null, r = 3) {
 }
 
 /**
- * Shape: where light and dark are, as the mean SSIM of the luma at three
- * scales (full, half, quarter), lightly blurred so grain and the exact
- * clump pattern do not count, only the forms.
+ * Shape: where light and dark are, as the mean SSIM of the luma at two
+ * coarse scales (a quarter and an eighth of the scoring size, about 1/120
+ * and 1/60 of the width per pixel), so the forms count (shadow, arches,
+ * horizon, bright regions) and not the exact place of each random clump or
+ * flame, which detail and streaks score as statistics.
  */
 export function shapeScore(ya, yb, w, h, mask = null) {
-  let a = { data: boxBlur(ya, w, h, 1), w, h, mask };
-  let b = { data: boxBlur(yb, w, h, 1), w, h, mask };
+  let a = { data: ya, w, h, mask };
+  let b = { data: yb, w, h, mask };
+  for (let s = 0; s < 2; s++) {
+    const m = a.mask;
+    a = halve(a.data, a.w, a.h, m);
+    b = halve(b.data, b.w, b.h, m);
+  }
   let sum = 0;
-  for (let s = 0; s < 3; s++) {
-    sum += Math.max(0, ssim(a.data, b.data, a.w, a.h, a.mask, 3));
-    if (s < 2) {
+  for (let s = 0; s < 2; s++) {
+    sum += Math.max(0, ssim(boxBlur(a.data, a.w, a.h, 1), boxBlur(b.data, b.w, b.h, 1), a.w, a.h, a.mask, 3));
+    if (s === 0) {
       const m = a.mask;
       a = halve(a.data, a.w, a.h, m);
       b = halve(b.data, b.w, b.h, m);
     }
   }
-  return sum / 3;
+  return sum / 2;
 }
 
-/** Quantiles (0–1 each) of the masked values. */
+const QBINS = 2048;
+const _hist = new Uint32Array(QBINS);
+
+/**
+ * Quantiles (0–1 each) of the masked values (0–1), from a 2048-bin
+ * histogram: no sort, exact to half a bin (the bin's centre).
+ */
 export function quantiles(values, mask, qs) {
-  const list = [];
-  for (let i = 0; i < values.length; i++) if (!mask || mask[i]) list.push(values[i]);
-  if (!list.length) return qs.map(() => NaN);
-  list.sort((x, y) => x - y);
-  return qs.map((q) => list[Math.min(list.length - 1, Math.floor(q * list.length))]);
+  _hist.fill(0);
+  let n = 0;
+  for (let i = 0; i < values.length; i++) {
+    if (mask && !mask[i]) continue;
+    _hist[Math.min(QBINS - 1, Math.max(0, Math.floor(values[i] * QBINS)))]++;
+    n++;
+  }
+  if (!n) return qs.map(() => NaN);
+  return qs.map((q) => {
+    const want = Math.min(n - 1, Math.floor(q * n));
+    let seen = 0;
+    for (let b = 0; b < QBINS; b++) {
+      seen += _hist[b];
+      if (seen > want) return (b + 0.5) / QBINS;
+    }
+    return 1;
+  });
 }
 
 const TONE_Q = [0.1, 0.5, 0.9];
@@ -435,14 +460,17 @@ function random(seed) {
 export function ransacCircle(points, { tol = 2, rMin = 0, rMax = Infinity, iterations = 400, seed = 1, accept = null } = {}) {
   if (points.length < 3) return null;
   const rand = random(seed);
+  // Search on at most 3000 points (a spread subsample); refine on all.
+  const stride = Math.max(1, Math.ceil(points.length / 3000));
+  const search = stride > 1 ? points.filter((_, i) => i % stride === 0) : points;
   let best = null;
   let bestCount = 0;
   for (let it = 0; it < iterations; it++) {
-    const sample = [0, 1, 2].map(() => points[Math.floor(rand() * points.length)]);
+    const sample = [0, 1, 2].map(() => search[Math.floor(rand() * search.length)]);
     const c = fitCircle(sample);
     if (!c || c.r < rMin || c.r > rMax || (accept && !accept(c))) continue;
     let count = 0;
-    for (const [x, y] of points) if (Math.abs(Math.hypot(x - c.cx, y - c.cy) - c.r) < tol) count++;
+    for (const [x, y] of search) if (Math.abs(Math.hypot(x - c.cx, y - c.cy) - c.r) < tol) count++;
     if (count > bestCount) {
       bestCount = count;
       best = c;

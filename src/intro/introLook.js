@@ -56,10 +56,16 @@ export const MARCH_LOOK = {
   SHEET_TAU: 1.5,
   SHEET_GLOW: 1.5,
   SHEET_POWER: 1.2,
-  // In the gap views (camera key sparse) only a rim of the sheet glows:
-  // its radius and width (Rs).
+  // In the gap views (camera key sparse) only a band of the sheet glows:
+  // where it starts (Rs), its soft edge (Rs) and width (Rs), broken into
+  // clumps along the orbit (whole noise tiles per turn; the share of the
+  // noise above RIM_CLUMP_LO glows) of thin parallel filaments.
   SHEET_RIM: 4.6,
   SHEET_RIM_W: 0.1,
+  RIM_BAND: 0.6,
+  RIM_STRIPES: 4,
+  RIM_CLUMPS: 6,
+  RIM_CLUMP_LO: 0.55,
   // Haze around the hole (lit by the disc, collected by every ray): its
   // light per Rs at the inner edge, scale height (Rs) and colour.
   HAZE: 0,
@@ -131,6 +137,24 @@ export const COMPOSITE_LOOK = {
   CDL_POWER: [1.2, 1.2, 1.2],
 };
 
+/**
+ * The spray inside the hole (introSpray.js): a cloud of bright specks ahead
+ * of the camera, its near edge SPRAY_DIST (Rs) ahead at the shot's start and
+ * coming at SPRAY_SPEED (Rs/s), SPRAY_DEPTH deep; its direction ahead
+ * (SPRAY_U, SPRAY_V: x, y per unit of depth in the camera's frame), its
+ * lateral size (Rs), brightness and soft point size (px at 1080 lines).
+ */
+export const SPRAY_LOOK = {
+  SPRAY_GAIN: 1,
+  SPRAY_DIST: 12,
+  SPRAY_SPEED: 2,
+  SPRAY_DEPTH: 8,
+  SPRAY_U: -0.012,
+  SPRAY_V: 0.011,
+  SPRAY_SPREAD: 0.6,
+  SPRAY_SIZE: 3,
+};
+
 /** Input levels of the CURVE_n points (display space). */
 export const CURVE_KNOTS = [0, 0.05, 0.15, 0.27, 0.42, 0.6, 0.78, 0.92, 1];
 
@@ -160,6 +184,10 @@ export const LOOK_LIMITS = {
   SHEET_POWER: [0, 4, 0.05],
   SHEET_RIM: [3, 10, 0.05],
   SHEET_RIM_W: [0.02, 3, 0.01],
+  RIM_BAND: [0.05, 4, 0.01],
+  RIM_STRIPES: [0, 12, 0.1],
+  RIM_CLUMPS: [1, 24, 1],
+  RIM_CLUMP_LO: [0, 0.95, 0.005],
   HAZE: [0, 1, 0.005],
   HAZE_HEIGHT: [0.1, 10, 0.05],
   LIGHT_HEIGHT: [0, 3, 0.05],
@@ -181,6 +209,14 @@ export const LOOK_LIMITS = {
   GRAIN: [0, 0.2, 0.001],
   GRAIN_SIZE: [0.5, 4, 0.05],
   GRAIN_CHROMA: [0, 1, 0.01],
+  SPRAY_GAIN: [0, 20, 0.01],
+  SPRAY_DIST: [0, 60, 0.1],
+  SPRAY_SPEED: [0, 20, 0.05],
+  SPRAY_DEPTH: [0.5, 60, 0.1],
+  SPRAY_U: [-1, 1, 0.001],
+  SPRAY_V: [-1, 1, 0.001],
+  SPRAY_SPREAD: [0.01, 6, 0.01],
+  SPRAY_SIZE: [0, 30, 0.1],
 };
 
 /** GLSL uniform declarations for a look (float or vec3 by value). */
@@ -195,5 +231,5 @@ export function clampLook(name, value) {
   const limit = LOOK_LIMITS[name];
   if (!limit || !Number.isFinite(value)) return value;
   const v = Math.min(limit[1], Math.max(limit[0], value));
-  return name === 'ANG_TILES' || name === 'FLAME_ANG' || name === 'CLUMP_TILES' ? Math.round(v) : v;
+  return name === 'ANG_TILES' || name === 'FLAME_ANG' || name === 'CLUMP_TILES' || name === 'RIM_CLUMPS' ? Math.round(v) : v;
 }

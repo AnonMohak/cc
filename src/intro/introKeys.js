@@ -53,9 +53,10 @@ export const CAMERA_KEYS = [
   // over its first 0.8 s).
   key(52.751, 6.7, 8, 200.5, 3, 0.7, 50, { exp: 1.2 }),
   key(56.296, 6.63, 8, 202, 3.3, 0.6, 50, { exp: 1.2 }),
-  // The fall into the shadow, then black inside (film shot 'inside': the
-  // spray of particles over the black).
-  key(57.7, 3.5, 8, 215, 0, 0, 45, { sparse: 1 }),
-  key(59.1, 1.8, 8, 228, 0, 0, 34, { sparse: 1 }),
-  key(65, 1.2, 8, 236, 0, 0, 30, { sparse: 1 }),
+  // The plunge: a fast push-in with a narrowing lens, so the shadow fills
+  // the frame before the film's last shot (the spray of bright specks over
+  // the black, from 57.4 s), then a slow fall on.
+  key(57, 4, 8, 210, 0, 0, 20, { sparse: 1 }),
+  key(59.1, 2.5, 8, 222, 0, 0, 18, { sparse: 1 }),
+  key(65, 1.2, 8, 236, 0, 0, 16, { sparse: 1 }),
 ];

@@ -387,10 +387,18 @@ ${GAS_GLSL}
           float cosA = max(abs(v.y) / length(v), 1e-3);
           float alpha = win * (1.0 - exp(-SHEET_TAU / cosA));
           float hotSheet = SHEET_GLOW * pow(DISC_INNER / max(rx, DISC_INNER), SHEET_POWER);
-          // Seen from the clear gap only a thin rim of it glows, just
-          // outside the inner edge: its lensed images are the thin, sharp
-          // arcs of the film's shots 1–4.
-          hotSheet *= mix(1.0, exp(-pow((rx - SHEET_RIM) / SHEET_RIM_W, 2.0)), uSparse);
+          // Seen from the clear gap only a band of it glows, just outside the
+          // inner edge, broken into a few clumps along the orbit (RIM_CLUMPS
+          // whole noise tiles per turn: no seam), each of thin parallel
+          // filaments (RIM_STRIPES across the band): the film's streaked
+          // clumps, lensed into the corners, with the thin ring lit only
+          // where a clump's light goes round.
+          float band = smoothstep(SHEET_RIM - SHEET_RIM_W, SHEET_RIM, rx) * (1.0 - smoothstep(SHEET_RIM + RIM_BAND - SHEET_RIM_W, SHEET_RIM + RIM_BAND, rx));
+          float stripes = pow(0.5 + 0.5 * cos(2.0 * PI * RIM_STRIPES * (rx - SHEET_RIM) / max(RIM_BAND, 1e-3)), 3.0);
+          float rimAng = atan(x.z, x.x) - angularSpeed(rx) * gTime;
+          float rimNoise = texture(uNoise, vec3(rimAng * (RIM_CLUMPS / (2.0 * PI)), 0.37, 0.71)).r;
+          float rim = band * (0.3 + 0.7 * stripes) * smoothstep(RIM_CLUMP_LO, RIM_CLUMP_LO + 0.12, rimNoise);
+          hotSheet *= mix(1.0, rim, uSparse);
           light += T * alpha * mix(GAS_WARM, GAS_HOT, smoothstep(0.25, 0.9, hotSheet)) * hotSheet * EMIT;
           T *= 1.0 - alpha;
           if (depth < 0.0 && T < 0.5) depth = dist;

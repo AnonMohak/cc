@@ -1,9 +1,13 @@
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import { introCamera, fallBoost } from './introTimeline.js';
+import { introCamera, fallBoost, keyLook, CAMERA_KEYS, FILM_SCHEDULE } from './introTimeline.js';
+
+/** The spray inside the hole starts with the film's last shot. */
+const SPRAY_START = FILM_SCHEDULE.find((s) => s.shot === 'inside').start;
 import { bakeNoise3d, NOISE3D_SIZE } from './noise3d.js';
 import { MAX_STEPS, marchShader, resolveShader, compositeShader, lightShader, flareSourceShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
-import { MARCH_LOOK, COMPOSITE_LOOK } from './introLook.js';
+import { MARCH_LOOK, COMPOSITE_LOOK, SPRAY_LOOK } from './introLook.js';
+import { IntroSpray } from './introSpray.js';
 
 /** Uniform objects for a look: numbers, or THREE.Vector3 for colours. */
 function lookUniforms(look) {
@@ -69,6 +73,13 @@ export class IntroCinematic {
     this.fixedTime = null;
     /** For the lab and fit scripts: camera keys instead of introKeys.js. */
     this.keys = null;
+    // The base look (introLook.js, the ?tune sliders) and the names a camera
+    // key overrides at the current moment (introTimeline.js keyLook).
+    this.baseLook = Object.fromEntries(Object.entries({ ...MARCH_LOOK, ...COMPOSITE_LOOK, ...SPRAY_LOOK }).map(([n, v]) => [n, Array.isArray(v) ? [...v] : v]));
+    // The spray of bright specks inside the hole (drawn over the composite).
+    this.spray = new IntroSpray();
+    this.lookOverrides = new Map();
+    this.lookPrevious = new Set();
     this.time = 0;
     this.exposure = 1;
     this.sparse = 1;
@@ -228,26 +239,26 @@ export class IntroCinematic {
     }
   }
 
-  /** The current look values (introLook.js keys). */
+  /** The base look values (introLook.js keys; camera keys may override them per shot). */
   getLook() {
-    const out = {};
-    for (const material of [this.march, this.composite]) {
-      for (const name of Object.keys(material === this.march ? MARCH_LOOK : COMPOSITE_LOOK)) {
-        const v = material.uniforms[name].value;
-        out[name] = typeof v === 'number' ? v : v.toArray();
-      }
-    }
-    return out;
+    return Object.fromEntries(Object.entries(this.baseLook).map(([name, v]) => [name, Array.isArray(v) ? [...v] : v]));
   }
 
-  /** Change look values live (introLook.js keys; colours as [r, g, b]). */
+  /** Change base look values live (introLook.js keys; colours as [r, g, b]). */
   setLook(values) {
     for (const [name, v] of Object.entries(values)) {
-      const u = this.march.uniforms[name] ?? this.composite.uniforms[name];
-      if (!u) continue;
-      if (Array.isArray(v)) u.value.fromArray(v);
-      else u.value = v;
+      if (!(name in this.baseLook)) continue;
+      this.baseLook[name] = Array.isArray(v) ? [...v] : v;
+      if (!this.lookOverrides.has(name)) this.applyLook(name, this.baseLook[name]);
     }
+  }
+
+  /** Set one look uniform (march or composite). */
+  applyLook(name, v) {
+    const u = this.march.uniforms[name] ?? this.composite.uniforms[name] ?? this.spray.uniforms[name];
+    if (!u) return;
+    if (Array.isArray(v)) u.value.fromArray(v);
+    else u.value = v;
   }
 
   setSize(width, height) {
@@ -263,6 +274,15 @@ export class IntroCinematic {
     this.time = t;
     const keys = this.keys ?? undefined;
     const pose = this.override ?? introCamera(t, _pose, keys);
+    // Per-shot look values from the keys; names no longer overridden go back
+    // to the base look.
+    keyLook(t, keys ?? CAMERA_KEYS, this.baseLook, this.lookOverrides);
+    for (const name of this.lookPrevious) if (!this.lookOverrides.has(name)) this.applyLook(name, this.baseLook[name]);
+    this.lookPrevious.clear();
+    for (const [name, v] of this.lookOverrides) {
+      this.applyLook(name, v);
+      this.lookPrevious.add(name);
+    }
     placeCamera(this.camera, pose);
     this.exposure = pose.exposure ?? 1;
     this.sparse = pose.sparse ?? 1;
@@ -308,6 +328,7 @@ export class IntroCinematic {
     // In focus: the hole (its distance from the camera, in Rs).
     c.uFocus.value = cam.position.length();
     c.uTime.value = this.time;
+    this.spray.update(this.time - SPRAY_START, u.SHUTTER_S.value, outH, cam);
   }
 
   render(renderer) {
@@ -360,6 +381,14 @@ export class IntroCinematic {
     this.flareQuad.render(renderer);
     renderer.setRenderTarget(null);
     this.compositeQuad.render(renderer);
+    this.drawSpray(renderer);
+  }
+
+  /** The spray over the composite, when it shows. */
+  drawSpray(renderer) {
+    if (!this.spray.active) return;
+    this.camera.updateProjectionMatrix();
+    this.spray.render(renderer, this.camera);
   }
 
   /**
@@ -421,6 +450,7 @@ export class IntroCinematic {
     this.composite.uniforms.tMarch.value = read.texture;
     renderer.setRenderTarget(this.outTarget);
     this.compositeQuad.render(renderer);
+    this.drawSpray(renderer);
     const pixels = new Uint8Array(width * height * 4);
     renderer.readRenderTargetPixels(this.outTarget, 0, 0, width, height, pixels);
     renderer.setRenderTarget(null);
@@ -458,5 +488,6 @@ export class IntroCinematic {
     this.resolve.dispose();
     this.resolveQuad.dispose();
     this.compositeQuad.dispose();
+    this.spray.dispose();
   }
 }
