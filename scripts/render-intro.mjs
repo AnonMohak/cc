@@ -9,6 +9,8 @@
 // Options: --out renders  --width 1920  --height 1080  --samples 16
 //          --steps 1500  --tile 256  --format png|jpg  --resume (skip
 //          frames already written, to continue a stopped render)
+//          --limit N (render at most N of the frames left, then stop: for
+//          scripts/render-batches.mjs)
 //          --gpu high (the discrete GPU on a laptop with two)
 // Output: <out>/t<seconds>.png for --times, <out>/frame_00001.png… for a
 // sequence. renders/ is gitignored.
@@ -46,7 +48,8 @@ function frameList() {
 }
 
 async function main() {
-  const frames = frameList().filter(([name]) => !('resume' in args && existsSync(join(out, name))));
+  const remaining = frameList().filter(([name]) => !('resume' in args && existsSync(join(out, name))));
+  const frames = args.limit === undefined ? remaining : remaining.slice(0, num('limit', remaining.length));
   mkdirSync(out, { recursive: true });
   const page = await openIntro({ gpu: args.gpu });
   try {

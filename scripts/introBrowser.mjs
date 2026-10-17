@@ -3,7 +3,7 @@
 // its own Vite dev server and Edge (or BROWSER) and drives them over the
 // DevTools protocol (no packages needed).
 import { spawn, execSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -43,12 +43,13 @@ export async function openIntro({ gpu = null } = {}) {
     throw new Error(`port ${VITE_PORT} is in use (an old dev server?): stop it first`);
   }
   const vite = spawn(`npx vite --port ${VITE_PORT} --strictPort`, { shell: true, stdio: 'ignore' });
+  const profile = mkdtempSync(join(tmpdir(), 'intro-render-'));
   const browser = spawn(
     BROWSER,
     [
       '--headless=new',
       `--remote-debugging-port=${CDP_PORT}`,
-      `--user-data-dir=${mkdtempSync(join(tmpdir(), 'intro-render-'))}`,
+      `--user-data-dir=${profile}`,
       '--window-size=1280,720',
       '--no-first-run',
       '--ignore-gpu-blocklist',
@@ -62,6 +63,12 @@ export async function openIntro({ gpu = null } = {}) {
   const close = () => {
     kill(browser);
     kill(vite);
+    // The browser's temporary profile (it may still be locked for a moment).
+    try {
+      rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch {
+      // left for the system's temp cleanup
+    }
   };
   try {
     await waitFor(async () => (await fetch(`http://localhost:${VITE_PORT}/`)).ok, 'the dev server');
