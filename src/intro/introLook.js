@@ -140,6 +140,8 @@ export const MARCH_LOOK = {
   ARCH_LOBE_A: 45,
   // How far out from the hot band the flames start (shadow radii).
   ARCH_FLAME_IN: 0,
+  // Flow of the flames along the radius (log r per second).
+  ARCH_RFLOW: 0,
   // The deck: a cloud surface at height DECK_Y (Rs), cloud size (noise
   // cells per log radius, whole tiles per turn), coverage threshold, relief,
   // light from the inner disc (strength, fall-off), dark silhouettes near
@@ -164,6 +166,8 @@ export const MARCH_LOOK = {
   // dark clouds show that glow (silhouettes).
   DECK_SPIN: 1,
   DECK_SIL: 0,
+  // Flow of the clouds along the radius (log r per second).
+  DECK_RFLOW: 0,
   // The gas colour: 4500 K black body through the camera film, as the film
   // did it (filmColour.js); one temperature, so the outer gas and the hot
   // inner gas share it (the inner disc looks white-hot from exposure alone).
@@ -300,6 +304,7 @@ export const LOOK_LIMITS = {
   ARCH_LOBE_N: [1, 8, 1],
   ARCH_LOBE_A: [-180, 180, 1],
   ARCH_FLAME_IN: [0, 3, 0.01],
+  ARCH_RFLOW: [-4, 4, 0.01],
   DECK_GAIN: [0, 1, 0.01],
   DECK_Y: [-2, 4, 0.01],
   DECK_FREQ: [0.5, 30, 0.1],
@@ -315,6 +320,7 @@ export const LOOK_LIMITS = {
   DECK_GLOW: [0, 20, 0.01],
   DECK_SPIN: [-2, 4, 0.01],
   DECK_SIL: [0, 1, 0.01],
+  DECK_RFLOW: [-4, 4, 0.01],
   PUFF: [0, 8, 0.01],
   PUFF_W: [0.1, 20, 0.05],
   EMIT: [0, 60, 0.5],

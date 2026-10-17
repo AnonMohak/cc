@@ -3,7 +3,7 @@
 // images/clip/, renders our frames (IntroCinematic.renderStill) and scores
 // them with the same maths as Node (src/intro/frameMatch.js), so only the
 // numbers leave the page. Not part of the app.
-import { imageFromBytes, halveImage, halve, frameStats, scoreFrame } from '../src/intro/frameMatch.js';
+import { imageFromBytes, halveImage, halve, frameStats, scoreFrame, luma, blockFlow } from '../src/intro/frameMatch.js';
 import { MEASURE_W, MEASURE_H, measureMask, scoreMask, measureFeatures } from '../src/intro/filmFeatures.js';
 import { emptyHist, addToHist } from '../src/intro/toneMatch.js';
 
@@ -132,6 +132,22 @@ export function filmShadowColour(m) {
 export function ourShadowColour(t, size, m) {
   const film = films.get(`${m.shot}/${m.frame}`);
   return shadowColour(toMeasureSize(render(t, size)), m, film.mask);
+}
+
+/**
+ * Image motion between two loaded film frames and between our frames at t0
+ * and t1 (blockFlow on luma at the measure size, cells with spacecraft
+ * left out): [dx, dy] px per cell, null where not measurable.
+ */
+export function flowAt(t0, t1, size, m0, m1, opts = { grid: 6, search: 16 }) {
+  const f0 = films.get(`${m0.shot}/${m0.frame}`);
+  const f1 = films.get(`${m1.shot}/${m1.frame}`);
+  const mask = f0.mask;
+  const film = blockFlow(luma(f0.img), luma(f1.img), MEASURE_W, MEASURE_H, { ...opts, mask });
+  const a = toMeasureSize(render(t0, size));
+  const b = toMeasureSize(render(t1, size));
+  const ours = blockFlow(luma(a), luma(b), MEASURE_W, MEASURE_H, { ...opts, mask });
+  return { film, ours };
 }
 
 /** Our frame at t as a JPEG (base64), for sheets. */

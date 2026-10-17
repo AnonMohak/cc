@@ -81,6 +81,8 @@ const vertexShader = /* glsl */ `
   attribute vec2 aLeg; // lateral offset in the legs
   uniform float uAge;
   uniform float uPixelScale;
+  // The share of the specks drawn (live: fewer, each brighter).
+  uniform float uShare;
 ${lookDeclarations(SPRAY_LOOK)}
   varying float vLight;
   varying float vBright;
@@ -120,7 +122,7 @@ ${lookDeclarations(SPRAY_LOOK)}
     // Nearer is brighter, to a cap (1 / z, not 1 / z²: far off, the film's
     // spray is already a bright blob).
     // Specks right at the camera fade out (they would be big squares).
-    vLight = SPRAY_GAIN * cycle * min(1.0, 1.0 / z) * smoothstep(0.05, 0.6, z);
+    vLight = SPRAY_GAIN * cycle * min(1.0, 1.0 / z) * smoothstep(0.05, 0.6, z) / uShare;
     vBright = aExtra.x;
     // Near, a speck crosses many pixels in the shutter: its streak spreads
     // its light (dimmer by about the square of the nearness). A line is
@@ -130,6 +132,11 @@ ${lookDeclarations(SPRAY_LOOK)}
     // Near specks are out of focus: a soft disc up to SPRAY_BLUR px (at 1080
     // lines) that spreads the same light (per pixel ∝ 1 / size², the same at
     // every output height); together they are the film's soft glow.
+#ifdef SPRAY_POINTS
+    // A soft point once per speck (its streak's end), with both ends' light.
+    if (aExtra.y < 0.5) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vLight = 0.0; vBright = 0.0; vStreak = 0.0; vSpread = 0.0; return; }
+    vLight *= 2.0;
+#endif
     gl_PointSize = clamp(SPRAY_SIZE * uPixelScale / z, 1.0, SPRAY_BLUR * uPixelScale);
     float s1080 = gl_PointSize / uPixelScale;
     vSpread = min(1.0, 4.0 / (s1080 * s1080));
@@ -185,12 +192,13 @@ export class IntroSpray {
     this.uniforms = {
       uAge: { value: -1 },
       uPixelScale: { value: 1 },
+      uShare: { value: 1 },
       ...Object.fromEntries(Object.entries(SPRAY_LOOK).map(([name, v]) => [name, { value: v }])),
     };
-    const material = (fragmentShader) =>
-      new THREE.ShaderMaterial({ vertexShader, fragmentShader, uniforms: this.uniforms, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true });
+    const material = (fragmentShader, defines = {}) =>
+      new THREE.ShaderMaterial({ vertexShader, fragmentShader, defines, uniforms: this.uniforms, blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true });
     this.lineMaterial = material(lineFragment);
-    this.pointMaterial = material(pointFragment);
+    this.pointMaterial = material(pointFragment, { SPRAY_POINTS: 1 });
     this.lines = new THREE.LineSegments(this.geometry, this.lineMaterial);
     this.points = new THREE.Points(this.geometry, this.pointMaterial);
     for (const o of [this.lines, this.points]) {
@@ -216,8 +224,12 @@ export class IntroSpray {
     return this.uniforms.uAge.value > 0 && this.uniforms.SPRAY_GAIN.value > 0;
   }
 
-  /** Draw over what is in the current render target. */
-  render(renderer, camera) {
+  /** Draw a share of the specks (0-1) over what is in the current render target. */
+  render(renderer, camera, share = 1) {
+    const count = this.geometry.getAttribute('position').count / 2;
+    const drawn = Math.max(1, Math.round(count * share));
+    this.geometry.setDrawRange(0, 2 * drawn);
+    this.uniforms.uShare.value = drawn / count;
     const autoClear = renderer.autoClear;
     renderer.autoClear = false;
     renderer.render(this.scene, camera);

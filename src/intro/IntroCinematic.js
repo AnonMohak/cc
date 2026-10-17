@@ -62,6 +62,10 @@ const SHUTTER = 0.06;
 const OFFLINE_DETAIL = 1;
 /** The light pass runs every this many frames. */
 const LIGHT_EVERY = 2;
+/** The share of the spray's specks drawn live (the offline frames draw all). */
+const LIVE_SPRAY_SHARE = 0.25;
+/** The clumps' height cap live (the offline frames keep the key's value). */
+const LIVE_CLUMP_HEIGHT = 1;
 
 /**
  * The intro cinematic: the animation black hole (Gargantua), its own camera
@@ -102,6 +106,8 @@ export class IntroCinematic {
     this.boost = [0, 0, 0];
     /** For the offline render script: skip live frames (renderStill draws instead). */
     this.holdLive = false;
+    // True while renderStill updates (the offline frames take the full look).
+    this.offline = false;
     this.outTarget = null;
 
     // The noise bakes in a worker (main-thread fallback); until it arrives
@@ -300,6 +306,10 @@ export class IntroCinematic {
       this.applyLook(name, v);
       this.lookPrevious.add(name);
     }
+    // Live (the fallback when the video is missing), the gap's clumps stay
+    // low: puffed up they cost the march ~3.5× there on a UHD 630.
+    const clumps = this.march.uniforms.CLUMP_HEIGHT;
+    if (!this.offline) clumps.value = Math.min(clumps.value, LIVE_CLUMP_HEIGHT);
     placeCamera(this.camera, pose);
     this.exposure = pose.exposure ?? 1;
     this.sparse = pose.sparse ?? 1;
@@ -388,7 +398,9 @@ export class IntroCinematic {
     // the inner edge): refresh it every LIGHT_EVERY frames, at once after a
     // jump in time. It was the largest single cost (~12 ms on a UHD 630).
     const jump = this.lightTime === null || Math.abs(this.time - this.lightTime) > 0.5;
-    if (fresh || jump || this.frame % LIGHT_EVERY === 0) {
+    // (Not at all while the film layers draw the shot: no gas to light.)
+    const gas = this.march.uniforms.TAU.value > 0;
+    if (gas && (fresh || jump || this.frame % LIGHT_EVERY === 0)) {
       renderer.setRenderTarget(this.lightTarget);
       this.lightQuad.render(renderer);
       this.lightTime = this.time;
@@ -402,14 +414,16 @@ export class IntroCinematic {
     this.flareQuad.render(renderer);
     renderer.setRenderTarget(null);
     this.compositeQuad.render(renderer);
-    this.drawSpray(renderer);
+    // Live, a quarter of the specks with four times the light: their soft
+    // discs cost fill an integrated GPU does not have.
+    this.drawSpray(renderer, LIVE_SPRAY_SHARE);
   }
 
-  /** The spray over the composite, when it shows. */
-  drawSpray(renderer) {
+  /** The spray over the composite, when it shows (a share of its specks). */
+  drawSpray(renderer, share = 1) {
     if (!this.spray.active) return;
     this.camera.updateProjectionMatrix();
-    this.spray.render(renderer, this.camera);
+    this.spray.render(renderer, this.camera, share);
   }
 
   /**
@@ -428,7 +442,9 @@ export class IntroCinematic {
     const aspect = this.camera.aspect;
     this.fixedTime = null;
     for (const cam of [this.camera, this.shutterCamera]) cam.aspect = width / height;
+    this.offline = true;
     this.update(t);
+    this.offline = false;
     for (const target of [...this.targets, this.tracedTarget]) target.setSize(width, height);
     if (!this.outTarget) this.outTarget = new THREE.WebGLRenderTarget(width, height, { depthBuffer: false });
     this.outTarget.setSize(width, height);

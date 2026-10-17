@@ -37,6 +37,11 @@ function kill(child) {
  * @returns {Promise<{ evaluate: (expression: string) => Promise<any>, gpu: string, close: () => void }>}
  */
 export async function openIntro({ gpu = null } = {}) {
+  // A dev server left from an earlier run would answer instead of ours (and
+  // serve its own folder): stop rather than measure the wrong code.
+  if (await fetch(`http://localhost:${VITE_PORT}/`).then(() => true, () => false)) {
+    throw new Error(`port ${VITE_PORT} is in use (an old dev server?): stop it first`);
+  }
   const vite = spawn(`npx vite --port ${VITE_PORT} --strictPort`, { shell: true, stdio: 'ignore' });
   const browser = spawn(
     BROWSER,

@@ -256,7 +256,8 @@ ${GAS_GLSL}
     // (ARCH_TWIST turns the streaks from rings into a spiral, log r =
     // -ARCH_TWIST · angle, as the film's tongues sweep outward; it leaves a
     // seam at phi = ±180°, so keep that side out of the window.)
-    vec3 q = vec3((lr + ARCH_TWIST * radians(phi)) * ARCH_FREQ, (phi / 360.0 + ARCH_PHASE) * ARCH_FREQ / max(ARCH_STREAK, 0.02) + ARCH_FLOW * gTime, 0.37);
+    // (ARCH_RFLOW: the flames also stream along the radius, log r per second.)
+    vec3 q = vec3((lr + ARCH_TWIST * radians(phi) - ARCH_RFLOW * gTime) * ARCH_FREQ, (phi / 360.0 + ARCH_PHASE) * ARCH_FREQ / max(ARCH_STREAK, 0.02) + ARCH_FLOW * gTime, 0.37);
     // Warped by a coarse noise, two octaves: tongues, not even stripes.
     vec2 w = texture(uNoise, q * vec3(0.4, 0.4, 1.0) + vec3(0.21, 0.0, 0.53)).rg - 0.5;
     q.xy += w * ARCH_WARP;
@@ -296,7 +297,9 @@ ${GAS_GLSL}
     dist = t;
     // Clouds that turn with the gas (the disc's own shear).
     float ang = atan(x.z, x.x) - DECK_SPIN * angularSpeed(r) * gTime;
-    vec3 q = vec3(log(r) * DECK_FREQ, ang * (DECK_TILES / (2.0 * PI)), 0.21);
+    // (DECK_RFLOW: the clouds also stream along the radius, log r per
+    // second: outward, they come at a camera that looks at the hole.)
+    vec3 q = vec3((log(r) - DECK_RFLOW * gTime) * DECK_FREQ, ang * (DECK_TILES / (2.0 * PI)), 0.21);
     // Warped (billows, not rings round the hole).
     vec2 w = texture(uNoise, q * vec3(0.5, 0.5, 1.0) + vec3(0.33, 0.0, 0.71)).rg - 0.5;
     q.xy += w * DECK_WARP;
@@ -416,6 +419,9 @@ ${GAS_GLSL}
     // half opaque (far when it never does).
     float dist = 0.0;
     float depth = -1.0;
+    // Shots drawn by the film layers turn the gas off (TAU 0): then no slab
+    // steps and no gas samples, only the bending (the shadow, the sheet).
+    bool gasOn = TAU > 0.0;
     for (int i = 0; i < MAX_STEPS; i++) {
       if (i >= uSteps || T < 0.01) break;
       // The direction (coordinate space) and speed in Mino time.
@@ -435,10 +441,10 @@ ${GAS_GLSL}
       // The clear gap inside the inner edge has no gas: no slab steps there
       // (rays along the plane spent every step in it), only no jump past
       // the inner edge.
-      bool inSlab = above <= 0.0 && rc < DISC_OUTER && rc > INNER * 0.98;
+      bool inSlab = gasOn && above <= 0.0 && rc < DISC_OUTER && rc > INNER * 0.98;
       if (inSlab) dt = min(dt, marchStep(rc));
-      else if (above <= 0.0 && rc <= INNER * 0.98) dt = min(dt, max(INNER - rc, marchStep(rc)));
-      else if (rc < DISC_OUTER && p.y * v.y < 0.0 && abs(v.y) > 1e-4) dt = min(dt, max(marchStep(rc), 0.8 * above / abs(v.y)));
+      else if (gasOn && above <= 0.0 && rc <= INNER * 0.98) dt = min(dt, max(INNER - rc, marchStep(rc)));
+      else if (gasOn && rc < DISC_OUTER && p.y * v.y < 0.0 && abs(v.y) > 1e-4) dt = min(dt, max(marchStep(rc), 0.8 * above / abs(v.y)));
       if (i == 0) dt *= jitter;
       // Haze: a thin glowing medium around the hole, lit by the disc, that
       // every ray collects on its way (also the rays that end in the
