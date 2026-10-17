@@ -5,9 +5,11 @@
 // stopped, and the progress and the free memory are logged (<out>.batches.log).
 // A batch that renders nothing twice in a row stops the run.
 //
-//   node scripts/render-batches.mjs --batch 100 -- --from 0 --to 65 --fps 24 --out renders/preview ...
+//   node scripts/render-batches.mjs --batch 100 [--script scripts/capture-live.mjs] -- --from 0 --to 65 --fps 24 --out renders/preview ...
 //
-// Everything after -- goes to render-intro.mjs (--resume and --limit are added).
+// Everything after -- goes to the render script (render-intro.mjs, or
+// --script: one with the same options; --resume and --limit are added).
+// Run it from the checkout to render (Vite serves the current folder).
 import { spawnSync, execSync } from 'node:child_process';
 import { existsSync, readdirSync, appendFileSync } from 'node:fs';
 import { freemem, totalmem } from 'node:os';
@@ -17,6 +19,7 @@ const split = argv.indexOf('--');
 const own = split < 0 ? argv : argv.slice(0, split);
 const pass = split < 0 ? [] : argv.slice(split + 1);
 const batch = Number(own.includes('--batch') ? own[own.indexOf('--batch') + 1] : 100);
+const script = own.includes('--script') ? own[own.indexOf('--script') + 1] : 'scripts/render-intro.mjs';
 const out = pass.includes('--out') ? pass[pass.indexOf('--out') + 1] : 'renders';
 const num = (k, d) => (pass.includes(`--${k}`) ? Number(pass[pass.indexOf(`--${k}`) + 1]) : d);
 // The same frame list as render-intro.mjs: from, from + 1/fps, … ≤ to.
@@ -49,7 +52,7 @@ cleanUp();
 say(`start: ${done()}/${count} frames, batches of ${batch}`);
 while (done() < count) {
   const before = done();
-  const run = spawnSync('node', ['scripts/render-intro.mjs', ...pass, '--resume', '--limit', String(batch)], { stdio: ['ignore', 'ignore', 'pipe'] });
+  const run = spawnSync('node', [script, ...pass, '--resume', '--limit', String(batch)], { stdio: ['ignore', 'ignore', 'pipe'] });
   cleanUp();
   const after = done();
   say(`Done ${after}/${count} (+${after - before}), free memory ${gb(freemem())} of ${gb(totalmem())} GB`);
