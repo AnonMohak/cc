@@ -11,7 +11,8 @@
 //   node scripts/match-tone.mjs --keys renders/fit/keys.json --out renders/fit/keys-tone.json
 //
 // Options: --keys (default renders/fit/keys.json), --out (default: --keys),
-// --every (every n-th measured frame, default 2), --groups gap,dome,...
+// --every (every n-th measured frame, default 2), --groups gap,dome,...,
+// --rounds (shadow light rounds, default 4).
 import { readFileSync, writeFileSync } from 'node:fs';
 import { FILM_MEASURES } from '../src/intro/filmMeasures.js';
 import { clipFrameIntroTime } from '../src/intro/introTimeline.js';
@@ -27,21 +28,30 @@ const every = Number(arg('every', 2));
 
 // The film shots' parts that share one grade, and their camera keys (index
 // in the keys file). The gap and the dome are one film shot, two grades.
-// `fill`: the shadow takes the film's own colour there (FILL_*, measured
-// inside the film's shadow circle), and the curve leaves the shadow out.
+// `fill`: the shadow gets its own light (SHADOW_*, on the rays the hole
+// takes), set in a few rounds so that the finished frames show the film's
+// colours inside the film's shadow circle; the curve leaves the shadow out.
+// `flat`: one shadow colour, no gradient (a steep curve turns a gradient
+// into a rainbow). `luma`: one curve for all three channels (our own
+// colours kept: where our colour mix differs from the film's, a curve per
+// channel shifts the hue).
 const GROUPS = {
   gap: { shot: 'gap-dome', to: 80, keys: [0, 1, 2] },
   dome: { shot: 'gap-dome', from: 84, keys: [3, 4, 5, 6], fill: true },
   clouds: { shot: 'clouds', keys: [8, 9] },
   wall: { shot: 'wall', keys: [11, 12, 13], fill: true },
   skim: { shot: 'skim', keys: [15, 16, 17], fill: true },
-  bright: { shot: 'bright', keys: [19, 20] },
-  'hole-far': { shot: 'hole-far', keys: [21, 22], fill: true },
+  bright: { shot: 'bright', keys: [19, 20], luma: true },
+  'hole-far': { shot: 'hole-far', keys: [21, 22], fill: true, flat: true, luma: true },
 };
 const names = arg('groups', Object.keys(GROUPS).join(',')).split(',');
 
+// (The shadow light is kept: a new run goes on from it.)
 const GRADE = (k) => /^(CURVE_\d|CDL_|FILL_)/.test(k);
-const keys = JSON.parse(readFileSync(keysFile, 'utf8')).map((k) => (k.look ? { ...k, look: Object.fromEntries(Object.entries(k.look).filter(([n]) => !GRADE(n))) } : k));
+const rounds = Number(arg('rounds', 4));
+// The matched groups' keys lose their old grade (the others keep theirs).
+const matched = new Set(names.flatMap((n) => GROUPS[n].keys));
+const keys = JSON.parse(readFileSync(keysFile, 'utf8')).map((k, i) => (k.look && matched.has(i) ? { ...k, look: Object.fromEntries(Object.entries(k.look).filter(([n]) => !GRADE(n))) } : k));
 const neutral = {
   ...Object.fromEntries(CURVE_KNOTS.map((x, i) => [`CURVE_${i}`, [x, x, x]])),
   CDL_SLOPE: [1, 1, 1],
@@ -57,11 +67,11 @@ const frames = (g) => {
   return list.filter((_, i) => i % every === 0 || i === list.length - 1);
 };
 
-/** The median of a histogram's mean of the three channels (about the luma). */
-const median = (h) => {
+/** A quantile of a histogram's mean of the three channels (about the luma). */
+const level = (h, p) => {
   const q = (c) => {
     let seen = 0;
-    for (let i = 0; i < TONE_BINS; i++) if ((seen += h[c][i]) >= h.n / 2) return (i + 0.5) / TONE_BINS;
+    for (let i = 0; i < TONE_BINS; i++) if ((seen += h[c][i]) >= h.n * p) return (i + 0.5) / TONE_BINS;
     return 1;
   };
   return (q('r') + q('g') + q('b')) / 3;
@@ -85,37 +95,71 @@ try {
       return { ours, film };
     };
     let { ours, film } = await measure();
-    // Exposure first (display ~ linear^(1/2.2) in the mid-tones), twice.
+    // Exposure first (display ~ linear^(1/2.2) in the mid-tones), twice: on
+    // the middle brightness, or for a mostly black shot (the gap) on its
+    // bright end.
+    const p = level(film, 0.5) < 0.15 ? 0.9 : 0.5;
     for (let pass = 0; pass < 2; pass++) {
-      const f = Math.min(4, Math.max(0.25, Math.pow(Math.max(median(film), 0.02) / Math.max(median(ours), 0.02), 2.2)));
+      const f = Math.min(4, Math.max(0.25, Math.pow(Math.max(level(film, p), 0.02) / Math.max(level(ours, p), 0.02), 2.2)));
       if (Math.abs(f - 1) < 0.05) break;
       for (const i of g.keys) keys[i].exp *= f;
       await page.evaluate(`__app.getIntro().keys = ${JSON.stringify(keys)}`);
       ({ ours, film } = await measure());
     }
-    const curve = matchCurve(ours, film, CURVE_KNOTS);
+    const grey = (h) => {
+      const out = emptyHist();
+      for (let i = 0; i < TONE_BINS; i++) out.r[i] = out.g[i] = out.b[i] = h.r[i] + h.g[i] + h.b[i];
+      out.n = 3 * h.n;
+      return out;
+    };
+    const curve = g.luma ? matchCurve(grey(ours), grey(film), CURVE_KNOTS) : matchCurve(ours, film, CURVE_KNOTS);
     const grade = { ...Object.fromEntries(curve.map((rgb, i) => [`CURVE_${i}`, rgb.map((v) => Math.round(v * 1000) / 1000)])), CDL_SLOPE: [1, 1, 1], CDL_OFFSET: [0, 0, 0], CDL_POWER: [1, 1, 1] };
+    for (const i of g.keys) keys[i].look = { ...(keys[i].look || {}), ...grade };
     if (g.fill) {
-      // The film's shadow colours over the shot's frames (where measured).
-      const sum = { inner: [0, 0, 0], outer: [0, 0, 0], nIn: 0, nOut: 0 };
-      for (const m of frames(g)) {
-        const c = await page.evaluate(`__lab.filmShadowColour(${JSON.stringify(m)})`);
-        if (!c) continue;
-        for (let k = 0; k < 3; k++) {
-          sum.inner[k] += c.inner[k];
-          sum.outer[k] += c.outer[k];
+      // The shadow's own light: rounds of render, compare our colour inside
+      // the film's shadow circle with the film's, scale (display ~
+      // linear^(1/2.2)).
+      const mean = async (fn) => {
+        const sum = { inner: [0, 0, 0], outer: [0, 0, 0], nIn: 0, nOut: 0 };
+        for (const m of frames(g)) {
+          const c = await page.evaluate(fn(m));
+          if (!c) continue;
+          for (let k = 0; k < 3; k++) {
+            sum.inner[k] += c.inner[k];
+            sum.outer[k] += c.outer[k];
+          }
+          sum.nIn += c.nIn;
+          sum.nOut += c.nOut;
         }
-        sum.nIn += c.nIn;
-        sum.nOut += c.nOut;
-      }
-      const mean = (v, n) => v.map((x) => Math.round((x / Math.max(n, 1)) * 1000) / 1000);
-      if (sum.nIn + sum.nOut > 0) {
-        Object.assign(grade, { FILL_A: 1, FILL_R: 1.3, FILL_IN: mean(sum.inner, sum.nIn || sum.nOut), FILL_OUT: mean(sum.outer, sum.nOut || sum.nIn) });
-        if (!sum.nIn) grade.FILL_IN = mean(sum.outer, sum.nOut);
-        console.log(`${name} shadow fill: middle ${grade.FILL_IN.join('/')}, edge ${grade.FILL_OUT.join('/')}`);
+        const avg = (v, n) => v.map((x) => x / Math.max(n, 1));
+        if (g.flat) {
+          const all = avg(sum.inner.map((x, k) => x + sum.outer[k]), sum.nIn + sum.nOut);
+          return { inner: all, outer: all, n: sum.nIn + sum.nOut };
+        }
+        const outer = sum.nOut ? avg(sum.outer, sum.nOut) : avg(sum.inner, sum.nIn);
+        return { inner: sum.nIn ? avg(sum.inner, sum.nIn) : outer, outer, n: sum.nIn + sum.nOut };
+      };
+      const filmC = await mean((m) => `__lab.filmShadowColour(${JSON.stringify(m)})`);
+      if (filmC.n > 0) {
+        const exp = keys[g.keys[0]].exp;
+        const had = keys[g.keys[0]].look?.SHADOW_IN;
+        let lin = had
+          ? { inner: had, outer: g.flat ? had : keys[g.keys[0]].look.SHADOW_OUT }
+          : { inner: filmC.inner.map((v) => Math.pow(v, 2.2) / exp), outer: filmC.outer.map((v) => Math.pow(v, 2.2) / exp) };
+        for (let round = 0; round < rounds; round++) {
+          for (const i of g.keys) keys[i].look = { ...keys[i].look, SHADOW_ON: 1, SHADOW_IN: lin.inner, SHADOW_OUT: lin.outer };
+          await page.evaluate(`__app.getIntro().keys = ${JSON.stringify(keys)}`);
+          const ourC = await mean((m) => `__lab.ourShadowColour(${clipFrameIntroTime(m.frame)}, ${JSON.stringify(size)}, ${JSON.stringify(m)})`);
+          // (Damped: the steep curves of some shots made full steps swing.)
+          const step = (v, f, o) => v.map((x, k) => Math.max(1e-5, x * Math.min(2, Math.max(0.5, Math.pow(Math.max(f[k], 0.01) / Math.max(o[k], 0.01), 1.1)))));
+          lin = { inner: step(lin.inner, filmC.inner, ourC.inner), outer: step(lin.outer, filmC.outer, ourC.outer) };
+          console.log(`${name} shadow round ${round}: ours ${ourC.inner.map((v) => v.toFixed(2)).join('/')} vs film ${filmC.inner.map((v) => v.toFixed(2)).join('/')} (edge ${ourC.outer.map((v) => v.toFixed(2)).join('/')} vs ${filmC.outer.map((v) => v.toFixed(2)).join('/')})`);
+        }
+        const r4 = (v) => v.map((x) => Math.round(x * 1e5) / 1e5);
+        for (const i of g.keys) keys[i].look = { ...keys[i].look, SHADOW_ON: 1, SHADOW_IN: r4(lin.inner), SHADOW_OUT: r4(lin.outer) };
+        await page.evaluate(`__app.getIntro().keys = ${JSON.stringify(keys)}`);
       }
     }
-    for (const i of g.keys) keys[i].look = { ...(keys[i].look || {}), ...grade };
     console.log(`${name} (${frames(g).length} frames): ${curve.map((rgb) => rgb.map((v) => v.toFixed(2)).join('/')).join('  ')}`);
   }
 } finally {

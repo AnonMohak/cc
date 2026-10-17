@@ -90,6 +90,15 @@ export const MARCH_LOOK = {
   LIGHT_GAIN: 2.5,
   // Extra extinction of the upper smoke layers (× at the cloud tops).
   SMOKE_K: 1,
+  // The background stars' brightness (per shot: the tone match can lift
+  // faint stars into blots).
+  STARS: 1,
+  // The shadow's own light (per shot, set by scripts/match-tone.mjs from
+  // the film): on (0-1), at the middle and toward the edge (linear, before
+  // the exposure).
+  SHADOW_ON: 0,
+  SHADOW_IN: [0, 0, 0],
+  SHADOW_OUT: [0, 0, 0],
   // Film layers (gargantuaShader.js archLayer / deckLayer; per shot, off
   // at gain 0). The arch round the shadow on screen, sizes in shadow radii:
   // a dark gap at its edge, a hot band (strength, width), flames out to
@@ -208,17 +217,6 @@ export const COMPOSITE_LOOK = {
   CURVE_6: [0.771, 0.687, 0.583],
   CURVE_7: [0.912, 0.864, 0.796],
   CURVE_8: [1, 1, 0.998],
-  // The shadow's fill (display space, after the curve; per shot, from the
-  // film): its share, colours at the middle and toward the edge, the soft
-  // edge (shadow radii) and the darkness (before the curve) below which our
-  // pixels take it.
-  FILL_A: 0,
-  FILL_IN: [0, 0, 0],
-  FILL_OUT: [0, 0, 0],
-  FILL_SOFT: 0.04,
-  FILL_DARK: 0.12,
-  // The fill circle's size (× the shadow's estimated screen radius).
-  FILL_R: 1,
   // A manual grade on top (ASC CDL: out = (in · slope + offset)^power), at identity.
   CDL_SLOPE: [0.85, 0.85, 0.85],
   CDL_OFFSET: [0, 0, 0],
@@ -286,6 +284,8 @@ export const LOOK_LIMITS = {
   ARCH_WARP: [0, 4, 0.01],
   ARCH_LO: [0, 0.95, 0.01],
   ARCH_PHASE: [-1, 1, 0.005],
+  STARS: [0, 4, 0.01],
+  SHADOW_ON: [0, 1, 0.01],
   ARCH_TWIST: [-2, 2, 0.01],
   ARCH_LEAN: [-0.95, 3, 0.01],
   ARCH_LEAN_A: [-180, 180, 1],
@@ -350,10 +350,6 @@ export const LOOK_LIMITS = {
   VEIL: [0, 0.9, 0.005],
   VEIL_BETA: [1.2, 4, 0.05],
   BLOOM: [0, 1, 0.01],
-  FILL_A: [0, 1, 0.01],
-  FILL_SOFT: [0.005, 0.5, 0.005],
-  FILL_DARK: [0.01, 0.6, 0.005],
-  FILL_R: [0.5, 2, 0.01],
   FLARE_THRESHOLD: [0, 6, 0.05],
   GHOST_RING: [0, 2, 0.01],
   GHOST_R: [0.02, 0.5, 0.005],

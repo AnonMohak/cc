@@ -94,15 +94,15 @@ export function histAt(t, size, m, { cutShadow = false } = {}) {
 }
 
 /**
- * The film's mean colour inside its shadow (or dome) circle, spacecraft out:
- * the middle (inside 0.6 of the radius) and toward the edge (0.6-0.92).
+ * The mean colour of an image inside a film frame's shadow (or dome)
+ * circle, spacecraft out: the middle (inside 0.6 of the radius) and toward
+ * the edge (0.6-0.92).
  * @returns {{ inner: number[], outer: number[], nIn: number, nOut: number } | null}
  */
-export function filmShadowColour(m) {
-  const film = films.get(`${m.shot}/${m.frame}`);
+function shadowColour(img, m, mask) {
   const c = m.shadow ?? m.dome;
   if (!c) return null;
-  const { w, h, rgb } = film.img;
+  const { w, h, rgb } = img;
   const inner = [0, 0, 0];
   const outer = [0, 0, 0];
   let nIn = 0;
@@ -110,7 +110,7 @@ export function filmShadowColour(m) {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
-      if (!film.mask[i]) continue;
+      if (!mask[i]) continue;
       const rho = Math.hypot(x / h - c.cx, y / h - c.cy) / c.r;
       if (rho >= 0.92) continue;
       const into = rho < 0.6 ? inner : outer;
@@ -120,6 +120,18 @@ export function filmShadowColour(m) {
     }
   }
   return { inner, outer, nIn, nOut };
+}
+
+/** The film's shadow colour (shadowColour) for a loaded film frame. */
+export function filmShadowColour(m) {
+  const film = films.get(`${m.shot}/${m.frame}`);
+  return shadowColour(film.img, m, film.mask);
+}
+
+/** Our frame's colour inside the film's shadow circle at t. */
+export function ourShadowColour(t, size, m) {
+  const film = films.get(`${m.shot}/${m.frame}`);
+  return shadowColour(toMeasureSize(render(t, size)), m, film.mask);
 }
 
 /** Our frame at t as a JPEG (base64), for sheets. */

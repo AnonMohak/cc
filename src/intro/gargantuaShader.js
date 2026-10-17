@@ -529,7 +529,17 @@ ${GAS_GLSL}
       }
     }
     // Rays that leave see the stars where they point; captured rays are the shadow.
-    if (!captured) light += T * stars(normalize(v));
+    if (!captured) light += T * STARS * stars(normalize(v));
+    // The shadow as the film shows it (its haze and lens glow: blue-grey
+    // under the dome, teal by the wall, brown far off): light on the rays
+    // the hole takes, SHADOW_IN at the middle and SHADOW_OUT toward the edge
+    // on screen (per shot; scripts/match-tone.mjs sets them so the finished
+    // frame shows the film's colours there).
+    else if (SHADOW_ON > 0.0) {
+      vec2 S = mix(uShadowUV, uShadowUV1, sh);
+      float rho = length((uv - S) * vec2(uFullSize.x / uFullSize.y, 1.0)) / max(mix(uShadowR, uShadowR1, sh), 1e-3);
+      light += T * SHADOW_ON * mix(SHADOW_IN, SHADOW_OUT, smoothstep(0.2, 1.0, rho));
+    }
     // The shadow is at the hole (in focus with it), the empty sky far.
     if (depth < 0.0) depth = captured ? length(p0) : FAR_DEPTH;
     // Film layers over the bent-light picture: the arch behind the deck.
@@ -655,9 +665,6 @@ export const compositeShader = /* glsl */ `
   uniform float uTime;
   // The flare source (flareSourceShader): weighted centre (uv) and strength.
   uniform sampler2D tFlareSource;
-  // The shadow on screen (centre uv, radius in frame heights), for its fill.
-  uniform vec2 uShadowUV;
-  uniform float uShadowR;
   varying vec2 vUv;
 
   const float PI = 3.14159265;
@@ -787,23 +794,8 @@ ${CURVE_KNOTS.slice(1)
     col += SHADOW_TINT * pow(1.0 - luma, 4.0);
     col = mix(col, col * vec3(1.03, 1.0, 0.94), smoothstep(0.4, 1.0, luma));
     vec3 display = pow(max(col, 0.0), vec3(1.0 / 2.2));
-    float darkBefore = dot(display, vec3(0.2126, 0.7152, 0.0722));
     // The colour fit to the stills, then the manual grade (display space).
     display = toneCurve(clamp(display, 0.0, 1.0));
-    // The shadow's colour as the film shows it (its haze and lens glow:
-    // blue-grey under the dome, teal by the wall, brown far off), measured
-    // from the film inside its shadow (FILL_IN at the middle, FILL_OUT
-    // toward the edge), only where ours is dark there (gas in front stays).
-    if (FILL_A > 0.0) {
-      vec2 sd = (vUv - uShadowUV) * vec2(uResolution.x / uResolution.y, 1.0);
-      // (FILL_R: our dark shadow reaches past the estimated radius; only dark
-      // pixels take the fill, so a wider circle is safe.)
-      float rho = length(sd) / max(uShadowR * FILL_R, 1e-3);
-      float inside = 1.0 - smoothstep(1.0 - FILL_SOFT, 1.0, rho);
-      float darkHere = 1.0 - smoothstep(0.5 * FILL_DARK, FILL_DARK, darkBefore);
-      vec3 fill = mix(FILL_IN, FILL_OUT, smoothstep(0.2, 1.0, rho));
-      display = mix(display, max(display, fill), FILL_A * inside * darkHere);
-    }
     // Film grain (fine, like a 65 mm negative): in display space, strongest in
     // the mid-tones (4d(1 - d)) and faint in the blacks and the clipped
     // highlights, so the shadow stays clean. Mostly one pattern for all three
