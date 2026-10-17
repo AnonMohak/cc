@@ -75,8 +75,9 @@ export const toShare = (p, v) => Math.min(1, Math.max(0, (v - p.min) / (p.max - 
  *  - `key.N.FIELD`: field FIELD of key N (e.g. key.3.r);
  *  - `keys.A-B.FIELD`: field FIELD of keys A to B (one value for a shot);
  *  - `shot.NAME` (or `shot.NAME[c]`): a look value set on every key from
- *    tFrom to tTo (one shot's own look).
- * @param {{ path: string, min: number, max: number }[]} params
+ *    tFrom to tTo (one shot's own look), or from the parameter's own
+ *    tFrom / tTo (one part of a shot).
+ * @param {{ path: string, min: number, max: number, tFrom?: number, tTo?: number }[]} params
  * @param {number[]} values
  * @param {object[]} keys
  * @param {Record<string, number | number[]>} look the base look
@@ -99,8 +100,10 @@ export function applyParams(params, values, keys, look, { tFrom = -Infinity, tTo
       if (m[2] !== undefined) outLook[m[1]][Number(m[2])] = v;
       else outLook[m[1]] = v;
     } else if (kind === 'shot' && m) {
+      const from = p.tFrom ?? tFrom;
+      const to = p.tTo ?? tTo;
       for (const k of outKeys) {
-        if (k.t < tFrom - 1e-9 || k.t > tTo + 1e-9) continue;
+        if (k.t < from - 1e-9 || k.t > to + 1e-9) continue;
         k.look = k.look ?? {};
         if (m[2] !== undefined) {
           const base = Array.isArray(k.look[m[1]]) ? [...k.look[m[1]]] : [...(outLook[m[1]] ?? look[m[1]])];

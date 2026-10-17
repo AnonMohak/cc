@@ -57,6 +57,12 @@ describe('applyParams', () => {
     expect(() => applyParams([{ path: 'foo.x', min: 0, max: 1 }], [0.5], keys, look)).toThrow();
   });
 
+  it('limits a shot value to the window of the parameter', () => {
+    const keys = [{ t: 0 }, { t: 1 }, { t: 2 }];
+    const out = applyParams([{ path: 'shot.GAIN', min: 0, max: 9, tFrom: 1.5 }], [4], keys, { GAIN: 1 }, { tFrom: 0, tTo: 2 });
+    expect(out.keys.map((k) => k.look?.GAIN)).toEqual([undefined, undefined, 4]);
+  });
+
   it('maps shares to ranges and back', () => {
     const p = { min: 2, max: 6 };
     expect(fromShare(p, 0.25)).toBe(3);

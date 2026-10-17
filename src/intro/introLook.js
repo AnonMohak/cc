@@ -75,6 +75,8 @@ export const MARCH_LOOK = {
   RIM_BAND: 0.6,
   RIM_STRIPES: 4,
   RIM_CLUMPS: 6,
+  // The share of the sheet's glow left between the rim clumps.
+  RIM_FLOOR: 0,
   RIM_CLUMP_LO: 0.55,
   // Haze around the hole (lit by the disc, collected by every ray): its
   // light per Rs at the inner edge, scale height (Rs) and colour.
@@ -114,6 +116,21 @@ export const MARCH_LOOK = {
   // level the tongues start at (lower: wider tongues, fewer gaps).
   ARCH_WARP: 1.2,
   ARCH_LO: 0.4,
+  // The flame pattern's turn round the shadow (turns): places the clumps.
+  ARCH_PHASE: 0,
+  // The flames' colour (× the gas colour; the hot band keeps the gas colour).
+  ARCH_TINT: [1, 1, 1],
+  // Spiral streaks (log radius per radian: 1 = 45°), a reach that leans
+  // toward one side (share, angle in degrees), and bright lobes (share,
+  // count, first angle).
+  ARCH_TWIST: 0,
+  ARCH_LEAN: 0,
+  ARCH_LEAN_A: 0,
+  ARCH_LOBES: 0,
+  ARCH_LOBE_N: 4,
+  ARCH_LOBE_A: 45,
+  // How far out from the hot band the flames start (shadow radii).
+  ARCH_FLAME_IN: 0,
   // The deck: a cloud surface at height DECK_Y (Rs), cloud size (noise
   // cells per log radius, whole tiles per turn), coverage threshold, relief,
   // light from the inner disc (strength, fall-off), dark silhouettes near
@@ -134,6 +151,10 @@ export const MARCH_LOOK = {
   // The deck's billows (warp) and its glow far off, toward the horizon.
   DECK_WARP: 1,
   DECK_GLOW: 0,
+  // How fast it turns (× the gas), and how much the gaps between the near
+  // dark clouds show that glow (silhouettes).
+  DECK_SPIN: 1,
+  DECK_SIL: 0,
   // The gas colour: 4500 K black body through the camera film, as the film
   // did it (filmColour.js); one temperature, so the outer gas and the hot
   // inner gas share it (the inner disc looks white-hot from exposure alone).
@@ -216,6 +237,14 @@ export const SPRAY_LOOK = {
   SPRAY_SHUTTER: 0.04,
   SPRAY_LINE: 1,
   SPRAY_SOFT: 0.3,
+  // The out-of-focus size cap of the soft points (px at 1080 lines) and the
+  // share of the specks' way from the haze into the two legs.
+  SPRAY_BLUR: 6,
+  SPRAY_LEGS: 0,
+  // The cloud's closest distance (Rs; then it stops coming) and the specks'
+  // stream through it toward the camera (cloud depths a second).
+  SPRAY_MIN: 0,
+  SPRAY_FLOW: 0,
   // Their drift across the view (Rs/s, x right, y up).
   SPRAY_DRIFT_X: 0,
   SPRAY_DRIFT_Y: -0.1,
@@ -239,12 +268,20 @@ export const LOOK_LIMITS = {
   ARCH_SPAN: [0, 360, 1],
   ARCH_SOFT: [0.5, 90, 0.5],
   ARCH_FREQ: [0.5, 30, 0.1],
-  ARCH_STREAK: [0.2, 20, 0.1],
+  ARCH_STREAK: [0.02, 20, 0.01],
   ARCH_FLOW: [-2, 2, 0.01],
   ARCH_DARK: [0, 1, 0.01],
   ARCH_OPAC: [0, 1, 0.01],
   ARCH_WARP: [0, 4, 0.01],
   ARCH_LO: [0, 0.95, 0.01],
+  ARCH_PHASE: [-1, 1, 0.005],
+  ARCH_TWIST: [-2, 2, 0.01],
+  ARCH_LEAN: [-0.95, 3, 0.01],
+  ARCH_LEAN_A: [-180, 180, 1],
+  ARCH_LOBES: [0, 1, 0.01],
+  ARCH_LOBE_N: [1, 8, 1],
+  ARCH_LOBE_A: [-180, 180, 1],
+  ARCH_FLAME_IN: [0, 3, 0.01],
   DECK_GAIN: [0, 1, 0.01],
   DECK_Y: [-2, 4, 0.01],
   DECK_FREQ: [0.5, 30, 0.1],
@@ -258,6 +295,8 @@ export const LOOK_LIMITS = {
   DECK_FAR: [1, 200, 0.5],
   DECK_WARP: [0, 4, 0.01],
   DECK_GLOW: [0, 20, 0.01],
+  DECK_SPIN: [-2, 4, 0.01],
+  DECK_SIL: [0, 1, 0.01],
   PUFF: [0, 8, 0.01],
   PUFF_W: [0.1, 20, 0.05],
   EMIT: [0, 60, 0.5],
@@ -280,13 +319,14 @@ export const LOOK_LIMITS = {
   CLUMP_HEIGHT: [0.3, 30, 0.1],
   DETAIL: [0, 1, 0.01],
   SHEET_TAU: [0, 10, 0.05],
-  SHEET_GLOW: [0, 6, 0.05],
+  SHEET_GLOW: [0, 20, 0.05],
   SHEET_POWER: [0, 4, 0.05],
   SHEET_RIM: [3, 10, 0.05],
   SHEET_RIM_W: [0.02, 3, 0.01],
   RIM_BAND: [0.05, 4, 0.01],
   RIM_STRIPES: [0, 12, 0.1],
   RIM_CLUMPS: [1, 24, 1],
+  RIM_FLOOR: [0, 1, 0.005],
   RIM_CLUMP_LO: [0, 0.95, 0.005],
   HAZE: [0, 1, 0.005],
   HAZE_HEIGHT: [0.1, 10, 0.05],
@@ -322,6 +362,10 @@ export const LOOK_LIMITS = {
   SPRAY_SHUTTER: [0, 0.5, 0.005],
   SPRAY_LINE: [0, 4, 0.01],
   SPRAY_SOFT: [0, 4, 0.01],
+  SPRAY_BLUR: [1, 80, 0.5],
+  SPRAY_LEGS: [0, 1, 0.01],
+  SPRAY_MIN: [0, 20, 0.05],
+  SPRAY_FLOW: [0, 2, 0.01],
   SPRAY_DRIFT_X: [-2, 2, 0.01],
   SPRAY_DRIFT_Y: [-2, 2, 0.01],
 };
@@ -338,5 +382,5 @@ export function clampLook(name, value) {
   const limit = LOOK_LIMITS[name];
   if (!limit || !Number.isFinite(value)) return value;
   const v = Math.min(limit[1], Math.max(limit[0], value));
-  return name === 'ANG_TILES' || name === 'FLAME_ANG' || name === 'CLUMP_TILES' || name === 'RIM_CLUMPS' || name === 'DECK_TILES' ? Math.round(v) : v;
+  return name === 'ANG_TILES' || name === 'FLAME_ANG' || name === 'CLUMP_TILES' || name === 'RIM_CLUMPS' || name === 'DECK_TILES' || name === 'ARCH_LOBE_N' ? Math.round(v) : v;
 }

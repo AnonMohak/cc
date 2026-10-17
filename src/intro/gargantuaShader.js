@@ -253,7 +253,10 @@ ${GAS_GLSL}
     // Flames: ridged noise stretched along the rings (the orbit), streaming
     // round with time; a ragged outer edge.
     float lr = log(max(rho, 1e-3));
-    vec3 q = vec3(lr * ARCH_FREQ, phi / 360.0 * ARCH_FREQ / max(ARCH_STREAK, 0.1) + ARCH_FLOW * gTime, 0.37);
+    // (ARCH_TWIST turns the streaks from rings into a spiral, log r =
+    // -ARCH_TWIST · angle, as the film's tongues sweep outward; it leaves a
+    // seam at phi = ±180°, so keep that side out of the window.)
+    vec3 q = vec3((lr + ARCH_TWIST * radians(phi)) * ARCH_FREQ, (phi / 360.0 + ARCH_PHASE) * ARCH_FREQ / max(ARCH_STREAK, 0.02) + ARCH_FLOW * gTime, 0.37);
     // Warped by a coarse noise, two octaves: tongues, not even stripes.
     vec2 w = texture(uNoise, q * vec3(0.4, 0.4, 1.0) + vec3(0.21, 0.0, 0.53)).rg - 0.5;
     q.xy += w * ARCH_WARP;
@@ -261,14 +264,21 @@ ${GAS_GLSL}
     // (The baked noise spans only about 0.33-0.66: stretched to 0-1 first.)
     n = clamp(0.5 + (n - 0.5) * 3.0, 0.0, 1.0);
     float edgeN = texture(uNoise, vec3(phi / 360.0 * 3.0 + 0.11, 0.53, 0.29)).r;
-    float rOut = ARCH_OUT * (1.0 + ARCH_EDGE * (edgeN - 0.5));
+    // The reach leans toward ARCH_LEAN_A (the flame wall is wider on one side).
+    float rOut = ARCH_OUT * (1.0 + ARCH_EDGE * (edgeN - 0.5)) * max(1.0 + ARCH_LEAN * cos(radians(phi - ARCH_LEAN_A)), 0.05);
     float reach = 1.0 - smoothstep(rOut * 0.8, rOut, rho);
     // Broad tongues where the noise is high, narrow dark gaps between.
-    float flame = mix(1.0, smoothstep(ARCH_LO, ARCH_LO + 0.3, n), ARCH_DARK) * reach;
+    // (The flames start ARCH_FLAME_IN shadow radii out from the hot band.)
+    float flame = mix(1.0, smoothstep(ARCH_LO, ARCH_LO + 0.3, n), ARCH_DARK) * reach * smoothstep(r0 + 0.5 * ARCH_FLAME_IN, r0 + ARCH_FLAME_IN, rho);
+    // Bright lobes round the ring (ARCH_LOBE_N of them from ARCH_LOBE_A: the
+    // gap's few big clumps at the lensing cusps).
+    flame *= mix(1.0, pow(0.5 + 0.5 * cos(ARCH_LOBE_N * radians(phi - ARCH_LOBE_A)), 4.0), ARCH_LOBES);
     // The hot band at the shadow's edge, then the flames' own light falling outward.
     float hot = ARCH_HOT * exp(-max(rho - r0, 0.0) / max(ARCH_HOT_W, 0.01));
     float glowF = flame * pow(r0 / max(rho, r0), ARCH_POWER);
-    float lightA = win * inside * (hot + glowF);
+    // The flames take their own tint (the film's orange tongues beside the
+    // cream hot band).
+    vec3 lightA = win * inside * (vec3(hot) + glowF * ARCH_TINT);
     float cover = win * inside * clamp(ARCH_OPAC * max(reach, hot), 0.0, 1.0);
     return vec4(GAS_WARM * EMIT * ARCH_GAIN * lightA, cover * step(1e-6, ARCH_GAIN));
   }
@@ -285,7 +295,7 @@ ${GAS_GLSL}
     float r = max(length(x.xz), 0.5);
     dist = t;
     // Clouds that turn with the gas (the disc's own shear).
-    float ang = atan(x.z, x.x) - angularSpeed(r) * gTime;
+    float ang = atan(x.z, x.x) - DECK_SPIN * angularSpeed(r) * gTime;
     vec3 q = vec3(log(r) * DECK_FREQ, ang * (DECK_TILES / (2.0 * PI)), 0.21);
     // Warped (billows, not rings round the hole).
     vec2 w = texture(uNoise, q * vec3(0.5, 0.5, 1.0) + vec3(0.33, 0.0, 0.71)).rg - 0.5;
@@ -300,11 +310,15 @@ ${GAS_GLSL}
     // Lit from the hot inner disc; near the camera the clouds are dark
     // silhouettes against the light beyond.
     float lit = DECK_LIGHT * pow(DISC_INNER / max(r, INNER), DECK_POWER) * (0.25 + relief);
-    float near = 1.0 - DECK_DARK * (1.0 - smoothstep(0.0, DECK_NEAR, t));
+    float nearW = 1.0 - smoothstep(0.0, DECK_NEAR, t);
+    float near = 1.0 - DECK_DARK * nearW;
     // Far off, toward the horizon, the deck glows: the bright band under
     // the flame wall.
     float far = DECK_GLOW * smoothstep(DECK_FAR * 0.15, DECK_FAR * 0.7, t);
     vec3 col = (GAS_WARM * (lit + far) * EMIT + DECK_COOL) * near;
+    // Near the camera, the gaps between the dark clouds show the glowing
+    // deck beyond (the film's silhouettes against the light).
+    col = mix(col, GAS_WARM * DECK_GLOW * EMIT, DECK_SIL * nearW * (1.0 - dens));
     float cover = DECK_GAIN > 0.0 ? clamp(DECK_GAIN, 0.0, 1.0) * mix(0.55, 1.0, dens) * (1.0 - smoothstep(DECK_FAR * 0.6, DECK_FAR, t)) : 0.0;
     return vec4(col * cover, cover);
   }
@@ -501,9 +515,13 @@ ${GAS_GLSL}
           float band = smoothstep(SHEET_RIM - SHEET_RIM_W, SHEET_RIM, rx) * (1.0 - smoothstep(SHEET_RIM + RIM_BAND - SHEET_RIM_W, SHEET_RIM + RIM_BAND, rx));
           float stripes = pow(0.5 + 0.5 * cos(2.0 * PI * RIM_STRIPES * (rx - SHEET_RIM) / max(RIM_BAND, 1e-3)), 3.0);
           float rimAng = atan(x.z, x.x) - angularSpeed(rx) * gTime;
-          float rimNoise = texture(uNoise, vec3(rimAng * (RIM_CLUMPS / (2.0 * PI)), 0.37, 0.71)).r;
+          // (Stretched to 0-1 like the layers' noise: the baked noise spans
+          // about 0.33-0.66, so the threshold never broke the rim apart.)
+          float rimNoise = clamp(0.5 + (texture(uNoise, vec3(rimAng * (RIM_CLUMPS / (2.0 * PI)), 0.37, 0.71)).r - 0.5) * 3.0, 0.0, 1.0);
           float rim = band * (0.3 + 0.7 * stripes) * smoothstep(RIM_CLUMP_LO, RIM_CLUMP_LO + 0.12, rimNoise);
-          hotSheet *= mix(1.0, rim, uSparse);
+          // (RIM_FLOOR: a faint glow over the whole sheet, the film's dim
+          // edge-on line and thin ring between the clumps.)
+          hotSheet *= mix(1.0, max(rim, RIM_FLOOR), uSparse);
           light += T * alpha * mix(GAS_WARM, GAS_HOT, smoothstep(0.25, 0.9, hotSheet)) * hotSheet * EMIT;
           T *= 1.0 - alpha;
           if (depth < 0.0 && T < 0.5) depth = dist;

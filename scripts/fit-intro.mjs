@@ -9,7 +9,7 @@
 //
 // Spec (JSON): label, shots (film shots the frames come from), every (every
 // n-th measured frame, default 3) or frames (clip frames), size { width,
-// height, samples, steps }, params [{ path, min, max }] (look.NAME,
+// height, samples, steps }, params [{ path, min, max, tFrom?, tTo? }] (look.NAME,
 // key.N.FIELD, shot.NAME: fitMath.js applyParams), iterations, keys (a keys
 // JSON file to start from), look (base look values to start from),
 // features (weight of the feature error, default 1), step (simplex size),
@@ -61,7 +61,9 @@ const current = (p) => {
   const m = /^([A-Z0-9_]+)(?:\[(\d)\])?$/.exec(rest.join('.'));
   if (kind === 'key') return startKeys[Number(rest[0])][rest[1]];
   if (kind === 'keys') return startKeys[Number(rest[0].split('-')[0])][rest[1]];
-  const inShot = kind === 'shot' ? startKeys.find((k) => k.t >= window.tFrom && k.t <= window.tTo && k.look?.[m[1]] !== undefined) : null;
+  const from = p.tFrom ?? window.tFrom;
+  const to = p.tTo ?? window.tTo;
+  const inShot = kind === 'shot' ? startKeys.find((k) => k.t >= from && k.t <= to && k.look?.[m[1]] !== undefined) : null;
   const v = inShot ? inShot.look[m[1]] : startLook[m[1]];
   return m[2] !== undefined ? v[Number(m[2])] : v;
 };

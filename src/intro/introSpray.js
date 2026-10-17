@@ -13,7 +13,7 @@ import { SPRAY_LOOK, lookDeclarations } from './introLook.js';
  */
 
 /** Particles in the cloud. */
-export const SPRAY_COUNT = 24000;
+export const SPRAY_COUNT = 80000;
 
 /** A small seeded random source (mulberry32). */
 function random(seed) {
@@ -28,31 +28,49 @@ function random(seed) {
 }
 
 /**
- * Per particle: lateral offset (x, y; a Gaussian, with a share bunched into
- * a few thin filaments, as in the film's last frames), depth in the cloud
- * (0–1) and brightness (0–1, most faint, a few bright).
- * @returns {Float32Array} 4 values per particle
+ * Per particle: lateral offset (x, y), depth in the cloud (0–1), brightness
+ * (0–1, most faint, a few bright) and the offset in the legs (x, y). The
+ * specks make a small bright core and a fan down from it (from far, the
+ * film's comet; near, its spray); a share moves from the fan into two legs
+ * (SPRAY_LEGS, the film's last frames); for the rest the leg offset is the
+ * fan offset. Seen from the camera, a speck's offset grows as it comes
+ * nearer, so the spray opens out from its core.
+ * @returns {Float32Array} 6 values per particle
  */
 export function sprayParticles(count = SPRAY_COUNT, seed = 7) {
   const rand = random(seed);
   const gauss = () => Math.sqrt(-2 * Math.log(1 - rand())) * Math.cos(2 * Math.PI * rand());
-  const out = new Float32Array(count * 4);
+  const out = new Float32Array(count * 6);
   for (let i = 0; i < count; i++) {
     const depth = rand();
-    let x = gauss();
-    let y = gauss();
-    if (rand() < 0.3) {
-      // A filament: a thin line out from the axis, bending with depth.
-      const f = Math.floor(rand() * 3);
-      const a = -2.0 + f * 0.9 + 0.4 * depth;
-      const along = Math.abs(gauss()) * 1.4;
-      x = Math.cos(a) * along + 0.08 * gauss();
-      y = Math.sin(a) * along + 0.08 * gauss();
+    const kind = rand();
+    let x;
+    let y;
+    let light = Math.pow(rand(), 3);
+    if (kind < 0.2) {
+      // The core.
+      x = 0.2 * gauss();
+      y = 0.2 * gauss();
+      light = Math.pow(rand(), 2);
+    } else {
+      // The fan: down from the core, about ±43° wide.
+      const a = -Math.PI / 2 + 0.75 * gauss();
+      const r = 0.15 + Math.abs(gauss()) * 0.9;
+      x = Math.cos(a) * r;
+      y = Math.sin(a) * r;
     }
-    out[4 * i] = x;
-    out[4 * i + 1] = y;
-    out[4 * i + 2] = depth;
-    out[4 * i + 3] = Math.pow(rand(), 3);
+    let legX = x;
+    let legY = y;
+    if (kind > 0.6) {
+      // A leg: a narrow bundle below the core (not from it: the film's
+      // legs are short streaks under the haze), 14° to one side.
+      const a = -Math.PI / 2 + (rand() < 0.5 ? -0.25 : 0.25);
+      const along = 0.5 + Math.abs(gauss()) * 0.7;
+      legX = Math.cos(a) * along + 0.07 * gauss();
+      legY = Math.sin(a) * along + 0.07 * gauss();
+      light = Math.pow(rand(), 1.5);
+    }
+    out.set([x, y, depth, light, legX, legY], 6 * i);
   }
   return out;
 }
@@ -60,18 +78,23 @@ export function sprayParticles(count = SPRAY_COUNT, seed = 7) {
 const vertexShader = /* glsl */ `
   // position: lateral offset x, y and depth in the cloud (0–1).
   attribute vec2 aExtra; // brightness 0–1; 0 / 1: the streak's start (shutter open) / end
+  attribute vec2 aLeg; // lateral offset in the legs
   uniform float uAge;
   uniform float uPixelScale;
 ${lookDeclarations(SPRAY_LOOK)}
   varying float vLight;
+  varying float vBright;
   varying float vStreak;
-  vec3 at(float age) {
-    // The cloud's near edge comes at the camera; behind it the particles
-    // fill SPRAY_DEPTH. Lateral size grows with depth a little (a cone).
-    float z = SPRAY_DIST - SPRAY_SPEED * age + position.z * SPRAY_DEPTH;
+  varying float vSpread;
+  vec3 at(float age, float f) {
+    // The cloud's near edge comes at the camera, but no nearer than
+    // SPRAY_MIN (the film's last seconds are a fountain, not a rush past the
+    // camera); behind it the specks fill SPRAY_DEPTH (f: 0 near, 1 far).
+    // Lateral size grows with depth a little (a cone).
+    float z = max(SPRAY_DIST - SPRAY_SPEED * age, SPRAY_MIN) + f * SPRAY_DEPTH;
     // Stretched along SPRAY_ANGLE (the film's blob is a slanted comet).
     float a = radians(SPRAY_ANGLE);
-    vec2 s = position.xy * vec2(SPRAY_ELONG, 1.0);
+    vec2 s = mix(position.xy, aLeg, SPRAY_LEGS) * vec2(SPRAY_ELONG, 1.0);
     vec2 off = mat2(cos(a), sin(a), -sin(a), cos(a)) * s * SPRAY_SPREAD * (1.0 + 0.5 * position.z);
     // The specks drift across as they come (the film's spray flows down).
     off += vec2(SPRAY_DRIFT_X, SPRAY_DRIFT_Y) * max(age, 0.0) * (0.6 + 0.8 * position.z);
@@ -80,37 +103,58 @@ ${lookDeclarations(SPRAY_LOOK)}
   void main() {
     // A streak over the spray's own short shutter (the film's specks
     // streak only a little).
-    vec3 p = at(uAge - (1.0 - aExtra.y) * SPRAY_SHUTTER);
+    float lag = (1.0 - aExtra.y) * SPRAY_SHUTTER;
+    // The specks also stream through the cloud toward the camera
+    // (SPRAY_FLOW: cloud depths a second) and start again at its far side,
+    // so the fountain keeps flowing once the cloud has stopped. Both ends of
+    // a streak see the same f0, so a speck that started again inside the
+    // shutter is left out whole (no line across the cloud).
+    float f0 = fract(position.z - SPRAY_FLOW * uAge);
+    bool restarted = f0 + SPRAY_FLOW * SPRAY_SHUTTER >= 1.0;
+    float cycle = SPRAY_FLOW > 0.0 ? smoothstep(0.0, 0.05, f0) * smoothstep(1.0, 0.8, f0) : 1.0;
+    vec3 p = at(uAge - lag, f0 + SPRAY_FLOW * lag);
     float z = -p.z;
     // Behind the camera, or not yet in: off the clip volume.
-    if (z < 0.05) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vLight = 0.0; vStreak = 0.0; return; }
+    if (z < 0.05 || restarted) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); vLight = 0.0; vBright = 0.0; vStreak = 0.0; vSpread = 0.0; return; }
     gl_Position = projectionMatrix * vec4(p, 1.0);
     // Nearer is brighter, to a cap (1 / z, not 1 / z²: far off, the film's
     // spray is already a bright blob).
     // Specks right at the camera fade out (they would be big squares).
-    vLight = SPRAY_GAIN * (0.15 + 0.85 * aExtra.x) * min(1.0, 1.0 / z) * smoothstep(0.05, 0.6, z);
+    vLight = SPRAY_GAIN * cycle * min(1.0, 1.0 / z) * smoothstep(0.05, 0.6, z);
+    vBright = aExtra.x;
     // Near, a speck crosses many pixels in the shutter: its streak spreads
-    // its light (dimmer by about the square of the nearness).
-    vStreak = min(1.0, z * z);
-    gl_PointSize = clamp(SPRAY_SIZE * uPixelScale / z, 1.0, 6.0 * uPixelScale);
+    // its light (dimmer by about the square of the nearness). A line is
+    // one pixel wide at any output height: × the pixel scale keeps its
+    // share of the frame's light the same.
+    vStreak = min(1.0, z * z) * uPixelScale;
+    // Near specks are out of focus: a soft disc up to SPRAY_BLUR px (at 1080
+    // lines) that spreads the same light (per pixel ∝ 1 / size², the same at
+    // every output height); together they are the film's soft glow.
+    gl_PointSize = clamp(SPRAY_SIZE * uPixelScale / z, 1.0, SPRAY_BLUR * uPixelScale);
+    float s1080 = gl_PointSize / uPixelScale;
+    vSpread = min(1.0, 4.0 / (s1080 * s1080));
   }
 `;
 
 // The streaks (lines) and the soft points share the vertex shader.
 const fragmentHead = /* glsl */ `
   varying float vLight;
+  varying float vBright;
   varying float vStreak;
+  varying float vSpread;
 ${lookDeclarations(SPRAY_LOOK)}
 `;
 const lineFragment = /* glsl */ `${fragmentHead}
   void main() {
-    gl_FragColor = vec4(vec3(0.93, 0.95, 1.0) * vLight * vStreak * SPRAY_LINE, 1.0);
+    // The streaks sparkle (most faint, a few bright) ...
+    gl_FragColor = vec4(vec3(0.93, 0.95, 1.0) * vLight * (0.15 + 0.85 * vBright) * vStreak * SPRAY_LINE, 1.0);
   }
 `;
 const pointFragment = /* glsl */ `${fragmentHead}
   void main() {
     float disc = max(0.0, 1.0 - length(gl_PointCoord - 0.5) * 2.0);
-    gl_FragColor = vec4(vec3(0.93, 0.95, 1.0) * vLight * SPRAY_SOFT * disc, 1.0);
+    // ... the soft discs are an even glow (bright ones would show as blots).
+    gl_FragColor = vec4(vec3(0.93, 0.95, 1.0) * vLight * (0.6 + 0.4 * vBright) * vSpread * SPRAY_SOFT * disc, 1.0);
   }
 `;
 
@@ -119,14 +163,16 @@ export class IntroSpray {
     const particles = sprayParticles();
     // Two vertices per particle (a streak) for the lines; the soft points
     // reuse the same buffers.
-    const n = particles.length / 4;
+    const n = particles.length / 6;
     const position = new Float32Array(n * 6);
     const extra = new Float32Array(n * 4);
+    const leg = new Float32Array(n * 4);
     for (let i = 0; i < n; i++) {
       for (const v of [0, 1]) {
-        position.set(particles.subarray(4 * i, 4 * i + 3), 6 * i + 3 * v);
-        extra[4 * i + 2 * v] = particles[4 * i + 3];
+        position.set(particles.subarray(6 * i, 6 * i + 3), 6 * i + 3 * v);
+        extra[4 * i + 2 * v] = particles[6 * i + 3];
         extra[4 * i + 2 * v + 1] = v;
+        leg.set(particles.subarray(6 * i + 4, 6 * i + 6), 4 * i + 2 * v);
       }
     }
     this.geometry = new THREE.BufferGeometry();
@@ -134,6 +180,7 @@ export class IntroSpray {
     // offset and depth, not a place: bounds by hand, never culled).
     this.geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
     this.geometry.setAttribute('aExtra', new THREE.BufferAttribute(extra, 2));
+    this.geometry.setAttribute('aLeg', new THREE.BufferAttribute(leg, 2));
     this.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
     this.uniforms = {
       uAge: { value: -1 },
