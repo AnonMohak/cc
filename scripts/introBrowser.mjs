@@ -32,11 +32,12 @@ function kill(child) {
 }
 
 /**
- * Open the intro in a headless browser. `gpu: 'high'` asks for the discrete
- * GPU on a laptop with two.
- * @returns {Promise<{ evaluate: (expression: string) => Promise<any>, gpu: string, close: () => void }>}
+ * Open a page of the app (served from the current folder) in a headless
+ * browser and wait until `ready` (a page expression) is true. `gpu: 'high'`
+ * asks for the discrete GPU on a laptop with two.
+ * @returns {Promise<{ evaluate: (expression: string) => Promise<any>, send: (method: string, params?: object) => Promise<any>, on: (method: string, fn: (params: any) => void) => void, close: () => void }>}
  */
-export async function openIntro({ gpu = null } = {}) {
+export async function openPage({ gpu = null, path = '/', ready = 'true', width = 1280, height = 720 } = {}) {
   // A dev server left from an earlier run would answer instead of ours (and
   // serve its own folder): stop rather than measure the wrong code.
   if (await fetch(`http://localhost:${VITE_PORT}/`).then(() => true, () => false)) {
@@ -50,7 +51,7 @@ export async function openIntro({ gpu = null } = {}) {
       '--headless=new',
       `--remote-debugging-port=${CDP_PORT}`,
       `--user-data-dir=${profile}`,
-      '--window-size=1280,720',
+      `--window-size=${width},${height}`,
       '--no-first-run',
       '--ignore-gpu-blocklist',
       '--enable-gpu',
@@ -79,8 +80,11 @@ export async function openIntro({ gpu = null } = {}) {
     await new Promise((r) => ws.addEventListener('open', r));
     let id = 0;
     const waiters = new Map();
+    // Page events (screencast frames and the like) for the caller.
+    const listeners = new Map();
     ws.addEventListener('message', (e) => {
       const m = JSON.parse(e.data);
+      if (m.method && listeners.has(m.method)) listeners.get(m.method)(m.params);
       if (m.method === 'Runtime.exceptionThrown') console.log('page exception', JSON.stringify(m.params.exceptionDetails).slice(0, 300));
       if (m.id && waiters.has(m.id)) {
         const w = waiters.get(m.id);
@@ -106,13 +110,12 @@ export async function openIntro({ gpu = null } = {}) {
       return r.result.value;
     };
     await s('Runtime.enable');
-    await s('Page.navigate', { url: `http://localhost:${VITE_PORT}/?tune` });
-    await waitFor(() => evaluate('!!window.__app?.getIntro()?.ready'), 'the intro (noise bake)');
-    const gpuName = await evaluate(`(() => { const gl = __app.renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'unknown'; })()`);
-    await evaluate('__app.getIntro().holdLive = true');
+    await s('Page.navigate', { url: `http://localhost:${VITE_PORT}${path}` });
+    await waitFor(() => evaluate(`!!(${ready})`), `the page (${ready})`);
     return {
       evaluate,
-      gpu: gpuName,
+      send: s,
+      on: (method, fn) => listeners.set(method, fn),
       close: () => {
         ws.close();
         close();
@@ -120,6 +123,23 @@ export async function openIntro({ gpu = null } = {}) {
     };
   } catch (err) {
     close();
+    throw err;
+  }
+}
+
+/**
+ * Open the intro in a headless browser (the tune view: it neither ends nor
+ * locks input), live frames held for renderStill.
+ * @returns {Promise<{ evaluate: (expression: string) => Promise<any>, gpu: string, close: () => void }>}
+ */
+export async function openIntro({ gpu = null } = {}) {
+  const page = await openPage({ gpu, path: '/?tune', ready: 'window.__app?.getIntro()?.ready' });
+  try {
+    const gpuName = await page.evaluate(`(() => { const gl = __app.renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'unknown'; })()`);
+    await page.evaluate('__app.getIntro().holdLive = true');
+    return { evaluate: page.evaluate, gpu: gpuName, close: page.close };
+  } catch (err) {
+    page.close();
     throw err;
   }
 }
