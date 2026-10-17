@@ -200,6 +200,8 @@ export class IntroCinematic {
         uFocus: { value: 10 },
         uTime: { value: 0 },
         tFlareSource: { value: this.flareTarget.texture },
+        uShadowUV: { value: new THREE.Vector2(0.5, 0.5) },
+        uShadowR: { value: 0.3 },
         ...compositeLook,
       },
       vertexShader: QUAD_VERTEX,
@@ -349,6 +351,8 @@ export class IntroCinematic {
     // In focus: the hole (its distance from the camera, in Rs).
     c.uFocus.value = cam.position.length();
     c.uTime.value = this.time;
+    c.uShadowUV.value.copy(u.uShadowUV.value);
+    c.uShadowR.value = u.uShadowR.value;
     this.spray.update(this.time - SPRAY_START, outH, cam);
   }
 

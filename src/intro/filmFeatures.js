@@ -96,13 +96,20 @@ export function measureMask(shotName, ship, w = MEASURE_W, h = MEASURE_H) {
 }
 
 /**
- * The pixels the score counts for a measured film frame (a FILM_MEASURES
- * entry): measureMask, without the film's shadow and dome (cut just inside
- * their measured circles). There the film is grey-teal or blue-grey and the
- * intro keeps them black by choice, so they must not pull the fits.
+ * Whether the score counts the film's shadow and dome. The intro first kept
+ * them black by choice (then they must not pull the fits); since 2026-10-17
+ * it matches the film's grey-teal and blue-grey there too (1:1 visuals).
  */
-export function scoreMask(m, w = MEASURE_W, h = MEASURE_H) {
+export const SCORE_SHADOW = true;
+
+/**
+ * The pixels the score counts for a measured film frame (a FILM_MEASURES
+ * entry): measureMask, and without SCORE_SHADOW (or `shadow: false`) also
+ * without the film's shadow and dome (cut just inside their circles).
+ */
+export function scoreMask(m, w = MEASURE_W, h = MEASURE_H, { shadow = SCORE_SHADOW } = {}) {
   const mask = measureMask(m.shot, m.ship, w, h);
+  if (shadow) return mask;
   for (const c of [m.shadow, m.dome]) {
     if (!c) continue;
     const cut = shapeMask(w, h, { cut: [{ u: c.cx / (w / h), v: c.cy, r: 0.97 * c.r }] });

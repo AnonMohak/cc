@@ -30,14 +30,15 @@ describe('FILM_SHOTS', () => {
 });
 
 describe('scoreMask', () => {
-  it('leaves the film shadow out of the score, but not of the features', async () => {
+  it('counts the film shadow, or leaves it out when asked', async () => {
     const { scoreMask, measureMask } = await import('./filmFeatures.js');
     const m = { shot: 'wall', frame: 0, ship: null, shadow: { cx: 0.5, cy: 0.5, r: 0.2 } };
     const w = 96;
     const h = 54;
     const at = (mask, u, v) => mask[Math.floor(v * h) * w + Math.floor(u * w)];
-    expect(at(scoreMask(m, w, h), 0.5 / (w / h), 0.5)).toBe(0);
-    expect(at(scoreMask(m, w, h), 0.9, 0.9)).toBe(1);
+    expect(at(scoreMask(m, w, h), 0.5 / (w / h), 0.5)).toBe(1);
+    expect(at(scoreMask(m, w, h, { shadow: false }), 0.5 / (w / h), 0.5)).toBe(0);
+    expect(at(scoreMask(m, w, h, { shadow: false }), 0.9, 0.9)).toBe(1);
     expect(at(measureMask('wall', null, w, h), 0.5 / (w / h), 0.5)).toBe(1);
   });
 });

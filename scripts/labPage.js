@@ -5,6 +5,7 @@
 // numbers leave the page. Not part of the app.
 import { imageFromBytes, halveImage, halve, frameStats, scoreFrame } from '../src/intro/frameMatch.js';
 import { MEASURE_W, MEASURE_H, measureMask, scoreMask, measureFeatures } from '../src/intro/filmFeatures.js';
+import { emptyHist, addToHist } from '../src/intro/toneMatch.js';
 
 const films = new Map();
 
@@ -32,7 +33,7 @@ export async function loadFilm(measures) {
     const mask = measureMask(m.shot, m.ship);
     const mask2 = halve(new Float32Array(MEASURE_W * MEASURE_H), MEASURE_W, MEASURE_H, scoreMask(m)).mask;
     const img = imageFromBytes(rgba, MEASURE_W, MEASURE_H, 4);
-    films.set(id, { m, mask, mask2, stats: frameStats(halveImage(img), mask2) });
+    films.set(id, { m, mask, mask2, img, stats: frameStats(halveImage(img), mask2) });
   }
   return films.size;
 }
@@ -77,6 +78,48 @@ export function scoreAt(t, size, m, { features = true } = {}) {
   const img = toMeasureSize(render(t, size));
   const score = scoreFrame(film.stats, frameStats(halveImage(img), film.mask2), film.mask2);
   return { score, features: features ? measureFeatures(m.shot, img, film.mask) : null };
+}
+
+/**
+ * Colour histograms of our frame at t and of a loaded film frame, over the
+ * film frame's mask (spacecraft out), for the tone match (toneMatch.js).
+ * Plain arrays, so they leave the page as JSON.
+ */
+export function histAt(t, size, m, { cutShadow = false } = {}) {
+  const film = films.get(`${m.shot}/${m.frame}`);
+  const mask = cutShadow ? scoreMask(m, MEASURE_W, MEASURE_H, { shadow: false }) : film.mask;
+  const plain = (h) => ({ r: Array.from(h.r), g: Array.from(h.g), b: Array.from(h.b), n: h.n });
+  const ours = addToHist(emptyHist(), toMeasureSize(render(t, size)), mask);
+  return { ours: plain(ours), film: plain(addToHist(emptyHist(), film.img, mask)) };
+}
+
+/**
+ * The film's mean colour inside its shadow (or dome) circle, spacecraft out:
+ * the middle (inside 0.6 of the radius) and toward the edge (0.6-0.92).
+ * @returns {{ inner: number[], outer: number[], nIn: number, nOut: number } | null}
+ */
+export function filmShadowColour(m) {
+  const film = films.get(`${m.shot}/${m.frame}`);
+  const c = m.shadow ?? m.dome;
+  if (!c) return null;
+  const { w, h, rgb } = film.img;
+  const inner = [0, 0, 0];
+  const outer = [0, 0, 0];
+  let nIn = 0;
+  let nOut = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!film.mask[i]) continue;
+      const rho = Math.hypot(x / h - c.cx, y / h - c.cy) / c.r;
+      if (rho >= 0.92) continue;
+      const into = rho < 0.6 ? inner : outer;
+      for (let k = 0; k < 3; k++) into[k] += rgb[3 * i + k];
+      if (rho < 0.6) nIn++;
+      else nOut++;
+    }
+  }
+  return { inner, outer, nIn, nOut };
 }
 
 /** Our frame at t as a JPEG (base64), for sheets. */
