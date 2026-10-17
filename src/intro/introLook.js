@@ -221,6 +221,13 @@ export const COMPOSITE_LOOK = {
   CDL_SLOPE: [0.85, 0.85, 0.85],
   CDL_OFFSET: [0, 0, 0],
   CDL_POWER: [1.2, 1.2, 1.2],
+  // The final grade over every shot, after the shots' own (ASC CDL and a
+  // saturation), at identity: never set on a camera key, so the tune
+  // view's sliders change the whole intro.
+  GRADE_SLOPE: [1, 1, 1],
+  GRADE_OFFSET: [0, 0, 0],
+  GRADE_POWER: [1, 1, 1],
+  GRADE_SAT: 1,
 };
 
 /**
@@ -350,6 +357,7 @@ export const LOOK_LIMITS = {
   VEIL: [0, 0.9, 0.005],
   VEIL_BETA: [1.2, 4, 0.05],
   BLOOM: [0, 1, 0.01],
+  GRADE_SAT: [0, 2, 0.01],
   FLARE_THRESHOLD: [0, 6, 0.05],
   GHOST_RING: [0, 2, 0.01],
   GHOST_R: [0.02, 0.5, 0.005],

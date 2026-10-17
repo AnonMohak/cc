@@ -66,9 +66,27 @@ export function createIntroTuner({ intro, container }) {
   ref.add(state, 'opacity', 0, 1, 0.01).name('Overlay opacity').onChange(showReference);
 
   const look = intro.getLook();
+  // The final grade over the whole intro (GRADE_*: after every shot's own
+  // grade, never on a camera key), as plain sliders: a colour picker stops
+  // at 1.
+  const grade = { brightness: 1, red: 1, green: 1, blue: 1, lift: 0, gamma: 1, saturation: 1 };
+  const applyGrade = () =>
+    intro.setLook({
+      GRADE_SLOPE: [grade.brightness * grade.red, grade.brightness * grade.green, grade.brightness * grade.blue],
+      GRADE_OFFSET: [grade.lift, grade.lift, grade.lift],
+      GRADE_POWER: [1 / grade.gamma, 1 / grade.gamma, 1 / grade.gamma],
+      GRADE_SAT: grade.saturation,
+    });
+  const final = gui.addFolder('Final grade (whole intro)');
+  final.add(grade, 'brightness', 0.3, 2, 0.01).onChange(applyGrade);
+  for (const c of ['red', 'green', 'blue']) final.add(grade, c, 0.5, 1.5, 0.01).onChange(applyGrade);
+  final.add(grade, 'lift', -0.1, 0.1, 0.001).onChange(applyGrade);
+  final.add(grade, 'gamma', 0.5, 2, 0.01).onChange(applyGrade);
+  final.add(grade, 'saturation', 0, 2, 0.01).onChange(applyGrade);
   function addLook(folderName, defaults) {
     const folder = gui.addFolder(folderName);
     for (const name of Object.keys(defaults)) {
+      if (name.startsWith('GRADE_')) continue;
       const ctrl = Array.isArray(look[name])
         ? folder.addColor(look, name, 1)
         : folder.add(look, name, ...LOOK_LIMITS[name]);

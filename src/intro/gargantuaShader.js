@@ -806,6 +806,10 @@ ${CURVE_KNOTS.slice(1)
     vec3 tone = 0.08 + 0.92 * 4.0 * display * (1.0 - display);
     display += GRAIN * tone * mix(vec3(gl), gc, GRAIN_CHROMA);
     display = pow(clamp(display * CDL_SLOPE + CDL_OFFSET, 1e-4, 1.0), CDL_POWER);
+    // The final grade over every shot (the shots' own grades are on their
+    // camera keys; this one is global, for the tune view's sliders).
+    display = pow(clamp(display * GRADE_SLOPE + GRADE_OFFSET, 1e-4, 1.0), GRADE_POWER);
+    display = max(mix(vec3(dot(display, vec3(0.2126, 0.7152, 0.0722))), display, GRADE_SAT), 0.0);
     gl_FragColor = vec4(display, 1.0);
   }
 `;
