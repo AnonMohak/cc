@@ -7,6 +7,7 @@
 export const PROJECTS = {
   '/three/galaxy-sandbox': 'galaxy-sandbox.pages.dev',
   '/turing-machine': 'turing-machine-59p.pages.dev',
+  '/lustro': 'lustro.pages.dev',
   '/sift': 'sift-origin.me-momo.co.in', // a server behind a Cloudflare Tunnel (see SERVERS)
   '/_404': 'momo-404.pages.dev', // assets of the shared 404 page
 };
