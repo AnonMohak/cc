@@ -70,3 +70,25 @@ describe('servers behind a tunnel', () => {
     expect(out.headers.get('x-sift-origin-key')).toBe('x');
   });
 });
+
+describe("the visitor's IP address", () => {
+  const target = 'https://dakken.pages.dev/api/runs';
+
+  it('goes to every project in x-momo-client-ip, with the body', async () => {
+    const request = new Request('https://me-momo.co.in/dakken/api/runs', {
+      method: 'POST',
+      headers: { 'cf-connecting-ip': '203.0.113.7', authorization: 'Bearer k' },
+      body: '{"a":1}',
+    });
+    const out = proxyRequest(request, target, {}, {});
+    expect(out.headers.get('x-momo-client-ip')).toBe('203.0.113.7');
+    expect(out.headers.get('authorization')).toBe('Bearer k');
+    expect(out.method).toBe('POST');
+    expect(await out.text()).toBe('{"a":1}');
+  });
+
+  it('a value from the browser is not passed on', () => {
+    const request = new Request('https://me-momo.co.in/dakken/', { headers: { 'x-momo-client-ip': '1.2.3.4' } });
+    expect(proxyRequest(request, target, {}, {}).headers.get('x-momo-client-ip')).toBeNull();
+  });
+});
