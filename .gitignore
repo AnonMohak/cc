@@ -7,3 +7,6 @@ images/
 
 # Offline intro renders (scripts/render-intro.mjs)
 renders/
+
+# Local plan for the visit counter (not shared)
+deploy/router-worker/VISIT-COUNTER-PLAN.md
