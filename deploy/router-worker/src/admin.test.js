@@ -122,6 +122,13 @@ describe('handleAdmin', () => {
     expect(body.routes).toEqual([{ path: '/', views: 5 }]);
   });
 
+  it('trims spaces and line breaks around the account ID and token', async () => {
+    const { calls, fetchFn } = fakeSql();
+    await handleAdmin(get('/admin/api', env.ADMIN_KEY), { ...env, CF_ACCOUNT_ID: ' acc123\r\n', CF_API_TOKEN: 'tok456\n' }, fetchFn);
+    expect(calls[0].url).toBe('https://api.cloudflare.com/client/v4/accounts/acc123/analytics_engine/sql');
+    expect(calls[0].init.headers.authorization).toBe('Bearer tok456');
+  });
+
   it('reports a failed SQL call as 502, and missing secrets as 500', async () => {
     const failing = async () => new Response('bad token', { status: 403 });
     const res = await handleAdmin(get('/admin/api', env.ADMIN_KEY), env, failing);

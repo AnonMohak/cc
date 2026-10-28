@@ -98,10 +98,14 @@ export function queriesFor(days) {
  * @returns {Promise<Record<string, string | number>[]>}
  */
 export async function runQuery(env, sql, fetchFn = fetch) {
-  const response = await fetchFn(
-    `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/analytics_engine/sql`,
-    { method: 'POST', headers: { authorization: `Bearer ${env.CF_API_TOKEN}` }, body: sql },
-  );
+  // A secret pasted on Windows can end in a line break or a space; the API then refuses it (error 9106).
+  const account = String(env.CF_ACCOUNT_ID).trim();
+  const token = String(env.CF_API_TOKEN).trim();
+  const response = await fetchFn(`https://api.cloudflare.com/client/v4/accounts/${account}/analytics_engine/sql`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}` },
+    body: sql,
+  });
   if (!response.ok) throw new Error(`SQL API ${response.status}: ${(await response.text()).slice(0, 300)}`);
   const { data = [] } = await response.json();
   return data.map((row) => ({ ...row, views: Number(row.views) || 0 }));
