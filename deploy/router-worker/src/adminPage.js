@@ -224,8 +224,9 @@ header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify
     return out;
   }
 
+  // The top of the y-axis; small counts use a multiple of 4, so the 4 grid steps are whole views.
   function niceMax(v) {
-    if (v <= 4) return 4;
+    if (v <= 20) return Math.ceil(v / 4) * 4;
     var p = Math.pow(10, Math.floor(Math.log10(v)));
     var steps = [1, 2, 2.5, 5, 10];
     for (var i = 0; i < steps.length; i++) if (steps[i] * p >= v) return steps[i] * p;
