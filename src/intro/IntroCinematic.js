@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
-import { introCamera, fallBoost } from './introTimeline.js';
+import { introCamera, fallBoost, CAMERA_KEYS, PORTRAIT_KEYS } from './introTimeline.js';
 import { bakeNoise3d, NOISE3D_SIZE } from './noise3d.js';
 import { MAX_STEPS, marchShader, resolveShader, compositeShader, lightShader, flareSourceShader, LIGHT_SIZE, QUAD_VERTEX } from './gargantuaShader.js';
 import { MARCH_LOOK, COMPOSITE_LOOK } from './introLook.js';
@@ -58,8 +58,8 @@ const LIGHT_EVERY = 2;
  * exposure, ACES, grade, grain) to the screen.
  */
 export class IntroCinematic {
-  /** @param {{ aspect: number }} options */
-  constructor({ aspect }) {
+  /** @param {{ aspect: number, portrait?: boolean }} options */
+  constructor({ aspect, portrait = false }) {
     this.camera = new THREE.PerspectiveCamera(60, aspect, 0.01, 1000);
     // The camera at the start of the shutter (motion blur).
     this.shutterCamera = new THREE.PerspectiveCamera(60, aspect, 0.01, 1000);
@@ -67,6 +67,8 @@ export class IntroCinematic {
     this.override = null;
     /** For tuning: a fixed time (s) instead of the clock. */
     this.fixedTime = null;
+    /** The camera path: pulled back on portrait screens (introTimeline.js PORTRAIT_KEYS). */
+    this.keys = portrait ? PORTRAIT_KEYS : CAMERA_KEYS;
     this.time = 0;
     this.exposure = 1;
     this.sparse = 1;
@@ -259,7 +261,7 @@ export class IntroCinematic {
   update(clock) {
     const t = this.fixedTime ?? clock;
     this.time = t;
-    const pose = this.override ?? introCamera(t, _pose);
+    const pose = this.override ?? introCamera(t, _pose, this.keys);
     placeCamera(this.camera, pose);
     this.exposure = pose.exposure ?? 1;
     this.sparse = pose.sparse ?? 1;
@@ -268,10 +270,10 @@ export class IntroCinematic {
     this.ghost = pose.ghost ?? 0;
     // The fall's speed for the aberration (a fixed pose: at rest).
     if (this.override) this.boost[0] = this.boost[1] = this.boost[2] = 0;
-    else fallBoost(t, this.boost);
+    else fallBoost(t, this.boost, this.keys);
     // The shutter's start: the same path SHUTTER_S earlier (a fixed pose: none).
     const shutter = this.march.uniforms.SHUTTER_S.value;
-    placeCamera(this.shutterCamera, this.override ?? introCamera(t - shutter, _pose));
+    placeCamera(this.shutterCamera, this.override ?? introCamera(t - shutter, _pose, this.keys));
   }
 
   /** @param {THREE.WebGLRenderer} renderer */

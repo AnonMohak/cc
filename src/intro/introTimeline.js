@@ -1,5 +1,5 @@
-import { shotPose } from './shotSolve.js';
-import { HORIZON_R } from './gargantuaModel.js';
+import { shotPose, shadowAngle, distanceForShadow, shadowCentre, holeOnScreen, aimAt } from './shotSolve.js';
+import { HORIZON_R, halfThickness } from './gargantuaModel.js';
 
 /**
  * The intro cinematic's clock: the camera path (shots 1–5 of the reference,
@@ -30,6 +30,8 @@ export const MUSIC_RISE_SECONDS = 5;
  * how much the inner gas thins into clumps) and haze (× the haze around the
  * hole: the film tuned its atmosphere per shot).
  */
+const DEG = Math.PI / 180;
+
 // A key at a reference shot: the pose solved from the still (shotSolve.js).
 const shot = (t, n, { roll = 0, exp = 1, sparse = 0, haze = 1, sat = 1, ghost = 0 } = {}) => ({ t, ...shotPose(n), roll, exp, sparse, haze, sat, ghost });
 
@@ -71,12 +73,52 @@ export const CAMERA_KEYS = [
 ];
 
 /**
+ * Portrait screens (a phone held upright) see about a third of the 16:9
+ * width, so the hole would be cut off: their own keys, pulled back until the
+ * shadow and its rings fit the width. The fall keys stay (the camera still
+ * plunges into the black).
+ */
+export const PORTRAIT_ASPECT = 9 / 16;
+/** The shadow's radius at least as a share of the portrait frame width. */
+export const PORTRAIT_FIT = 0.36;
+/** The hole's centre stays within this share of the width from the middle. */
+export const PORTRAIT_SPAN = 0.06;
+/** The camera stays at least this many half-thicknesses over the midplane. */
+export const PORTRAIT_CLEAR = 4.5;
+/** Keys from this time on are the fall: kept as they are. */
+export const PORTRAIT_FALL = 55;
+
+/**
+ * The portrait version of a camera key: the same lens, time and look, the
+ * camera moved back (never closer) so the shadow is PORTRAIT_FIT of the
+ * width, raised over the cloud tops (the gap shots sit in the disc plane:
+ * further back that is inside the gas), and aimed so the hole keeps its
+ * height on screen and its side, near the middle.
+ * @param {object} key a CAMERA_KEYS entry
+ */
+export function portraitKey(key) {
+  if (key.t >= PORTRAIT_FALL) return { ...key };
+  const tanY = Math.tan((key.fov / 2) * DEG);
+  const fit = Math.atan(2 * PORTRAIT_FIT * tanY * PORTRAIT_ASPECT);
+  const r = shadowAngle(key.r) > fit ? distanceForShadow(fit) : key.r;
+  // Height over the midplane in half-thicknesses: kept, at least the clearance.
+  const clear = Math.max((key.r * Math.sin(key.el * DEG)) / halfThickness(key.r), PORTRAIT_CLEAR);
+  const el = Math.asin(Math.min(0.9, (clear * halfThickness(r)) / r)) / DEG;
+  const [u, v] = holeOnScreen(key, key.fov, 16 / 9, shadowCentre(key));
+  const side = Math.min(Math.max(u - 0.5, -PORTRAIT_SPAN), PORTRAIT_SPAN);
+  const pose = { ...key, r, el };
+  aimAt(pose, key.fov, PORTRAIT_ASPECT, shadowCentre(pose), [0.5 + side, v]);
+  return pose;
+}
+
+export const PORTRAIT_KEYS = CAMERA_KEYS.map(portraitKey);
+
+/**
  * The moments that match the reference stills (shot number → seconds), for
  * the ?tune view's side-by-side and the per-shot tuning.
  */
 export const REFERENCE_SHOTS = { 1: 0, 2: 6, 3: 12, 4: 19.5, 5: 25, 6: 31, 7: 37.5, 8: 41, 9: 44, 10: 50 };
 
-const DEG = Math.PI / 180;
 
 function smoothstep(e0, e1, x) {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
@@ -167,12 +209,12 @@ const _b = { position: [0, 0, 0], target: [0, 0, 0] };
  * @param {number} t
  * @param {number[]} out
  */
-export function fallBoost(t, out = [0, 0, 0]) {
+export function fallBoost(t, out = [0, 0, 0], keys = CAMERA_KEYS) {
   const ramp = smoothstep(FALL_START, FALL_FULL, t);
   out[0] = out[1] = out[2] = 0;
   if (ramp <= 0) return out;
-  const p0 = introCamera(t - 0.05, _a).position;
-  const p1 = introCamera(t + 0.05, _b).position;
+  const p0 = introCamera(t - 0.05, _a, keys).position;
+  const p1 = introCamera(t + 0.05, _b, keys).position;
   // (No arrays: this runs every frame.)
   const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
   if (len < 1e-9) return out;

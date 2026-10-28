@@ -6,7 +6,8 @@
 //   node scripts/encode-intro.mjs --in renders/full --format jpg
 //
 // Options: --in <frames dir>  --format png|jpg  --fps 24  --out public/video
-//          --av1-crf 34  --h264-crf 22
+//          --av1-crf 34  --h264-crf 22  --portrait (the portrait frames:
+//          writes PORTRAIT_VIDEO_FILES, intro-portrait-*)
 // Cloudflare Pages serves files up to 25 MiB: keep each video under that.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, statSync } from 'node:fs';
@@ -36,5 +37,6 @@ const run = (name, codec) => {
   console.log(`${file}: ${mb.toFixed(1)} MiB${mb > 25 ? '  (over the 25 MiB Cloudflare Pages limit: raise the CRF)' : ''}`);
 };
 
-run('intro-av1.webm', ['-c:v', 'libaom-av1', '-crf', args['av1-crf'] || '34', '-b:v', '0', '-cpu-used', '4', '-row-mt', '1', '-g', '48']);
-run('intro-h264.mp4', ['-c:v', 'libx264', '-crf', args['h264-crf'] || '22', '-preset', 'slow', '-profile:v', 'high', '-g', '48', '-movflags', '+faststart']);
+const prefix = 'portrait' in args ? 'intro-portrait' : 'intro';
+run(`${prefix}-av1.webm`, ['-c:v', 'libaom-av1', '-crf', args['av1-crf'] || '34', '-b:v', '0', '-cpu-used', '4', '-row-mt', '1', '-g', '48']);
+run(`${prefix}-h264.mp4`, ['-c:v', 'libx264', '-crf', args['h264-crf'] || '22', '-preset', 'slow', '-profile:v', 'high', '-g', '48', '-movflags', '+faststart']);

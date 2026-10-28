@@ -348,13 +348,18 @@ export function startApp(container, { startScreen } = {}) {
   };
   for (const type of unlockEvents) window.addEventListener(type, unlockSound, true);
 
-  let intro = new IntroCinematic({ aspect: container.clientWidth / Math.max(container.clientHeight, 1) });
+  // A portrait screen (a phone held upright) gets the pulled-back camera and
+  // its own video, chosen once at load (turning the phone keeps it). ?portrait
+  // forces it (the offline render, checks on a desktop).
+  const params = new URLSearchParams(window.location.search);
+  const portrait = params.has('portrait') || container.clientHeight > container.clientWidth;
+  let intro = new IntroCinematic({ aspect: container.clientWidth / Math.max(container.clientHeight, 1), portrait });
   // ?tune: the tuning view (src/intro/introTuner.js). The intro then neither
   // ends nor locks the input, and the tuner sets the time.
-  const tuner = new URLSearchParams(window.location.search).has('tune') ? createIntroTuner({ intro, container }) : null;
+  const tuner = params.has('tune') ? createIntroTuner({ intro, container }) : null;
   // The pre-rendered intro (src/intro/introVideo.js): it takes over from the
   // real-time renderer once downloaded; ?tune stays real-time.
-  const introVideo = tuner ? null : createIntroVideo(container, { base: import.meta.env.BASE_URL, before: container.querySelector('.fall-overlay') });
+  const introVideo = tuner ? null : createIntroVideo(container, { base: import.meta.env.BASE_URL, before: container.querySelector('.fall-overlay'), portrait });
   let introTime = 0;
   intro.update(0);
   document.body.classList.add('intro-active');

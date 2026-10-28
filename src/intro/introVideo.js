@@ -10,6 +10,11 @@ export const INTRO_VIDEO_FILES = [
   ['video/intro-av1.webm', 'video/webm; codecs="av01.0.08M.08"'],
   ['video/intro-h264.mp4', 'video/mp4; codecs="avc1.640028"'],
 ];
+/** The same for portrait screens: 720 × 1280, the camera pulled back (introTimeline.js PORTRAIT_KEYS). */
+export const PORTRAIT_VIDEO_FILES = [
+  ['video/intro-portrait-av1.webm', 'video/webm; codecs="av01.0.05M.08"'],
+  ['video/intro-portrait-h264.mp4', 'video/mp4; codecs="avc1.64001f"'],
+];
 /** Seek when the video is this far (s) from the intro clock. */
 export const VIDEO_DRIFT = 0.25;
 
@@ -17,9 +22,10 @@ export const VIDEO_DRIFT = 0.25;
  * The first file the browser can play, as a URL under `base`; null if none.
  * @param {(type: string) => string} canPlayType a video element's canPlayType
  * @param {string} base import.meta.env.BASE_URL
+ * @param {boolean} [portrait] pick from the portrait files
  */
-export function pickVideo(canPlayType, base = '/') {
-  const file = INTRO_VIDEO_FILES.find(([, type]) => canPlayType(type) !== '');
+export function pickVideo(canPlayType, base = '/', portrait = false) {
+  const file = (portrait ? PORTRAIT_VIDEO_FILES : INTRO_VIDEO_FILES).find(([, type]) => canPlayType(type) !== '');
   return file ? base + file[0] : null;
 }
 
@@ -40,9 +46,9 @@ export function seekTarget(videoTime, t, duration) {
  * played from a Blob URL (Cloudflare Pages ignores HTTP Range requests, and
  * Safari cannot stream a video without them).
  * @param {HTMLElement} container
- * @param {{ base?: string, before?: Element | null }} [options]
+ * @param {{ base?: string, before?: Element | null, portrait?: boolean }} [options]
  */
-export function createIntroVideo(container, { base = '/', before = null } = {}) {
+export function createIntroVideo(container, { base = '/', before = null, portrait = false } = {}) {
   const video = document.createElement('video');
   video.className = 'intro-video';
   video.muted = true; // the music plays from the soundscape
@@ -54,7 +60,7 @@ export function createIntroVideo(container, { base = '/', before = null } = {}) 
   let state = 'loading'; // 'loading' | 'ready' | 'failed'
   let blobUrl = null;
   let disposed = false;
-  const url = pickVideo((type) => video.canPlayType(type), base);
+  const url = pickVideo((type) => video.canPlayType(type), base, portrait);
   const fail = () => {
     state = 'failed';
     video.hidden = true;
