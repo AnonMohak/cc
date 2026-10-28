@@ -9,6 +9,8 @@
 // Options: --out renders  --width 1920  --height 1080  --samples 16
 //          --steps 1500  --tile 256  --format png|jpg  --resume (skip
 //          frames already written, to continue a stopped render)
+//          --portrait (the pulled-back portrait camera; use with
+//          --width 720 --height 1280)
 // Output: <out>/t<seconds>.png for --times, <out>/frame_00001.png… for a
 // sequence. renders/ is gitignored.
 import { spawn, execSync } from 'node:child_process';
@@ -120,7 +122,7 @@ async function main() {
     };
     await s('Runtime.enable');
     // ?tune: the intro neither ends nor locks input.
-    await s('Page.navigate', { url: `http://localhost:${VITE_PORT}/?tune` });
+    await s('Page.navigate', { url: `http://localhost:${VITE_PORT}/?tune${'portrait' in args ? '&portrait' : ''}` });
     await waitFor(() => evaluate('!!window.__app?.getIntro()?.ready'), 'the intro (noise bake)');
     const gpu = await evaluate(`(() => { const gl = __app.renderer.getContext(); const ext = gl.getExtension('WEBGL_debug_renderer_info'); return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'unknown'; })()`);
     console.log(`GPU: ${gpu}`);

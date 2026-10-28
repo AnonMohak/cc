@@ -539,9 +539,16 @@ export function createControlPanel({ store, actions, getTarget, onFocus, onReset
     reset: () => onReset?.(),
   };
   if (onReset) settingsFolder.add(sceneActions, 'reset').name('Reset scene');
-  const help = settingsFolder.addFolder('Keyboard').close();
+  // ── Help (the start box shows only the title) ───────────────────────
+  const help = gui.addFolder('Help').close();
+  const touch = window.matchMedia?.('(pointer: coarse)').matches;
+  const pointer = touch
+    ? { Drag: 'orbit the camera', 'Two fingers': 'pan', Pinch: 'zoom', Tap: 'select a galaxy', 'Double-tap': 'fly to a galaxy' }
+    : { Drag: 'orbit the camera', 'Right-drag': 'pan', Scroll: 'zoom', Click: 'select a galaxy', 'Double-click': 'fly to a galaxy' };
+  for (const [key, text] of Object.entries(pointer)) help.add({ [key]: text }, key).disable();
+  const keyboard = help.addFolder('Keyboard').close();
   const keys = { Space: 'pause', N: 'add galaxy', F: 'focus selected', Del: 'delete selected', Esc: 'deselect', H: 'hide panel', P: 'screenshot', 'Ctrl+Z': 'undo', 'Ctrl+Shift+Z': 'redo', T: 'guided tour', G: 'free-fly', R: 'record video', V: 'next view (wavelength)', M: 'sound on / off' };
-  for (const [key, text] of Object.entries(keys)) help.add({ [key]: text }, key).disable();
+  for (const [key, text] of Object.entries(keys)) keyboard.add({ [key]: text }, key).disable();
 
   // ── Store wiring ─────────────────────────────────────────────────────
   function galaxyListKey(state) {

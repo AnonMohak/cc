@@ -8,6 +8,7 @@
     <link rel="icon" type="image/png" href="/icon/icon-dark.png" media="(prefers-color-scheme: light)" />
     <link rel="icon" type="image/png" href="/icon/icon-light.png" media="(prefers-color-scheme: dark)" />
     <link rel="preload" href="/fonts/jetbrains-mono-latin-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/michroma-latin-400.woff2" as="font" type="font/woff2" crossorigin />
     <title>Galaxy Sandbox</title>
     <!-- Inline so the first paint is already dark and the start box is styled
          before the JavaScript (and style.css) arrives. -->
@@ -37,24 +38,36 @@
         background: #02030a;
         color: #dfe6ff;
       }
+      @font-face {
+        font-family: 'Michroma';
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: url('/fonts/michroma-latin-400.woff2') format('woff2');
+      }
+      /* A film title card over the blurred scene: no box, wide spaced
+         capitals, the prompt low on the screen. */
       .start {
+        --title: 'Michroma', var(--mono);
         position: fixed;
         inset: 0;
         z-index: 10000;
         display: grid;
+        grid-template-columns: minmax(0, 1fr);
         place-items: center;
         padding: 16px;
         box-sizing: border-box;
-        background: rgba(2, 3, 10, 0.35);
+        background: radial-gradient(ellipse at center, rgba(2, 3, 10, 0.25) 0%, rgba(2, 3, 10, 0.5) 55%, rgba(2, 3, 10, 0.85) 100%);
         -webkit-backdrop-filter: blur(10px);
         backdrop-filter: blur(10px);
-        font-family: var(--mono);
+        font-family: var(--title);
+        text-align: center;
         cursor: default;
         transition: opacity 0.3s ease;
       }
       @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
         .start {
-          background: rgba(2, 3, 10, 0.8);
+          background: radial-gradient(ellipse at center, rgba(2, 3, 10, 0.7) 0%, rgba(2, 3, 10, 0.95) 100%);
         }
       }
       .start.is-ready {
@@ -63,73 +76,75 @@
       .start.is-closing {
         opacity: 0;
       }
-      .start-panel {
-        width: min(400px, 100%);
-        box-sizing: border-box;
-        padding: 24px 24px 20px;
-        border: 1px solid rgba(160, 180, 255, 0.18);
-        border-radius: 14px;
-        background: rgba(12, 15, 32, 0.55);
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      }
       .start-title {
         margin: 0;
-        font-size: 15px;
-        font-weight: 600;
-        letter-spacing: 0.22em;
+        /* Letter spacing also follows the last letter: pad the left by the
+           same amount so the word sits in the true centre. */
+        padding-left: 0.38em;
+        font-size: clamp(14px, 4.4vw, 46px);
+        font-weight: 400;
+        line-height: 1.2;
+        letter-spacing: 0.38em;
         color: #eef2ff;
+        text-shadow: 0 0 24px rgba(150, 175, 255, 0.35);
+        animation: start-in 1.5s ease-out both;
+      }
+      .start-rule {
+        width: 56px;
+        height: 1px;
+        margin: clamp(14px, 2.4vw, 22px) auto;
+        border: 0;
+        background: linear-gradient(90deg, transparent, rgba(190, 205, 255, 0.55), transparent);
+        animation: start-in 1.5s ease-out 0.5s both;
       }
       .start-sub {
-        margin: 6px 0 18px;
-        font-size: 12px;
-        line-height: 1.5;
-        color: rgba(200, 210, 255, 0.6);
-      }
-      .start-keys {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 7px 16px;
-        margin: 0;
-        font-size: 12px;
-        line-height: 1.35;
-      }
-      .start-keys dt {
-        color: #9fc0ff;
-        white-space: nowrap;
-      }
-      .start-keys dd {
-        margin: 0;
-        color: rgba(220, 228, 255, 0.85);
-      }
-      .start-touch {
-        display: none;
-      }
-      @media (pointer: coarse) {
-        .start-touch {
-          display: grid;
-        }
-        .start-mouse {
-          display: none;
-        }
+        max-width: 34em;
+        margin: 0 auto;
+        padding-left: 0.24em;
+        font-size: clamp(9px, 1.5vw, 12px);
+        line-height: 1.9;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: rgba(200, 212, 255, 0.62);
+        animation: start-in 1.5s ease-out 0.9s both;
       }
       .start-go {
-        display: block;
-        width: 100%;
-        margin: 20px 0 0;
-        padding: 10px 0 0;
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: calc(max(28px, 7vh) + env(safe-area-inset-bottom, 0px));
+        display: grid;
+        margin: 0;
+        padding: 8px 16px 8px calc(16px + 0.32em);
         border: 0;
-        border-top: 1px solid rgba(160, 180, 255, 0.14);
         background: none;
-        font: 600 12px/1.4 var(--mono);
-        letter-spacing: 0.12em;
+        font: 400 clamp(9px, 1.3vw, 11px)/1.4 var(--title);
+        letter-spacing: 0.32em;
         text-transform: uppercase;
-        color: rgba(200, 210, 255, 0.5);
+        color: #cfdcff;
         cursor: inherit;
       }
       .start-go:focus-visible {
-        outline: 1px solid rgba(160, 180, 255, 0.5);
-        outline-offset: 4px;
-        border-radius: 4px;
+        outline: none;
+      }
+      /* Both lines share one cell, so the swap does not move anything. */
+      .start-go > span {
+        grid-area: 1 / 1;
+        transition: opacity 1.4s ease;
+      }
+      .start-go .go-loading {
+        opacity: 0.38;
+      }
+      .start-go .go-ready {
+        opacity: 0;
+      }
+      .is-ready .start-go .go-loading {
+        opacity: 0;
+        transition-duration: 0.4s;
+      }
+      .is-ready .start-go .go-ready {
+        opacity: 1;
+        transition-delay: 0.3s;
       }
       .start-go .go-tap {
         display: none;
@@ -142,27 +157,18 @@
           display: inline;
         }
       }
-      .start-go .go-ready {
-        display: none;
-      }
-      .is-ready .start-go {
-        color: #cfe0ff;
-        animation: start-pulse 2.4s ease-in-out infinite;
-      }
-      .is-ready .start-go .go-ready {
-        display: inline;
-      }
-      .is-ready .start-go .go-loading {
-        display: none;
-      }
-      @keyframes start-pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.45; }
+      @keyframes start-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
       }
       @media (prefers-reduced-motion: reduce) {
         .start,
-        .is-ready .start-go {
+        .start-go > span {
           transition: none;
+        }
+        .start-title,
+        .start-rule,
+        .start-sub {
           animation: none;
         }
       }
@@ -173,32 +179,13 @@
     <div class="start" id="start" role="dialog" aria-modal="true" aria-labelledby="start-title">
       <div class="start-panel">
         <h1 class="start-title" id="start-title">GALAXY SANDBOX</h1>
+        <hr class="start-rule" />
         <p class="start-sub">Create, shape and explore procedural galaxies.</p>
-        <dl class="start-keys start-mouse">
-          <dt>Drag</dt><dd>Orbit the camera</dd>
-          <dt>Right-drag</dt><dd>Pan</dd>
-          <dt>Scroll</dt><dd>Zoom</dd>
-          <dt>Click</dt><dd>Select a galaxy</dd>
-          <dt>Double-click</dt><dd>Fly to a galaxy</dd>
-          <dt>Space</dt><dd>Pause / resume</dd>
-          <dt>N · Del</dt><dd>Add / delete a galaxy</dd>
-          <dt>T · G</dt><dd>Tour / free-fly</dd>
-          <dt>H</dt><dd>Hide the panel</dd>
-          <dt>M</dt><dd>Sound on / off</dd>
-        </dl>
-        <dl class="start-keys start-touch">
-          <dt>Drag</dt><dd>Orbit the camera</dd>
-          <dt>Two fingers</dt><dd>Pan</dd>
-          <dt>Pinch</dt><dd>Zoom</dd>
-          <dt>Tap</dt><dd>Select a galaxy</dd>
-          <dt>Double-tap</dt><dd>Fly to a galaxy</dd>
-          <dt>Panel</dt><dd>Add, edit and delete galaxies</dd>
-        </dl>
-        <button class="start-go" type="button" disabled>
-          <span class="go-loading">Loading…</span>
-          <span class="go-ready"><span class="go-click">Click</span><span class="go-tap">Tap</span> anywhere to start</span>
-        </button>
       </div>
+      <button class="start-go" type="button" disabled>
+        <span class="go-loading">Loading...</span>
+        <span class="go-ready"><span class="go-click">Click</span><span class="go-tap">Tap</span> anywhere to start</span>
+      </button>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>

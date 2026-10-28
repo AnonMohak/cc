@@ -125,8 +125,22 @@ export function solveShot({ radius, center, fov, el, az }, aspect) {
   const r = distanceForShadow(alpha);
   const pose = { r, el, az, lead: 0, aimY: 0 };
   // The still's centre is the shadow's, not the hole's.
-  const centre = shadowCentre(pose);
-  // Lead moves the hole across the screen, aimY up and down: alternate
+  aimAt(pose, fov, aspect, shadowCentre(pose), center);
+  return { r, lead: pose.lead, aimY: pose.aimY };
+}
+
+/**
+ * Set a pose's lead and aim height so a world point lands at `screen` (u, v
+ * from the top-left, 0–1). The pose's r, el and az stay.
+ * @param {{ r: number, el: number, az: number, lead: number, aimY: number }} pose changed in place
+ * @param {number} fov vertical (deg)
+ * @param {number} aspect width / height
+ * @param {number[]} point
+ * @param {number[]} screen
+ */
+export function aimAt(pose, fov, aspect, point, screen) {
+  const { r, el } = pose;
+  // Lead moves the point across the screen, aimY up and down: alternate
   // one-dimensional bisections until both settle.
   for (let pass = 0; pass < 6; pass++) {
     let lo = -89;
@@ -134,7 +148,7 @@ export function solveShot({ radius, center, fov, el, az }, aspect) {
     for (let i = 0; i < 60; i++) {
       pose.lead = (lo + hi) / 2;
       // A positive lead turns the view toward the motion: the hole moves right.
-      if (holeOnScreen(pose, fov, aspect, centre)[0] < center[0]) lo = pose.lead;
+      if (holeOnScreen(pose, fov, aspect, point)[0] < screen[0]) lo = pose.lead;
       else hi = pose.lead;
     }
     // Pitch within ±60° of level (wider, the left-right search breaks down).
@@ -144,12 +158,12 @@ export function solveShot({ radius, center, fov, el, az }, aspect) {
     hi = camY + ring * Math.tan(60 * DEG);
     for (let i = 0; i < 80; i++) {
       pose.aimY = (lo + hi) / 2;
-      // Aiming higher moves the hole down the screen (v grows).
-      if (holeOnScreen(pose, fov, aspect, centre)[1] < center[1]) lo = pose.aimY;
+      // Aiming higher moves the point down the screen (v grows).
+      if (holeOnScreen(pose, fov, aspect, point)[1] < screen[1]) lo = pose.aimY;
       else hi = pose.aimY;
     }
   }
-  return { r, lead: pose.lead, aimY: pose.aimY };
+  return pose;
 }
 
 /**

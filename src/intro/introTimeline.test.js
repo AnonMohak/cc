@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { introCamera, fallBoost, FALL_START, FALL_FULL, FALL_BETA_MAX, introPhase, keyPosition, keyTarget, CAMERA_KEYS, INTRO_SECONDS, BLACK_FULL, MUSIC_RISE_SECONDS } from './introTimeline.js';
+import { introCamera, fallBoost, FALL_START, FALL_FULL, FALL_BETA_MAX, introPhase, keyPosition, keyTarget, CAMERA_KEYS, INTRO_SECONDS, BLACK_FULL, MUSIC_RISE_SECONDS, PORTRAIT_KEYS, PORTRAIT_ASPECT, PORTRAIT_FIT, PORTRAIT_FALL, PORTRAIT_SPAN, PORTRAIT_CLEAR } from './introTimeline.js';
+import { shadowAngle, shadowCentre, holeOnScreen } from './shotSolve.js';
+import { halfThickness } from './gargantuaModel.js';
 
 const pose = () => ({ position: [0, 0, 0], target: [0, 0, 0], roll: 0, fov: 0, exposure: 1 });
 
@@ -80,5 +82,44 @@ describe('fallBoost', () => {
     const d = p1.map((x, i) => x - p0[i]);
     const cos = (b[0] * d[0] + b[1] * d[1] + b[2] * d[2]) / (Math.hypot(...b) * Math.hypot(...d));
     expect(cos).toBeGreaterThan(0.99);
+  });
+});
+
+describe('PORTRAIT_KEYS', () => {
+  const DEG = Math.PI / 180;
+  const before = PORTRAIT_KEYS.filter((k) => k.t < PORTRAIT_FALL);
+
+  it('keeps the times, lenses and look of the landscape keys', () => {
+    expect(PORTRAIT_KEYS.length).toBe(CAMERA_KEYS.length);
+    PORTRAIT_KEYS.forEach((k, i) => {
+      const l = CAMERA_KEYS[i];
+      for (const name of ['t', 'fov', 'roll', 'exp', 'sparse', 'haze']) expect(k[name]).toBe(l[name]);
+      expect(k.r).toBeGreaterThanOrEqual(l.r - 1e-9);
+    });
+  });
+
+  it('fits the shadow in the portrait width, near the middle', () => {
+    for (const k of before) {
+      const tanX = Math.tan((k.fov / 2) * DEG) * PORTRAIT_ASPECT;
+      // The shadow's radius as a share of the width.
+      expect(Math.tan(shadowAngle(k.r)) / tanX / 2).toBeLessThanOrEqual(PORTRAIT_FIT + 1e-6);
+      const [u] = holeOnScreen(k, k.fov, PORTRAIT_ASPECT, shadowCentre(k));
+      expect(Math.abs(u - 0.5)).toBeLessThanOrEqual(PORTRAIT_SPAN + 1e-3);
+    }
+  });
+
+  it('keeps the camera over the cloud tops', () => {
+    for (const k of before) expect((k.r * Math.sin(k.el * DEG)) / halfThickness(k.r)).toBeGreaterThanOrEqual(PORTRAIT_CLEAR - 1e-6);
+  });
+
+  it('keeps the fall and stays outside the hole', () => {
+    PORTRAIT_KEYS.forEach((k, i) => {
+      if (k.t >= PORTRAIT_FALL) expect(k).toEqual(CAMERA_KEYS[i]);
+    });
+    const out = pose();
+    for (let t = 0; t <= BLACK_FULL; t += 0.1) {
+      introCamera(t, out, PORTRAIT_KEYS);
+      expect(Math.hypot(...out.position)).toBeGreaterThanOrEqual(1.2 - 1e-6);
+    }
   });
 });
