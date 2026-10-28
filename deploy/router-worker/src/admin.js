@@ -100,7 +100,8 @@ export function queriesFor(days) {
  */
 export function visitsQuery(days) {
   return (
-    'SELECT timestamp AS time, blob1 AS path, blob2 AS country, blob3 AS region, blob4 AS city, ' +
+    // No alias on timestamp: once renamed, WHERE and ORDER BY cannot find it (SQL API 422).
+    'SELECT timestamp, blob1 AS path, blob2 AS country, blob3 AS region, blob4 AS city, ' +
     'blob5 AS status, blob6 AS device, blob7 AS browser, blob8 AS os, blob9 AS referrer, blob10 AS language, ' +
     `_sample_interval AS views FROM ${DATASET} WHERE timestamp > NOW() - INTERVAL '${days}' DAY ` +
     `ORDER BY timestamp DESC LIMIT ${VISITS_LIMIT} FORMAT JSON`
@@ -161,7 +162,7 @@ export async function handleAdmin(request, env, fetchFn = fetch) {
   try {
     if (url.pathname === '/admin/api/visits') {
       const visits = await runQuery(env, visitsQuery(days), fetchFn);
-      return json({ days, limit: VISITS_LIMIT, visits: visits.map(({ views, ...row }) => ({ ...row, weight: views })) });
+      return json({ days, limit: VISITS_LIMIT, visits: visits.map(({ timestamp, views, ...row }) => ({ time: timestamp, ...row, weight: views })) });
     }
     const queries = Object.entries(queriesFor(days));
     const results = await Promise.all(queries.map(([, sql]) => runQuery(env, sql, fetchFn)));
