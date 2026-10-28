@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { DEFAULT_DAYS, MAX_DAYS, handleAdmin, isAdminPath, keyMatches, parseDays, queriesFor } from './admin.js';
+import {
+  DEFAULT_DAYS,
+  MAX_DAYS,
+  VISITS_LIMIT,
+  handleAdmin,
+  isAdminPath,
+  keyMatches,
+  parseDays,
+  queriesFor,
+  visitsQuery,
+} from './admin.js';
 
 const env = { ADMIN_KEY: 'correct horse battery staple', CF_ACCOUNT_ID: 'acc123', CF_API_TOKEN: 'tok456' };
 const get = (path, key) =>
@@ -85,7 +95,32 @@ describe('queriesFor', () => {
   });
 });
 
+describe('visitsQuery', () => {
+  it('reads single page loads, newest first, with the sample weight', () => {
+    expect(visitsQuery(1)).toBe(
+      'SELECT timestamp AS time, blob1 AS path, blob2 AS country, blob3 AS region, blob4 AS city, ' +
+        'blob5 AS status, blob6 AS device, blob7 AS browser, blob8 AS os, blob9 AS referrer, blob10 AS language, ' +
+        "_sample_interval AS views FROM momo_visits WHERE timestamp > NOW() - INTERVAL '1' DAY " +
+        `ORDER BY timestamp DESC LIMIT ${VISITS_LIMIT} FORMAT JSON`,
+    );
+  });
+});
+
 describe('handleAdmin', () => {
+  it('serves the table rows from /admin/api/visits with one query', async () => {
+    const { calls, fetchFn } = fakeSql(() => [{ time: '2026-10-28 10:00:00', path: '/', status: '200', views: '1' }]);
+    const res = await handleAdmin(get('/admin/api/visits?days=1', env.ADMIN_KEY), env, fetchFn);
+    expect(res.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init.body).toBe(visitsQuery(1));
+    expect(await res.json()).toEqual({
+      days: 1,
+      limit: VISITS_LIMIT,
+      visits: [{ time: '2026-10-28 10:00:00', path: '/', status: '200', weight: 1 }],
+    });
+    expect((await handleAdmin(get('/admin/api/visits'), env, fetchFn)).status).toBe(401);
+  });
+
   it('serves the page without a key, never indexed or cached', async () => {
     const res = await handleAdmin(get('/admin'), env);
     expect(res.status).toBe(200);

@@ -12,6 +12,8 @@ export const DEFAULT_DAYS = 7;
 export const MAX_DAYS = 90;
 /** Rows in each ranked list. */
 export const LIST_LIMIT = 25;
+/** Rows in the table of single page loads. */
+export const VISITS_LIMIT = 500;
 
 const NO_INDEX = {
   'cache-control': 'no-store',
@@ -90,6 +92,22 @@ export function queriesFor(days) {
 }
 
 /**
+ * The newest page loads, one row each (the table view). There is no visitor ID,
+ * so rows of one person cannot be grouped. `views` is _sample_interval: each
+ * row stands for that many page loads (1 unless Analytics Engine sampled).
+ *
+ * @param {number} days a whole number (parseDays)
+ */
+export function visitsQuery(days) {
+  return (
+    'SELECT timestamp AS time, blob1 AS path, blob2 AS country, blob3 AS region, blob4 AS city, ' +
+    'blob5 AS status, blob6 AS device, blob7 AS browser, blob8 AS os, blob9 AS referrer, blob10 AS language, ' +
+    `_sample_interval AS views FROM ${DATASET} WHERE timestamp > NOW() - INTERVAL '${days}' DAY ` +
+    `ORDER BY timestamp DESC LIMIT ${VISITS_LIMIT} FORMAT JSON`
+  );
+}
+
+/**
  * Runs one query. Counts come back as text (UInt64), so `views` becomes a number.
  *
  * @param {Record<string, any>} env
@@ -112,7 +130,8 @@ export async function runQuery(env, sql, fetchFn = fetch) {
 }
 
 /**
- * GET /admin: the page. GET /admin/api?days=7: the report as JSON (401 without the key).
+ * GET /admin: the page. GET /admin/api?days=7: the report as JSON;
+ * GET /admin/api/visits?days=7: the newest page loads (both 401 without the key).
  *
  * @param {Request} request
  * @param {Record<string, any>} env
@@ -128,18 +147,23 @@ export async function handleAdmin(request, env, fetchFn = fetch) {
         ...NO_INDEX,
         'content-type': 'text/html; charset=utf-8',
         'content-security-policy':
-          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https://fonts.googleapis.com; " +
+          "font-src https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
       },
     });
   }
-  if (url.pathname !== '/admin/api') return json({ error: 'Not found' }, 404);
+  if (url.pathname !== '/admin/api' && url.pathname !== '/admin/api/visits') return json({ error: 'Not found' }, 404);
   if (!(await keyMatches(request.headers.get('authorization'), env.ADMIN_KEY))) {
     return json({ error: 'Wrong key' }, 401, { 'www-authenticate': 'Bearer' });
   }
   if (!env.CF_ACCOUNT_ID || !env.CF_API_TOKEN) return json({ error: 'CF_ACCOUNT_ID or CF_API_TOKEN is not set' }, 500);
   const days = parseDays(url.searchParams.get('days'));
-  const queries = Object.entries(queriesFor(days));
   try {
+    if (url.pathname === '/admin/api/visits') {
+      const visits = await runQuery(env, visitsQuery(days), fetchFn);
+      return json({ days, limit: VISITS_LIMIT, visits: visits.map(({ views, ...row }) => ({ ...row, weight: views })) });
+    }
+    const queries = Object.entries(queriesFor(days));
     const results = await Promise.all(queries.map(([, sql]) => runQuery(env, sql, fetchFn)));
     const report = Object.fromEntries(queries.map(([name], i) => [name, results[i]]));
     const total = report.series.reduce((sum, row) => sum + row.views, 0);
