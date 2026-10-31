@@ -9,6 +9,7 @@ export const PROJECTS = {
   '/turing-machine': 'turing-machine-59p.pages.dev',
   '/lustro': 'lustro-8t4.pages.dev',
   '/dakken': 'dakken.pages.dev',
+  '/dots': 'dots-b0m.pages.dev',
   '/sift': 'sift-origin.me-momo.co.in', // a server behind a Cloudflare Tunnel (see SERVERS)
   '/_404': 'momo-404.pages.dev', // assets of the shared 404 page
 };
